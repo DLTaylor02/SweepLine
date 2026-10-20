@@ -1,0 +1,36 @@
+name: PHP and PostGIS
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: sweepline_test
+          POSTGRES_USER: sweepline_test
+          POSTGRES_PASSWORD: test-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sweepline_test -d sweepline_test"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_NAME: sweepline_test
+      DB_USER: sweepline_test
+      DB_PASSWORD: test-only-password
+      SWEEPLINE_TEST_DATABASE: 1
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y php-cli php-pgsql php-xml php-curl php-zip composer
+      - run: composer validate --strict && composer install --no-interaction
+      - run: find src bin public tests -name '*.php' -print0 | xargs -0 -n1 php -l
+      - run: bash -n setup && bash -n setup.sh && bash -n bin/prepare-extract.sh && bash -n tests/http.sh
+      - run: node tests/frontend.test.js
+      - run: php tests/run.php --integration
+      - run: php bin/bootstrap-app.php
+      - run: |
+          php -S 127.0.0.1:8099 -t public public/index.php > /tmp/sweepline-http.log 2>&1 &
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8099/api/health && break; sleep 1; done
+          bash tests/http.sh http://127.0.0.1:8099

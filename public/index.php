@@ -1,0 +1,88 @@
+<?php
+declare(strict_types=1);
+$path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH);
+if (!is_string($path)) { http_response_code(400); exit('Invalid request'); }
+// PHP built-in development server may serve public assets; production uses NGINX.
+if (PHP_SAPI==='cli-server' && preg_match('#^/assets/[a-zA-Z0-9_.-]+$#',$path) && is_file(__DIR__.$path)) { return false; }
+if (!str_starts_with($path,'/api/')) {
+    if ($path!=='/') { http_response_code(404); exit('Not found'); }
+    header('Cache-Control: no-store');
+    require __DIR__.'/home.php'; exit;
+}
+require dirname(__DIR__).'/src/bootstrap.php';
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
+try {
+    $method=$_SERVER['REQUEST_METHOD']??'GET';
+    $postPaths=['/api/search','/api/setup','/api/login','/api/logout','/api/admin/users'];
+    $expected=in_array($path,$postPaths,true)?'POST':'GET';
+    if ($path==='/api/admin/users' && $method==='GET') { $expected='GET'; }
+    if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='PATCH'; }
+    if (preg_match('#^/api/admin/tasks/[1-9]\\d{0,17}/retry$#',$path)) { $expected='POST'; }
+    if ($method!==$expected) { header('Allow: '.$expected); throw new SweepLine\HttpException(405,'Method not allowed'); }
+    $input=[];
+    if (in_array($method,['POST','PATCH'],true)) {
+        $body=file_get_contents('php://input',false,null,0,8193);
+        if (strlen($body)>8192) { throw new InvalidArgumentException('Request too large'); }
+        try { $input=json_decode($body?:'{}',true,32,JSON_THROW_ON_ERROR); }
+        catch (JsonException $e) { throw new InvalidArgumentException('Invalid JSON'); }
+        if (!is_array($input) || ($input!==[] && array_is_list($input))) { throw new InvalidArgumentException('Expected a JSON object'); }
+    }
+    if ($path==='/api/profiles') { $result=SweepLine\Scorer::profiles(); }
+    else {
+        $db=SweepLine\Database::connect(); $api=new SweepLine\Api($db);
+        if ($path==='/api/health') {
+            $schema=$db->query('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')->fetchColumn();
+            $files=glob(SWEEPLINE_ROOT.'/database/migrations/*.sql'); $expectedSchema=basename(end($files));
+            if ($schema!==$expectedSchema) { throw new RuntimeException('Pending database migrations'); }
+            $result=['status'=>'ok','database'=>true,'postgis'=>$db->query('SELECT postgis_lib_version()')->fetchColumn(),'schema'=>$schema];
+        } else {
+            SweepLine\Auth::start(); $auth=new SweepLine\Auth($db);
+            if (in_array($method,['POST','PATCH'],true)) { SweepLine\Auth::csrf($_SERVER['HTTP_X_CSRF_TOKEN']??null); }
+            if ($path==='/api/session') { $result=$auth->status(); }
+            elseif ($path==='/api/setup') { $result=$auth->setup($input); }
+            elseif ($path==='/api/login') { $result=$auth->login($input); }
+            elseif ($path==='/api/logout') { $result=$auth->logout(); }
+            else {
+                $auth->requireUser(str_starts_with($path,'/api/admin/'));
+                // Release the session lock before spatial queries or polling.
+                session_write_close();
+                if ($path==='/api/coverage') { $result=$api->coverage(); }
+                elseif ($path==='/api/search') {
+                    $p=SweepLine\Validation::search($input); $queue=new SweepLine\DataQueue($db); $preparation=$queue->prepare($p);
+                    if ($preparation['state']==='ready') { $result=$api->search($p); $result['preparation']=$preparation; }
+                    else {
+                        http_response_code(202);
+                        try { $result=$api->search($p); } catch (OutOfBoundsException $e) { $result=['results'=>[]]; }
+                        $result['preparation']=$preparation;
+                    }
+                } elseif (preg_match('#^/api/zips/(.*)$#',$path,$m)) {
+                    SweepLine\Validation::zip($m[1]);
+                    try { $result=$api->zip($m[1]); }
+                    catch (OutOfBoundsException $e) {
+                        $task=(new SweepLine\DataQueue($db))->ensure('us-zips','zips',[],true);
+                        if ($task['status']==='complete') { throw $e; }
+                        http_response_code(202); $result=['state'=>$task['status'],'message'=>'Preparing US ZIP coordinates'];
+                    }
+                } elseif (preg_match('#^/api/roads/([1-9]\\d{0,17})$#',$path,$m)) {
+                    $profile=$_GET['profile']??'twisty'; if (!is_string($profile)) { throw new InvalidArgumentException('Unknown profile'); }
+                    $result=$api->detail((int)$m[1],$profile);
+                } elseif ($path==='/api/admin/users') {
+                    $result=$method==='GET'?$auth->users():$auth->create($input);
+                } elseif (preg_match('#^/api/admin/users/([1-9]\\d{0,17})$#',$path,$m)) { $result=$auth->update((int)$m[1],$input); }
+                elseif ($path==='/api/admin/data') { $result=(new SweepLine\DataQueue($db))->overview(); }
+                elseif (preg_match('#^/api/admin/tasks/([1-9]\\d{0,17})/retry$#',$path,$m)) {
+                    $result=(new SweepLine\DataQueue($db))->retry((int)$m[1]);
+                } else { throw new OutOfBoundsException('Endpoint not found'); }
+            }
+        }
+    }
+    echo json_encode($result,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);
+} catch (Throwable $e) {
+    $status=$e instanceof SweepLine\HttpException?$e->status:($e instanceof InvalidArgumentException?422:($e instanceof OutOfBoundsException?404:503));
+    http_response_code($status);
+    if ($status===429) { header('Retry-After: 900'); }
+    if ($status===503) { error_log((string)$e); }
+    echo json_encode(['error'=>$status===503?'Service unavailable. Please try again shortly.':$e->getMessage()]);
+}

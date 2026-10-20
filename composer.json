@@ -1,0 +1,24 @@
+{
+  "name": "sweepline/sweepline",
+  "description": "Local OSM road discovery and analysis",
+  "type": "project",
+  "license": "MIT",
+  "require": {
+    "php": ">=8.2",
+    "ext-pdo": "*",
+    "ext-pdo_pgsql": "*",
+    "ext-xmlreader": "*",
+    "ext-simplexml": "*",
+    "ext-json": "*",
+    "ext-curl": "*",
+    "ext-zip": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "SweepLine\\": "src/"
+    }
+  },
+  "scripts": {
+    "test": "php tests/run.php"
+  }
+}

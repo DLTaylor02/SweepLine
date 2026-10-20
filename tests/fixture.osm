@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic topology fixture for tests only; never production/sample search results. -->
+<osm version="0.6" generator="sweepline-test">
+<node id="1" lat="39.50" lon="-119.80"/><node id="2" lat="39.51" lon="-119.80"/>
+<node id="3" lat="39.52" lon="-119.80"><tag k="highway" v="stop"/><tag k="stop" v="all"/></node>
+<node id="4" lat="39.53" lon="-119.80"/><node id="5" lat="39.54" lon="-119.80"/>
+<node id="6" lat="39.52" lon="-119.79"><tag k="highway" v="stop"/></node>
+<way id="10"><nd ref="1"/><nd ref="2"/><nd ref="3"/><tag k="highway" v="secondary"/><tag k="name" v="Synthetic Main"/><tag k="surface" v="asphalt"/><tag k="maxspeed" v="45 mph"/></way>
+<way id="11"><nd ref="3"/><nd ref="4"/><nd ref="5"/><tag k="highway" v="secondary"/><tag k="name" v="Synthetic Main"/><tag k="surface" v="asphalt"/><tag k="maxspeed" v="45 mph"/></way>
+<way id="12"><nd ref="3"/><nd ref="6"/><tag k="highway" v="tertiary"/><tag k="name" v="Synthetic Side"/><tag k="surface" v="asphalt"/></way>
+</osm>

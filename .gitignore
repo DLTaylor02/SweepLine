@@ -1,0 +1,9 @@
+/.env
+/vendor/
+/var/*
+!/var/.gitkeep
+*.osm
+*.pbf
+*.zip
+!/tests/fixture.osm
+/.sweepline-deployment
