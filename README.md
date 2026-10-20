@@ -59,7 +59,7 @@ No city, ZIP code, or road region is preselected. The map opens with a global ov
 1. Enter a US ZIP code, radius, and driving profile.
 2. Optionally specify a road **longer than** a minimum and/or a **maximum road length**.
 3. Submit the search. Cached coverage returns ranked roads immediately.
-4. If data is missing, SweepLine queues the required areas and shows progress. The worker downloads and analyzes those areas; the page updates automatically when they are ready.
+4. If data is missing, SweepLine queues the required areas and shows a spinner, completed-area progress bar, and current preparation message beside the search controls. A matching indicator appears over the map. Available roads are labeled as partial results while preparation continues; area progress is not a time estimate. The worker downloads and analyzes those areas; the page updates automatically when they are ready.
 
 The worker initializes US ZIP coordinates from GeoNames automatically, including on a new installation. A search requiring unavailable ZIP data waits for preparation. A ZIP absent from a completed dataset produces a clear not-found message.
 

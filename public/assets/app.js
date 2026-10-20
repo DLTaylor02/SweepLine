@@ -3,7 +3,25 @@ const $ = id => document.getElementById(id);
 let map, ready, roads = [], selected = null, request = 0, pollTimer, activeProfile='twisty';
 const empty = () => ({type:'FeatureCollection',features:[]});
 const color = ['interpolate',['linear'],['get','score'],0,'#94a3b8',50,'#60a5fa',100,'#1d4ed8'];
-function setStatus(message) { $('status').textContent = message; }
+function setStatus(message, busy=false, preparation=null) {
+  $('status').textContent=message;
+  $('search-feedback').dataset.busy=String(busy);
+  $('search-feedback').setAttribute('aria-busy',String(busy));
+  $('search-spinner').hidden=!busy;
+  $('search-progress').hidden=!busy;
+  $('search-progress-label').hidden=!busy;
+  $('map-spinner').hidden=!busy;
+  $('map-status').textContent=busy?'Preparing roads · results update automatically':'EXPLORE SOMETHING DIFFERENT';
+  $('submit').textContent=busy?'Search another area ↗':'Discover roads ↗';
+  const progress=$('search-progress');
+  if(preparation && preparation.total>0) {
+    progress.max=preparation.total;progress.value=preparation.complete;
+    $('search-progress-label').textContent=`${preparation.complete} of ${preparation.total} areas ready. This measures completed areas, not remaining time.`;
+  } else {
+    progress.removeAttribute('value');
+    $('search-progress-label').textContent='Checking local coverage and requesting available roads…';
+  }
+}
 async function api(path, options) { return window.sweeplineRequest(path, options); }
 function syncMapTheme() {
   if (!map || !map.getLayer('basemap')) return;
@@ -82,7 +100,7 @@ async function discover(payload, sequence) {
     const preparation=data.preparation;
     if(preparation && preparation.state!=='ready') {
       setStatus(`${preparation.message} · ${preparation.complete}/${preparation.total} areas ready.`+
-        (preparation.state==='failed'?' A SuperAdmin can retry failed tasks in Manage.':' This search will update automatically.'));
+        (preparation.state==='failed'?' A SuperAdmin can retry failed tasks in Manage.':` ${roads.length?'Showing partial results.':'First-time preparation can take several minutes.'} This search will update automatically.`), preparation.state!=='failed', preparation);
       if(preparation.state!=='failed')pollTimer=setTimeout(()=>discover(payload,sequence),5000);
     } else {
       setStatus(roads.length?`${roads.length}${data.truncated?'+':''} roads found near ${data.center.place}.`:'No roads match these filters. Try adjusting the length, stop, or surface filters.');
@@ -96,13 +114,13 @@ async function discover(payload, sequence) {
     }
   } catch(e) {
     if(sequence!==request)return;
-    setStatus(e.message);
+    setStatus(e.status===503?`${e.message} Retrying automatically…`:e.message,e.status===503);
     if(e.status===503)pollTimer=setTimeout(()=>discover(payload,sequence),10000);
   } finally { if(sequence===request)$('submit').disabled=false; }
 }
 $('search').onsubmit = event => {
   event.preventDefault();clearTimeout(pollTimer);const sequence=++request,form=event.target;
-  $('submit').disabled=true;setStatus('Preparing your road search…');$('road-detail').hidden=true;selected=null;
+  $('submit').disabled=true;setStatus('Preparing your road search…',true);$('road-detail').hidden=true;selected=null;
   discover({zip:form.zip.value,radius_miles:Number(form.radius.value==='custom'?form.custom_radius.value:form.radius.value),profile:form.profile.value,
     ...(form.min_length.value.trim()===''?{}:{min_length_miles:Number(form.min_length.value)}),
     ...(form.max_length.value.trim()===''?{}:{max_length_miles:Number(form.max_length.value)}),

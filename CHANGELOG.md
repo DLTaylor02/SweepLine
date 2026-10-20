@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added visible search/preparation spinners, completed-area progress, and partial-result messaging with automatic updates; versioned frontend assets to refresh cached files after deployment.
+
 - Removed the login username hint and switched light/dark interface accents, tinted surfaces, and road/radius colors from green to blue.
 
 - Added an operator-only `reset-superadmin` command with hidden password confirmation, account reactivation, and invalidation of existing SuperAdmin sessions.

@@ -6,6 +6,7 @@ async function testFrontend(sources) {
     append(...nodes){this.children.push(...nodes);}
     replaceChildren(...nodes){this.children=nodes;}
     setAttribute(k,v){this[k]=v;}
+    removeAttribute(k){delete this[k];}
     contains(){return false;}
     scrollIntoView(){}
     reset(){for(const field of Object.values(this.fields))field.value='';}
@@ -49,17 +50,28 @@ async function testFrontend(sources) {
   check(!get('admin-open').hidden,'SuperAdmin sees Manage');
   check(requests.find(r=>r.path==='/api/login').headers['X-CSRF-Token']==='initial','Login uses CSRF');
   searchResponses=[{results:[],preparation:{state:'preparing',message:'Downloading roads',complete:0,total:3}},{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}}];
-  search.max_length.value='12.5';search.onsubmit({preventDefault(){},target:search});await flush();
+  search.max_length.value='12.5';search.onsubmit({preventDefault(){},target:search});
+  check(!get('search-spinner').hidden&&!('value' in get('search-progress')),'Submitting immediately shows indeterminate preparation');
+  await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
   check(payload.max_length_miles===12.5&&!('min_length_miles'in payload),'Optional bounds preserved');
   check(req.headers['X-CSRF-Token']==='signed-in','Search uses rotated CSRF');
   check(get('status').textContent.includes('0/3'),'Preparation progress displayed');
+  check(!get('search-spinner').hidden&&!get('map-spinner').hidden,'Preparation spinner visible by search and map');
+  check(get('search-progress').value===0&&get('search-progress').max===3,'Area progress uses actual completed coverage');
+  check(get('search-feedback')['aria-busy']==='true','Preparation exposes accessible busy state');
   let timer=timers.filter(t=>t.active&&t.ms===5000).at(-1);check(!!timer,'Preparation schedules polling');
   await timer.fn();await flush();check(get('status').textContent.includes('No roads match'),'Ready response ends preparation message');
+  check(get('search-spinner').hidden&&get('map-spinner').hidden&&get('search-progress').hidden,'Ready response clears all loading indicators');
+  searchResponses=[{results:[{id:1,name:'Test road',score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5}],preparation:{state:'preparing',message:'Analyzing roads',complete:1,total:3}}];
+  search.onsubmit({preventDefault(){},target:search});await flush();
+  check(get('status').textContent.includes('Showing partial results')&&get('results').children.length===1,'Available roads remain visible and labeled during preparation');
+  check(get('search-progress').value===1,'Progress advances with completed areas');
   searchResponses=[{results:[],preparation:{state:'failed',message:'Provider unavailable',complete:0,total:3}}];
   const beforeFailure=timers.length;
   search.onsubmit({preventDefault(){},target:search});await flush();
   check(timers.length===beforeFailure&&get('status').textContent.includes('SuperAdmin'),'Terminal preparation failure stops polling with actionable message');
+  check(get('search-spinner').hidden&&get('search-progress').hidden,'Terminal failure clears loading state');
   get('admin-open').onclick();await flush();check(!get('admin-panel').hidden,'Manage opens');
   get('admin-close').onclick();check(get('admin-panel').hidden,'Manage closes');
   get('submit').disabled=true;
