@@ -211,3 +211,15 @@ The SuperAdmin Jobs page shows a live pie chart of **SweepLine database**, **oth
 The minimum and default maximum is **1 mapped stop plus uncertain control**, counted together. Road endpoints are tracked separately and do not count as mandatory stops. Missing OSM controls can still exist in reality. Reopening older searches with a zero limit uses the new minimum of 1.
 
 The discovery page remembers your latest search in this browser tab, scoped to your signed-in account. Returning from Jobs, Manage, or History (or reloading) restores its filters, requests current results/progress, and resumes automatic updates without adding another history entry. Explicit history links take precedence. Signing out clears the remembered search. This tab-level restoration requires browser session storage; server jobs continue independently when you leave the page.
+
+### Pick a ZIP on the map
+
+Use **Pick on map** beside the ZIP input, then click a location. SweepLine uses the local ZIP dataset to find the nearest US ZIP center within 25 miles and fills the input. The UI shows its place/state and distance from the click. This is a nearest-center approximation, not a ZIP boundary lookup: the search still centers on the selected ZIP coordinate. Outside coverage, or while ZIP initialization is incomplete, a clear message appears and manual ZIP entry remains available. This feature makes no external reverse-geocoding requests. Authenticated endpoint: `GET /api/zips/nearest?lon=-100&lat=40` (422 invalid coordinates, 404 no nearby ZIP, 202 initial dataset preparing).
+
+### Export a selected road
+
+Select a road result, then choose **GPX**, **KMZ**, or **Printable PDF** in its detail panel. Exports use the full stored candidate geometry, not the simplified search-map line. GPX is a GPX 1.1 track with start/end waypoints. KMZ contains a KML road line, start/end points and section instructions. PDF is a downloadable, printable US Letter document with a vector road sketch, start/end coordinates, distance, mapped control counts, and ordered road-section directions. Long instruction lists paginate automatically. Exports require a signed-in session and currently active road data.
+
+Directions follow stored OSM road sections with initial compass headings, distances and section-end coordinates. They are not turn-by-turn navigation, a route from your current location, or a guarantee of access or complete mapped controls. One-way chains are oriented to the mapped legal direction; inconsistent mapped directions are refused. PDF sketches have no basemap or external tile dependency; PDF text uses a basic Latin font with transliteration where available. GPX/KML preserve UTF-8 names. Elevation is not fabricated. Track imports into other apps may be displayed without navigational instructions. Road data attribution is included.
+
+Download API: `GET /api/roads/{id}/export?format=gpx|kmz|pdf&profile=twisty|open`. Responses are authenticated attachments; unsupported formats return 422 and inactive/missing roads return 404. No additional packages or persistent services are required.

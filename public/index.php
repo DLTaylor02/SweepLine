@@ -52,6 +52,14 @@ try {
                 session_write_close();
                 if ($path==='/api/search-history') { $result=(new SweepLine\SearchHistory($db))->recent((int)$user['id']); }
                 elseif (preg_match('#^/api/search-history/([1-9]\\d{0,17})$#',$path,$m)) { $result=(new SweepLine\SearchHistory($db))->delete((int)$user['id'],(int)$m[1]); }
+                elseif ($path==='/api/zips/nearest') {
+                    // Validate even while the postal dataset is being initialized.
+                    SweepLine\Validation::number($_GET,'lon',NAN,-180,180);SweepLine\Validation::number($_GET,'lat',NAN,-90,90);
+                    if (!$db->query('SELECT EXISTS(SELECT 1 FROM zip_codes)')->fetchColumn()) {
+                        (new SweepLine\DataQueue($db))->ensure('us-zips','zips',[],true);
+                        http_response_code(202);$result=['state'=>'preparing','message'=>'ZIP coordinates are being prepared. Try picking again shortly.'];
+                    } else { $result=$api->nearestZip($_GET); }
+                }
                 elseif ($path==='/api/coverage') { $result=$api->coverage(); }
                 elseif ($path==='/api/search') {
                     if (isset($input['record_history']) && !is_bool($input['record_history'])) { throw new InvalidArgumentException('record_history must be a JSON boolean'); }
@@ -74,6 +82,10 @@ try {
                 } elseif (preg_match('#^/api/roads/([1-9]\\d{0,17})$#',$path,$m)) {
                     $profile=$_GET['profile']??'twisty'; if (!is_string($profile)) { throw new InvalidArgumentException('Unknown profile'); }
                     $result=$api->detail((int)$m[1],$profile);
+                } elseif (preg_match('#^/api/roads/([1-9]\\d{0,17})/export$#',$path,$m)) {
+                    $format=$_GET['format']??'';$profile=$_GET['profile']??'twisty';
+                    if (!is_string($format) || !in_array($format,['gpx','kmz','pdf'],true) || !is_string($profile)) { throw new InvalidArgumentException('Invalid export format or profile'); }
+                    SweepLine\RoadExport::download($api->exportRoad((int)$m[1],$profile),$format);
                 } elseif ($path==='/api/admin/users') {
                     $result=$method==='GET'?$auth->users():$auth->create($input);
                 } elseif (preg_match('#^/api/admin/users/([1-9]\\d{0,17})$#',$path,$m)) { $result=$auth->update((int)$m[1],$input); }

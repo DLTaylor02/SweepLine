@@ -28,6 +28,36 @@ function restoreSearch(userId) {
     fillSearch(p);return true;
   } catch (_) {return false;}
 }
+let pickingZip=false,zipPickRequest=0;
+function setZipPickMode(enabled) {
+  pickingZip=enabled;
+  $('pick-zip').textContent=enabled?'Cancel pick':'Pick on map';
+  $('pick-zip').setAttribute('aria-pressed',String(enabled));
+  $('map-pick-note').hidden=!enabled;
+  if(map)map.getCanvas().style.cursor=enabled?'crosshair':'';
+}
+$('pick-zip').onclick=()=>{
+  ++zipPickRequest;
+  if(pickingZip){setZipPickMode(false);$('zip-pick-status').textContent='Map selection cancelled.';return;}
+  if(!map){$('zip-pick-status').textContent='The map is unavailable. Enter a ZIP code manually.';return;}
+  setZipPickMode(true);
+  $('zip-pick-status').textContent='Click a spot on the map to find its nearest ZIP center.';
+  $('map').scrollIntoView({behavior:'smooth',block:'center'});
+};
+async function pickZipAt(event) {
+  if(!pickingZip)return;
+  const sequence=++zipPickRequest;
+  setZipPickMode(false);$('pick-zip').disabled=true;
+  $('zip-pick-status').textContent='Looking up the nearest ZIP center…';
+  try {
+    const data=await api('/api/zips/nearest?lon='+encodeURIComponent(event.lngLat.lng)+'&lat='+encodeURIComponent(event.lngLat.lat));
+    if(sequence!==zipPickRequest)return;
+    if(!data.zip){$('zip-pick-status').textContent=data.message;return;}
+    $('search').zip.value=data.zip;
+    $('zip-pick-status').textContent=`Nearest ZIP: ${data.zip} · ${data.place}, ${data.state} · ${(Number(data.distance_m)/1609.344).toFixed(1)} miles from click. Search centers on this ZIP, not the clicked point.`;
+  } catch(e) {if(sequence===zipPickRequest)$('zip-pick-status').textContent=e.message;}
+  finally {if(sequence===zipPickRequest)$('pick-zip').disabled=false;}
+}
 const empty = () => ({type:'FeatureCollection',features:[]});
 const color = ['interpolate',['linear'],['get','score'],0,'#94a3b8',50,'#60a5fa',100,'#1d4ed8'];
 function setStatus(message, busy=false, preparation=null) {
@@ -72,9 +102,10 @@ function initMap() {
     map.addLayer({id:'roads-outline',type:'line',source:'roads',paint:{'line-color':'#fff','line-width':7}});
     map.addLayer({id:'roads',type:'line',source:'roads',paint:{'line-color':color,'line-width':4}});
     map.addLayer({id:'selected',type:'line',source:'roads',filter:['==',['get','id'],-1],paint:{'line-color':'#f08a38','line-width':6}});
-    map.on('click','roads', e => selectRoad(Number(e.features[0].properties.id)));
-    map.on('mouseenter','roads',()=>map.getCanvas().style.cursor='pointer');
-    map.on('mouseleave','roads',()=>map.getCanvas().style.cursor='');
+    map.on('click','roads', e => {if(!pickingZip)selectRoad(Number(e.features[0].properties.id));});
+    map.on('mouseenter','roads',()=>map.getCanvas().style.cursor=pickingZip?'crosshair':'pointer');
+    map.on('mouseleave','roads',()=>map.getCanvas().style.cursor=pickingZip?'crosshair':'');
+    map.on('click',pickZipAt);
     syncMapTheme();
     resolve();
   }));
@@ -112,6 +143,12 @@ async function selectRoad(id) {
     const data=await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}`);
     if(selected!==id) return;
     detail.replaceChildren(close,text('h2',`${data.name} · ${data.score}/100`));
+    const exports=text('div','','road-exports');
+    for(const [format,label] of [['gpx','GPX'],['kmz','KMZ'],['pdf','Printable PDF']]) {
+      const link=text('a',label);link.href=`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}`;
+      link.setAttribute('download','');exports.append(link);
+    }
+    detail.append(exports,text('p','Export this road track or a PDF with a road sketch and section directions. No navigation to the start is included.'));
     Object.entries(data.dimensions).forEach(([key,value])=>{const row=text('div','','dimension');row.append(text('span',key),text('strong',`${Math.round(value*100)}/100`));detail.append(row);});
     detail.append(text('p','Elevation unavailable. Score dimensions are weighted for the selected profile. Completeness measures mapped attributes, not certainty that every control is present.'));
   } catch(e) { if(selected===id) detail.append(text('p',e.message)); }
@@ -158,6 +195,7 @@ async function handleSession(event) {
   if(window.location?.pathname && window.location.pathname!=='/')return;
   if(!event.detail.user) {
     if(activeSearchUser) {try {window.sessionStorage?.removeItem(searchStorageKey(activeSearchUser));}catch(_) {}}
+    ++zipPickRequest;setZipPickMode(false);$('pick-zip').disabled=false;$('zip-pick-status').textContent='';
     activeSearchUser=null;restoredSearchUser=null;
     ++request;clearTimeout(pollTimer);roads=[];render();$('road-detail').hidden=true;$('submit').disabled=false;setStatus('Choose a ZIP code to explore roads nearby.');
     if(map && map.getSource('roads')) { map.getSource('roads').setData(empty());map.getSource('radius').setData(empty()); }

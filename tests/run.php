@@ -107,5 +107,28 @@ check(Validation::search(['zip'=>'12345'])['max_stops']===1,'Default stop limit 
 check(rejects(fn()=>Validation::search(['zip'=>'12345','max_stops'=>0])),'Stop limit below one rejected');
 check(Validation::search(['zip'=>'12345','max_stops'=>1])['max_stops']===1,'Minimum stop limit accepted');
 
+$exportRoad=['id'=>99,'name'=>'Road <Test> & Friends (west)','ref'=>null,'length_m'=>2000,'mandatory_stops'=>1,'uncertain_controls'=>0,
+    'geometry'=>['type'=>'LineString','coordinates'=>[[-120,39],[-119.99,39.01],[-119.98,39.015]]]];
+$export=SweepLine\RoadExport::prepare($exportRoad);
+$gpx=SweepLine\RoadExport::gpx($export);
+$gpxXml=simplexml_load_string($gpx);
+check($gpxXml!==false && count($gpxXml->trk->trkseg->trkpt)===3,'GPX preserves all geometry points');
+check(str_contains($gpx,'Road &lt;Test&gt; &amp; Friends'),'GPX escapes road names');
+$kml=simplexml_load_string(SweepLine\RoadExport::kml($export));
+check($kml!==false && str_contains((string)$kml->Document->Placemark->LineString->coordinates,'-120.000000000,39.000000000,0'),'KML uses longitude latitude ordering');
+$kmz=SweepLine\RoadExport::kmz($export);$archivePath=tempnam(sys_get_temp_dir(),'export-test-');file_put_contents($archivePath,$kmz);
+try {$archive=new ZipArchive();check($archive->open($archivePath)===true,'KMZ is a readable archive');check($archive->getFromName('doc.kml')===SweepLine\RoadExport::kml($export),'KMZ contains standalone doc.kml');$archive->close();}
+finally {unlink($archivePath);}
+$pdf=SweepLine\RoadExport::pdf($export);
+check(str_starts_with($pdf,'%PDF-1.4') && str_contains($pdf,'Road-section directions'),'PDF includes directions and a real PDF header');
+preg_match('/startxref\n(\d+)\n%%EOF/',$pdf,$xref);
+check(isset($xref[1]) && substr($pdf,(int)$xref[1],4)==='xref','PDF cross-reference offset is correct');
+$longExport=$export;$longExport['instructions']=array_fill(0,150,'Follow the selected road to the next mapped section endpoint.');
+check(str_contains(SweepLine\RoadExport::pdf($longExport),'/Count 5') || preg_match('/\/Type \/Pages \/Count ([2-9]|[1-9][0-9]+)/',SweepLine\RoadExport::pdf($longExport))===1,'Long PDF directions paginate');
+$oneWay=$exportRoad;$oneWay['parts']=[['name'=>'One way','ref'=>null,'direction'=>-1,'reversed'=>false,'geometry'=>$exportRoad['geometry']]];
+$oriented=SweepLine\RoadExport::prepare($oneWay);
+check($oriented['geometry']['coordinates'][0]===end($exportRoad['geometry']['coordinates']),'Exports orient one-way roads legally');
+check(str_contains($oriented['instructions'][0],'39.015000, -119.980000'),'Directions match exported track orientation');
+
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

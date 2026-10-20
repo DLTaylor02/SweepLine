@@ -54,3 +54,8 @@ check(!SweepLine\SuperAdmin::ensure($db,'unused-installer-password'),'Installer 
 check(rejects(fn()=>SweepLine\SuperAdmin::reset($db,'short')),'Invalid recovery password rejected');
 // Restore the explicit fixture password expected by the separate HTTP suite.
 SweepLine\SuperAdmin::reset($db,'test-password-123');
+
+$nearest=$api->nearestZip(['lon'=>-119.80,'lat'=>39.52]);
+check($nearest['zip']==='12345' && (float)$nearest['distance_m']<1,'Nearest ZIP uses real geographic distance');
+check(rejects(fn()=>$api->nearestZip(['lon'=>-181,'lat'=>39])),'Nearest ZIP validates coordinates');
+try {$api->nearestZip(['lon'=>0,'lat'=>0]);check(false,'Distant point has no ZIP');} catch (OutOfBoundsException $e) {check(true,'Distant point has no nearby ZIP');}

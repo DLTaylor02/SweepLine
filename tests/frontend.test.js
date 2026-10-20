@@ -39,6 +39,7 @@ async function testFrontend(sources) {
     else if(path==='/api/search')data=searchResponses.shift()??{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}};
     else if(path==='/api/search-history/1'&&options.method==='DELETE'){historyDeleted=true;data={deleted:true};}
     else if(path==='/api/search-history')data=historyDeleted?[]:[{id:1,created_at:'2026-10-19T12:00:00Z',parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:5,paved_only:true,min_length_miles:0,max_length_miles:null}}];
+    else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',score:70,dimensions:{curvature:0.7}};
     else if(path==='/api/coverage'||path==='/api/admin/users')data=[];
     else if(path==='/api/admin/data')data={storage,tasks:[{id:42,kind:'roads',task_key:'test-area',status:jobCancelled?'cancelled':'running',progress:'Analyzing roads',cancel_requested:jobCancelled}],worker_heartbeat:null,zip_last_sync:null};
     else if(path==='/api/admin/tasks/42/cancel'){jobCancelled=true;data={cancel_requested:true};}
@@ -81,6 +82,10 @@ async function testFrontend(sources) {
   search.onsubmit({preventDefault(){},target:search});await flush();
   check(get('status').textContent.includes('Showing partial results')&&get('results').children.length===1,'Available roads remain visible and labeled during preparation');
   check(get('search-progress').value===1,'Progress advances with completed areas');
+  get('results').children[0].onclick();await flush();
+  const exportLinks=get('road-detail').children.find(node=>node.className==='road-exports').children;
+  check(exportLinks.length===3&&exportLinks[2].textContent==='Printable PDF','Selected road offers GPX, KMZ and PDF exports');
+  check(exportLinks[0].href==='/api/roads/1/export?format=gpx&profile=twisty','Export targets selected road and active profile');
   searchResponses=[{results:[],preparation:{state:'failed',message:'Provider unavailable',complete:0,total:3}}];
   const beforeFailure=timers.length;
   search.onsubmit({preventDefault(){},target:search});await flush();
@@ -174,6 +179,22 @@ async function testFrontend(sources) {
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(otherWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
   await flush();
   check(resumed===2,'Another account cannot resume the previous user search');
+  let pickerReply={zip:'01234',place:'Test place',state:'ZZ',distance_m:1609.344},pickerError=false;
+  const pickerWindow={addEventListener(){},SweepLineAccount:{user:null},sweeplineRequest:async path=>{
+    check(path.startsWith('/api/zips/nearest?lon='),'Map selection uses local coordinate lookup endpoint');
+    if(pickerError)throw Error('No nearby ZIP center');return pickerReply;
+  }};
+  const picker=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {pickZipAt,setMap:value=>map=value};')(pickerWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  picker.setMap({getCanvas:()=>({style:{}})});
+  get('pick-zip').onclick();
+  check(get('pick-zip')['aria-pressed']==='true'&&!get('map-pick-note').hidden,'Picker shows map selection instructions');
+  await picker.pickZipAt({lngLat:{lng:-100,lat:40}});
+  check(search.zip.value==='01234'&&get('zip-pick-status').textContent.includes('1.0 miles'),'Map selection fills ZIP including leading zero and distance');
+  check(get('map-pick-note').hidden&&!get('pick-zip').disabled,'Successful selection exits picking state');
+  pickerError=true;get('pick-zip').onclick();await picker.pickZipAt({lngLat:{lng:0,lat:0}});
+  check(search.zip.value==='01234'&&get('zip-pick-status').textContent.includes('No nearby'),'Missing ZIP leaves existing input intact with explanation');
+  get('pick-zip').onclick();get('pick-zip').onclick();
+  check(get('map-pick-note').hidden,'Map picking can be cancelled');
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){

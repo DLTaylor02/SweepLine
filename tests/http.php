@@ -21,6 +21,7 @@ function expect(array $response,int $code,string $message): array {
 }
 expect(callApi($anonymous,'GET','/api/health'),200,'Public application health');
 expect(callApi($anonymous,'GET','/api/search-history'),401,'Search history requires login');
+expect(callApi($anonymous,'GET','/api/zips/nearest?lon=-119.8&lat=39.52'),401,'Map ZIP lookup requires sign-in');
 expect(callApi($anonymous,'GET','/api/coverage'),401,'Coverage requires login');
 $session=expect(callApi($admin,'GET','/api/session'),200,'Get session and CSRF');
 if (!$session['admin_ready']) { throw new RuntimeException('HTTP tests require terminal-provisioned SuperAdmin fixture'); }
@@ -31,11 +32,24 @@ expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>
 $session=expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'test-password-123'],$csrf),200,'Installer-created SuperAdmin login without email');
 $csrf=$session['csrf'];
 if ($session['user']['role']!=='superadmin' || $session['user']['email']!==null) { throw new RuntimeException('SuperAdmin role or optional email incorrect'); }
+$picked=expect(callApi($admin,'GET','/api/zips/nearest?lon=-119.8&lat=39.52'),200,'Map ZIP lookup');
+if($picked['zip']!=='12345') {throw new RuntimeException('Nearest ZIP incorrect');}
+expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=91'),422,'Map ZIP coordinate validation');
+expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=0'),404,'Map ZIP distant point rejected');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345']),403,'Search requires CSRF');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>51],$csrf),422,'Search validation');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25.5],$csrf),422,'Fractional radius rejected via API');
 $data=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_stops'=>5,'record_history'=>true],$csrf),200,'Cached search is immediate');
 if (count($data['results'])!==2) { throw new RuntimeException('Cached fixture roads not returned'); }
+$exportId=$data['results'][0]['id'];
+foreach (['gpx'=>'application/gpx+xml','kmz'=>'application/vnd.google-earth.kmz','pdf'=>'application/pdf'] as $format=>$mime) {
+    curl_setopt_array($admin,[CURLOPT_URL=>$base.'/api/roads/'.$exportId.'/export?format='.$format,CURLOPT_POSTFIELDS=>null,CURLOPT_CUSTOMREQUEST=>'GET',CURLOPT_HTTPHEADER=>[]]);
+    $bytes=curl_exec($admin);
+    if (curl_getinfo($admin,CURLINFO_HTTP_CODE)!==200 || !str_starts_with(curl_getinfo($admin,CURLINFO_CONTENT_TYPE),$mime) || !$bytes) {throw new RuntimeException('Road export failed: '.$format);}
+    if (($format==='pdf' && !str_starts_with($bytes,'%PDF-')) || ($format==='kmz' && !str_starts_with($bytes,'PK')) || ($format==='gpx' && simplexml_load_string($bytes)===false)) {throw new RuntimeException('Invalid road export: '.$format);}
+}
+expect(callApi($anonymous,'GET','/api/roads/'.$exportId.'/export?format=gpx'),401,'Exports require authentication');
+expect(callApi($admin,'GET','/api/roads/'.$exportId.'/export?format=exe'),422,'Export format validated');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
 $jobs=expect(callApi($admin,'GET','/api/admin/data'),200,'SuperAdmin sees preparation status');
 if (!isset($jobs['storage']['database_bytes']) || !array_key_exists('available',$jobs['storage'])) { throw new RuntimeException('Storage report missing from Jobs API'); }
