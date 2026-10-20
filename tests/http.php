@@ -70,6 +70,29 @@ if ($memberHistory!==[]) { throw new RuntimeException('Another user history leak
 $historyDb=SweepLine\Database::connect();$store=new SweepLine\SearchHistory($historyDb);
 for($n=0;$n<105;$n++) { $store->record((int)$created['id'],SweepLine\Validation::search(['zip'=>str_pad((string)$n,5,'0',STR_PAD_LEFT)])); }
 if(count($store->recent((int)$created['id']))!==100) { throw new RuntimeException('History retention not bounded'); }
+$favoriteBody=['road_id'=>$exportId,'profile'=>'twisty','search'=>['zip'=>'12345','radius_miles'=>25,'max_stops'=>5]];
+expect(callApi($admin,'POST','/api/favorites',$favoriteBody),403,'Favoriting requires CSRF');
+$saved=expect(callApi($admin,'POST','/api/favorites',$favoriteBody,$csrf),200,'Save favorite road');
+$savedAgain=expect(callApi($admin,'POST','/api/favorites',$favoriteBody,$csrf),200,'Saving favorite is idempotent');
+if($saved['id']!==$savedAgain['id']) {throw new RuntimeException('Duplicate favorite created');}
+$favorites=expect(callApi($admin,'GET','/api/favorites'),200,'List favorite roads');
+if(count($favorites)!==1 || !isset($favorites[0]['road']['geometry']['coordinates'])) {throw new RuntimeException('Favorite thumbnail geometry missing');}
+expect(callApi($member,'GET','/api/favorites/'.$saved['id']),404,'Other account cannot read favorite');
+expect(callApi($member,'DELETE','/api/favorites/'.$saved['id'],null,$memberSession['csrf']),404,'Other account cannot delete favorite');
+$favoriteDb=SweepLine\Database::connect();
+$jobQuery=$favoriteDb->prepare('SELECT job_id FROM road_candidates WHERE id=?');$jobQuery->execute([$exportId]);$snapshotJob=(int)$jobQuery->fetchColumn();
+$favoriteDb->exec('UPDATE regions SET active_job_id=null WHERE active_job_id='.$snapshotJob);
+try {
+    $snapshot=expect(callApi($admin,'GET','/api/favorites/'.$saved['id']),200,'Favorite survives inactive source dataset');
+    if($snapshot['road']['id']!=$exportId || $snapshot['road']['favorite_id']!=$saved['id']) {throw new RuntimeException('Favorite snapshot identity lost');}
+    curl_setopt_array($admin,[CURLOPT_URL=>$base.'/api/favorites/'.$saved['id'].'/export?format=gpx',CURLOPT_POSTFIELDS=>null,CURLOPT_CUSTOMREQUEST=>'GET',CURLOPT_HTTPHEADER=>[]]);
+    $savedGpx=curl_exec($admin);
+    if(curl_getinfo($admin,CURLINFO_HTTP_CODE)!==200 || simplexml_load_string($savedGpx)===false) {throw new RuntimeException('Inactive favorite export failed');}
+} finally {
+    $favoriteDb->exec('UPDATE regions SET active_job_id='.$snapshotJob.' WHERE id=(SELECT region_id FROM import_jobs WHERE id='.$snapshotJob.')');
+}
+expect(callApi($admin,'DELETE','/api/favorites/'.$saved['id'],null,$csrf),200,'Owner removes favorite');
+expect(callApi($admin,'GET','/api/favorites/'.$saved['id']),404,'Removed favorite is gone');
 expect(callApi($member,'GET','/api/admin/users'),403,'Members cannot manage users');
 expect(callApi($member,'GET','/api/admin/data'),403,'Members cannot view job management');
 expect(callApi($member,'POST','/api/admin/tasks/1/cancel',[],$memberSession['csrf']),403,'Members cannot cancel jobs');

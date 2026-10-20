@@ -5,7 +5,7 @@ if (!is_string($path)) { http_response_code(400); exit('Invalid request'); }
 // PHP built-in development server may serve public assets; production uses NGINX.
 if (PHP_SAPI==='cli-server' && preg_match('#^/assets/[a-zA-Z0-9_.-]+$#',$path) && is_file(__DIR__.$path)) { return false; }
 if (!str_starts_with($path,'/api/')) {
-    if (!in_array($path,['/','/jobs','/manage','/history'],true)) { http_response_code(404); exit('Not found'); }
+    if (!in_array($path,['/','/jobs','/manage','/history','/favorites'],true)) { http_response_code(404); exit('Not found'); }
     header('Cache-Control: no-store');
     require __DIR__.'/home.php'; exit;
 }
@@ -16,13 +16,15 @@ header('X-Content-Type-Options: nosniff');
 try {
     if ($path==='/api/setup') { throw new OutOfBoundsException('Endpoint not found'); }
     $method=$_SERVER['REQUEST_METHOD']??'GET';
-    $postPaths=['/api/search','/api/login','/api/logout','/api/admin/users'];
+    $postPaths=['/api/search','/api/login','/api/logout','/api/admin/users','/api/favorites'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if ($path==='/api/admin/users' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='PATCH'; }
     if (preg_match('#^/api/admin/tasks/[1-9]\\d{0,17}/(?:retry|cancel)$#',$path)) { $expected='POST'; }
     if (preg_match('#^/api/admin/imports/[1-9]\\d{0,17}/cancel$#',$path)) { $expected='POST'; }
     if (preg_match('#^/api/search-history/[1-9]\\d{0,17}$#',$path)) { $expected='DELETE'; }
+    if ($path==='/api/favorites' && $method==='GET') { $expected='GET'; }
+    if (preg_match('#^/api/favorites/[1-9]\\d{0,17}$#',$path)) { $expected=$method==='DELETE'?'DELETE':'GET'; }
     if ($method!==$expected) { header('Allow: '.$expected); throw new SweepLine\HttpException(405,'Method not allowed'); }
     $input=[];
     if (in_array($method,['POST','PATCH','DELETE'],true)) {
@@ -50,7 +52,15 @@ try {
                 $user=$auth->requireUser(str_starts_with($path,'/api/admin/'));
                 // Release the session lock before spatial queries or polling.
                 session_write_close();
-                if ($path==='/api/search-history') { $result=(new SweepLine\SearchHistory($db))->recent((int)$user['id']); }
+                if ($path==='/api/favorites') {
+                    $favorites=new SweepLine\Favorites($db);$result=$method==='GET'?$favorites->recent((int)$user['id']):$favorites->save((int)$user['id'],$input);
+                } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})$#',$path,$m)) {
+                    $favorites=new SweepLine\Favorites($db);$result=$method==='DELETE'?$favorites->delete((int)$user['id'],(int)$m[1]):$favorites->detail((int)$user['id'],(int)$m[1]);
+                } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})/export$#',$path,$m)) {
+                    $format=$_GET['format']??'';if (!is_string($format)) {throw new InvalidArgumentException('Invalid export format');}
+                    $favorite=(new SweepLine\Favorites($db))->detail((int)$user['id'],(int)$m[1]);SweepLine\RoadExport::download($favorite['road'],$format);
+                }
+                elseif ($path==='/api/search-history') { $result=(new SweepLine\SearchHistory($db))->recent((int)$user['id']); }
                 elseif (preg_match('#^/api/search-history/([1-9]\\d{0,17})$#',$path,$m)) { $result=(new SweepLine\SearchHistory($db))->delete((int)$user['id'],(int)$m[1]); }
                 elseif ($path==='/api/zips/nearest') {
                     // Validate even while the postal dataset is being initialized.
@@ -82,6 +92,7 @@ try {
                 } elseif (preg_match('#^/api/roads/([1-9]\\d{0,17})$#',$path,$m)) {
                     $profile=$_GET['profile']??'twisty'; if (!is_string($profile)) { throw new InvalidArgumentException('Unknown profile'); }
                     $result=$api->detail((int)$m[1],$profile);
+                    $result['favorite_id']=(new SweepLine\Favorites($db))->find((int)$user['id'],$result['geometry_key'],$profile);
                 } elseif (preg_match('#^/api/roads/([1-9]\\d{0,17})/export$#',$path,$m)) {
                     $format=$_GET['format']??'';$profile=$_GET['profile']??'twisty';
                     if (!is_string($format) || !in_array($format,['gpx','kmz','pdf'],true) || !is_string($profile)) { throw new InvalidArgumentException('Invalid export format or profile'); }

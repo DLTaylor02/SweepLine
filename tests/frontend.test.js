@@ -25,9 +25,11 @@ async function testFrontend(sources) {
   for(const n of ['zip','radius','profile','min_length','max_length','max_stops','paved'])search[n]=new Element();
   search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='1';search.paved.checked=true;
   get('admin-panel').hidden=true;
-  const document={getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
+  const document={getElementById:get,createElement:()=>new Element(),createElementNS:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
-  let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false,historyDeleted=false;
+  let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false,historyDeleted=false,favoritesSaved=false;
+  const favoriteRoad={id:1,name:'Test road',score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5,dimensions:{curvature:0.7},favorite_id:7,geometry:{type:'LineString',coordinates:[[-120,39],[-119.99,39.01]]}};
+  const savedFavorite={id:7,profile:'twisty',created_at:'2026-10-19T12:00:00Z',road:favoriteRoad,search_parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:1,paved_only:true}};
   let storage={available:true,database_bytes:100,other_bytes:500,free_bytes:400,total_bytes:1000,volumes:[{mount:'/'}],message:'Mounted local disks combined.'};
   const requests=[];
   const session=()=>({user:logged?{id:1,name:'Owner',role:'superadmin'}:null,csrf,admin_ready:adminReady});
@@ -39,6 +41,10 @@ async function testFrontend(sources) {
     else if(path==='/api/search')data=searchResponses.shift()??{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}};
     else if(path==='/api/search-history/1'&&options.method==='DELETE'){historyDeleted=true;data={deleted:true};}
     else if(path==='/api/search-history')data=historyDeleted?[]:[{id:1,created_at:'2026-10-19T12:00:00Z',parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:5,paved_only:true,min_length_miles:0,max_length_miles:null}}];
+    else if(path==='/api/favorites'&&options.method==='POST'){favoritesSaved=true;data={id:7,saved:true};}
+    else if(path==='/api/favorites/7'&&options.method==='DELETE'){favoritesSaved=false;data={deleted:true};}
+    else if(path==='/api/favorites/7')data=savedFavorite;
+    else if(path==='/api/favorites')data=favoritesSaved?[savedFavorite]:[];
     else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',score:70,dimensions:{curvature:0.7}};
     else if(path==='/api/coverage'||path==='/api/admin/users')data=[];
     else if(path==='/api/admin/data')data={storage,tasks:[{id:42,kind:'roads',task_key:'test-area',status:jobCancelled?'cancelled':'running',progress:'Analyzing roads',cancel_requested:jobCancelled}],worker_heartbeat:null,zip_last_sync:null};
@@ -86,6 +92,13 @@ async function testFrontend(sources) {
   const exportLinks=get('road-detail').children.find(node=>node.className==='road-exports').children;
   check(exportLinks.length===3&&exportLinks[2].textContent==='Printable PDF','Selected road offers GPX, KMZ and PDF exports');
   check(exportLinks[0].href==='/api/roads/1/export?format=gpx&profile=twisty','Export targets selected road and active profile');
+  const heart=get('road-detail').children.find(node=>node.className==='favorite-heart');
+  await heart.onclick();await flush();
+  check(heart['aria-pressed']==='true'&&heart.textContent.includes('Favorited'),'Heart saves selected road');
+  const favoriteRequest=requests.find(r=>r.path==='/api/favorites'&&r.method==='POST');
+  check(JSON.parse(favoriteRequest.body).search.zip==='12345'&&!!favoriteRequest.headers['X-CSRF-Token'],'Favorite captures search context with CSRF');
+  await heart.onclick();await flush();
+  check(heart['aria-pressed']==='false'&&!favoritesSaved,'Heart removes saved road');
   searchResponses=[{results:[],preparation:{state:'failed',message:'Provider unavailable',complete:0,total:3}}];
   const beforeFailure=timers.length;
   search.onsubmit({preventDefault(){},target:search});await flush();
@@ -179,6 +192,20 @@ async function testFrontend(sources) {
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(otherWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
   await flush();
   check(resumed===2,'Another account cannot resume the previous user search');
+  favoritesSaved=true;
+  const favoritesWindow={...window,location:{pathname:'/favorites'}};
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(favoritesWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(!get('favorites-panel').hidden&&get('workspace').hidden,'Favorites has a dedicated page');
+  const card=get('favorites-list').children[0];
+  check(card.children[0].href==='/?favorite=7'&&card.children[0].children[0].children[0].points.includes(','),'Favorite card has geometry thumbnail and direct map link');
+  await card.children[1].onclick();await flush();
+  check(get('favorites-list').children.length===0,'Favorites page can remove a road');
+  const favoriteMapWindow={...window,SweepLineAccount:{user:{id:1}},location:{pathname:'/',search:'?favorite=7'},sweeplineRequest:async path=>path==='/api/favorites/7'?savedFavorite:[]};
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(favoriteMapWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(get('results').children.length===1&&get('road-detail').children.some(node=>node.textContent==='Test road · 70/100'),'Opening a favorite restores saved road result and details');
+  check(get('road-detail').children.find(node=>node.className==='road-exports').children[0].href==='/api/favorites/7/export?format=gpx','Saved road exports do not require active candidate ID');
   let pickerReply={zip:'01234',place:'Test place',state:'ZZ',distance_m:1609.344},pickerError=false;
   const pickerWindow={addEventListener(){},SweepLineAccount:{user:null},sweeplineRequest:async path=>{
     check(path.startsWith('/api/zips/nearest?lon='),'Map selection uses local coordinate lookup endpoint');

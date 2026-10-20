@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 let map, ready, roads = [], selected = null, request = 0, pollTimer, activeProfile='twisty';
 let pendingHistorySearch=false, activeSearchUser=null, restoredSearchUser=null, explicitSearchParameters=false;
+let currentSearchParameters=null,pendingFavorite=null;
 const searchStorageKey=id=>'sweepline:active-search:'+id;
 function rememberSearch(payload) {
   if(!activeSearchUser)return;
@@ -140,12 +141,30 @@ async function selectRoad(id) {
   const close=text('button','Close');close.onclick=()=>{detail.hidden=true;};
   detail.append(close,text('h2',road.name),text('p','Loading score breakdown…'));
   try {
-    const data=await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}`);
+    const data=road._snapshot?road:await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}`);
     if(selected!==id) return;
     detail.replaceChildren(close,text('h2',`${data.name} · ${data.score}/100`));
+    const heart=text('button',data.favorite_id?'♥ Favorited':'♡ Add to favorites');heart.type='button';heart.className='favorite-heart';
+    heart.setAttribute('aria-pressed',String(!!data.favorite_id));
+    const favoriteStatus=text('p','');favoriteStatus.setAttribute('role','status');
+    heart.onclick=async()=>{
+      heart.disabled=true;
+      try {
+        if(data.favorite_id) {
+          await api('/api/favorites/'+data.favorite_id,{method:'DELETE'});data.favorite_id=null;
+          favoriteStatus.textContent='Removed from favorites.';
+        } else {
+          const saved=await api('/api/favorites',{method:'POST',body:JSON.stringify({road_id:data.id,profile:activeProfile,search:currentSearchParameters})});
+          data.favorite_id=saved.id;favoriteStatus.textContent='Road saved to favorites.';
+        }
+        heart.textContent=data.favorite_id?'♥ Favorited':'♡ Add to favorites';heart.setAttribute('aria-pressed',String(!!data.favorite_id));
+      } catch(e){favoriteStatus.textContent=e.message;}
+      finally {heart.disabled=false;}
+    };
+    detail.append(heart,favoriteStatus);
     const exports=text('div','','road-exports');
     for(const [format,label] of [['gpx','GPX'],['kmz','KMZ'],['pdf','Printable PDF']]) {
-      const link=text('a',label);link.href=`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}`;
+      const link=text('a',label);link.href=road._snapshot?`/api/favorites/${data.favorite_id}/export?format=${format}`:`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}`;
       link.setAttribute('download','');exports.append(link);
     }
     detail.append(exports,text('p','Export this road track or a PDF with a road sketch and section directions. No navigation to the start is included.'));
@@ -159,6 +178,7 @@ async function discover(payload, sequence) {
     const params={...payload};delete params._mapShown;delete params._recorded;params.record_history=!payload._recorded;
     const data=await api('/api/search',{method:'POST',body:JSON.stringify(params)});
     if(sequence!==request)return;
+    currentSearchParameters=data.parameters || {...params};delete currentSearchParameters.record_history;
     payload._recorded=true;
     roads=data.results || [];activeProfile=payload.profile;render();
     const preparation=data.preparation;
@@ -191,12 +211,30 @@ $('search').onsubmit = event => {
     max_stops:Number(form.max_stops.value),paved_only:form.paved.checked};
   rememberSearch(payload);discover(payload,sequence);
 };
+async function openFavorite(id) {
+  clearTimeout(pollTimer);const sequence=++request;
+  setStatus('Loading favorite road…',true);
+  try {
+    const saved=await api('/api/favorites/'+id);if(sequence!==request)return;
+    const road={...saved.road,_snapshot:true};
+    currentSearchParameters=saved.search_parameters;fillSearch(currentSearchParameters);activeProfile=saved.profile;
+    roads=[road];render();selectRoad(road.id);
+    setStatus('Saved favorite · '+new Date(saved.created_at).toLocaleDateString()+'. Geometry and metrics reflect when you saved this road.');
+    if(map)ready.then(()=>{
+      if(sequence!==request)return;
+      map.getSource('roads').setData({type:'FeatureCollection',features:[{type:'Feature',geometry:road.geometry,properties:{id:road.id,score:road.score}}]});
+      map.getSource('radius').setData(empty());
+      map.setFilter('selected',['==',['get','id'],road.id]);
+      map.fitBounds(bounds(road.geometry.coordinates),{padding:65,maxZoom:13});
+    });
+  } catch(e){if(sequence===request)setStatus(e.message);}
+}
 async function handleSession(event) {
   if(window.location?.pathname && window.location.pathname!=='/')return;
   if(!event.detail.user) {
     if(activeSearchUser) {try {window.sessionStorage?.removeItem(searchStorageKey(activeSearchUser));}catch(_) {}}
     ++zipPickRequest;setZipPickMode(false);$('pick-zip').disabled=false;$('zip-pick-status').textContent='';
-    activeSearchUser=null;restoredSearchUser=null;
+    activeSearchUser=null;restoredSearchUser=null;currentSearchParameters=null;
     ++request;clearTimeout(pollTimer);roads=[];render();$('road-detail').hidden=true;$('submit').disabled=false;setStatus('Choose a ZIP code to explore roads nearby.');
     if(map && map.getSource('roads')) { map.getSource('roads').setData(empty());map.getSource('radius').setData(empty()); }
     return;
@@ -209,6 +247,7 @@ async function handleSession(event) {
     }
   }
   if(!map)initMap();
+  if(pendingFavorite) {const id=pendingFavorite;pendingFavorite=null;openFavorite(id);}
   if(pendingHistorySearch) {
     pendingHistorySearch=false;
     const form=$('search');
@@ -225,7 +264,8 @@ async function handleSession(event) {
 
 if(window.location?.pathname==='/') {
   const params=new URLSearchParams(window.location.search);
-  if(params.has('zip')) {
+  if(/^[1-9][0-9]{0,17}$/.test(params.get('favorite')||'')) {pendingFavorite=params.get('favorite');explicitSearchParameters=true;}
+  if(!pendingFavorite && params.has('zip')) {
     explicitSearchParameters=true;
     const form=$('search');
     for(const key of ['zip','profile'])if(params.has(key))form[key].value=params.get(key);
@@ -244,6 +284,8 @@ if(window.SweepLineAccount?.user)handleSession({detail:window.SweepLineAccount})
 window.addEventListener('pageshow',event=>{
   if(event.persisted && window.SweepLineAccount?.user) {
     restoredSearchUser=null;explicitSearchParameters=false;
+    const favorite=new URLSearchParams(window.location.search).get('favorite');
+    if(/^[1-9][0-9]{0,17}$/.test(favorite||'')){pendingFavorite=favorite;explicitSearchParameters=true;}
     handleSession({detail:window.SweepLineAccount});
   }
 });

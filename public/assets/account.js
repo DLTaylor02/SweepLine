@@ -6,6 +6,7 @@
   const jobsPage=window.location?.pathname==='/jobs';
   const managePage=window.location?.pathname==='/manage';
   const historyPage=window.location?.pathname==='/history';
+  const favoritesPage=window.location?.pathname==='/favorites';
   const adminPage=jobsPage || managePage;
   window.SweepLineAccount=session;
   window.sweeplineRequest=async (path,options={}) => {
@@ -23,11 +24,13 @@
   };
   function paint() {
     const signed=!!session.user;
-    el('workspace').hidden=!signed || adminPage || historyPage;el('account-gate').hidden=signed;
+    el('workspace').hidden=!signed || adminPage || historyPage || favoritesPage;el('account-gate').hidden=signed;
     el('sign-out').hidden=!signed;el('admin-open').hidden=session.user?.role!=='superadmin';
     el('jobs-open').hidden=session.user?.role!=='superadmin';
     el('history-open').hidden=!signed;el('history-panel').hidden=!signed || !historyPage;
     if(historyPage && signed)refreshHistory();
+    el('favorites-open').hidden=!signed;el('favorites-panel').hidden=!signed || !favoritesPage;
+    if(favoritesPage && signed)refreshFavorites();
     el('admin-panel').hidden=!signed || !adminPage;
     if(adminPage && signed) {
       el('admin-panel').hidden=false;el('admin-users').hidden=jobsPage;
@@ -38,7 +41,7 @@
       else {el('admin-jobs').hidden=true;el('admin-users').hidden=true;el('admin-status').textContent='SuperAdmin access required.';}
     }
     el('account-name').textContent=signed?session.user.name:'';
-    if(!signed) {el('history-list').replaceChildren();el('admin-panel').hidden=true;clearTimeout(adminTimer);}
+    if(!signed) {el('favorites-list').replaceChildren();el('history-list').replaceChildren();el('admin-panel').hidden=true;clearTimeout(adminTimer);}
     el('account-form').hidden=signed || !session.admin_ready;
     el('account-title').textContent='Sign in';
     el('account-submit').textContent='Sign in';
@@ -69,6 +72,36 @@
     catch(e) {el('status').textContent=e.message;}
   };
   const text=(tag,value)=>{const node=document.createElement(tag);node.textContent=value;return node;};
+  function thumbnail(road) {
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 180 110');svg.setAttribute('role','img');svg.setAttribute('aria-label','Geometry of '+road.name);
+    const coords=road.geometry.coordinates,cos=Math.cos(coords[0][1]*Math.PI/180);
+    const points=coords.map(p=>[Number(p[0])*cos,Number(p[1])]);
+    const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),minX=Math.min(...xs),minY=Math.min(...ys);
+    const scale=Math.min(156/Math.max(Math.max(...xs)-minX,0.000001),86/Math.max(Math.max(...ys)-minY,0.000001));
+    const line=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    line.setAttribute('points',points.filter((p,i)=>i%Math.max(1,Math.ceil(points.length/400))===0||i===points.length-1).map(p=>[12+(p[0]-minX)*scale,98-(p[1]-minY)*scale].join(',')).join(' '));
+    svg.append(line);return svg;
+  }
+  async function refreshFavorites() {
+    const userId=session.user.id;
+    el('favorites-status').textContent='Loading favorites…';
+    try {
+      const items=await window.sweeplineRequest('/api/favorites');
+      if(session.user?.id!==userId)return;
+      el('favorites-list').replaceChildren();el('favorites-status').textContent=items.length?items.length+' saved roads':'No favorites yet. Open a road result and select its heart to save it.';
+      items.forEach(item=>{
+        const road=item.road,card=text('article','');card.className='favorite-card';
+        const link=text('a','');link.href='/?favorite='+item.id;link.className='favorite-link';
+        link.append(thumbnail(road),text('h3',road.name),text('p',`${road.score}/100 · ${(road.length_m/1609.344).toFixed(1)} mi · ${item.profile==='twisty'?'Twisty Roads':'Open Highways'}`),
+          text('p',`${road.metrics.curve_density.toFixed(1)} curve samples/mi · ${road.mandatory_stops} mapped stops + ${road.uncertain_controls} uncertain`),
+          text('p',`${road.speed_mph==null?'Speed unknown':road.speed_mph.toFixed(0)+' mph minimum posted'} · ${Math.round(road.confidence*100)}% attribute completeness`));
+        const remove=text('button','Remove favorite');remove.type='button';
+        remove.onclick=async()=>{remove.disabled=true;try{await window.sweeplineRequest('/api/favorites/'+item.id,{method:'DELETE'});await refreshFavorites();}catch(e){el('favorites-status').textContent=e.message;remove.disabled=false;}};
+        card.append(link,remove);el('favorites-list').append(card);
+      });
+    } catch(e){el('favorites-status').textContent=e.message;}
+  }
   async function refreshHistory() {
     el('history-status').textContent='Loading previous searches…';
     try {
