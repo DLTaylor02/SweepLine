@@ -27,6 +27,7 @@ jobs:
       - run: composer validate --strict && composer install --no-interaction
       - run: find src bin public tests -name '*.php' -print0 | xargs -0 -n1 php -l
       - run: bash -n setup && bash -n setup.sh && bash -n bin/prepare-extract.sh && bash -n tests/http.sh
+      - run: bash tests/installer-user.sh
       - run: node tests/frontend.test.js
       - run: php tests/run.php --integration
       - run: php bin/bootstrap-app.php

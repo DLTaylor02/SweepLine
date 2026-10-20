@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed installation failing at Linux service-account creation because `useradd` received two login arguments; added account-creation and ownership-safeguard regression checks.
+
 - Removed the locality-specific download utility and documentation; replaced the initial regional map view and ZIP placeholder with a global overview and neutral input hint.
 
 - Fixed maximum-length SQL quoting and deduplicated exact road geometry across overlapping coverage cells.

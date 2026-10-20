@@ -61,7 +61,7 @@ ensure_system_user() {
     if getent group "$SYSTEM_USER" >/dev/null 2>&1; then
         die "Group $SYSTEM_USER already exists without the application user."
     else
-        useradd --system --comment "$APP_NAME" --home-dir "$APP_DIR" --shell /usr/sbin/nologin --user-group "$SYSTEM_USER" "$SYSTEM_USER"
+        useradd --system --comment "$APP_NAME" --home-dir "$APP_DIR" --shell /usr/sbin/nologin --user-group "$SYSTEM_USER"
     fi
 }
 
