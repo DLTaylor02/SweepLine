@@ -21,7 +21,7 @@ final class Validation
         if (!is_string($profile) || !isset(Scorer::profiles()[$profile])) { throw new \InvalidArgumentException('Unknown driving profile'); }
         $paved=$input['paved_only']??true;
         if (!is_bool($paved)) { throw new \InvalidArgumentException('paved_only must be a JSON boolean'); }
-        $max=self::number($input,'max_stops',5,0,100);
+        $max=self::number($input,'max_stops',0,0,100);
         if (floor($max)!==$max) { throw new \InvalidArgumentException('max_stops must be an integer'); }
         $minimum=self::number($input,'min_length_miles',0,0,30);
         $maximum=isset($input['max_length_miles']) ? self::number($input,'max_length_miles',0,0,150) : null;

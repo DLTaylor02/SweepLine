@@ -22,9 +22,10 @@ try {
     if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='PATCH'; }
     if (preg_match('#^/api/admin/tasks/[1-9]\\d{0,17}/(?:retry|cancel)$#',$path)) { $expected='POST'; }
     if (preg_match('#^/api/admin/imports/[1-9]\\d{0,17}/cancel$#',$path)) { $expected='POST'; }
+    if (preg_match('#^/api/search-history/[1-9]\\d{0,17}$#',$path)) { $expected='DELETE'; }
     if ($method!==$expected) { header('Allow: '.$expected); throw new SweepLine\HttpException(405,'Method not allowed'); }
     $input=[];
-    if (in_array($method,['POST','PATCH'],true)) {
+    if (in_array($method,['POST','PATCH','DELETE'],true)) {
         $body=file_get_contents('php://input',false,null,0,8193);
         if (strlen($body)>8192) { throw new InvalidArgumentException('Request too large'); }
         try { $input=json_decode($body?:'{}',true,32,JSON_THROW_ON_ERROR); }
@@ -41,7 +42,7 @@ try {
             $result=['status'=>'ok','database'=>true,'postgis'=>$db->query('SELECT postgis_lib_version()')->fetchColumn(),'schema'=>$schema];
         } else {
             SweepLine\Auth::start(); $auth=new SweepLine\Auth($db);
-            if (in_array($method,['POST','PATCH'],true)) { SweepLine\Auth::csrf($_SERVER['HTTP_X_CSRF_TOKEN']??null); }
+            if (in_array($method,['POST','PATCH','DELETE'],true)) { SweepLine\Auth::csrf($_SERVER['HTTP_X_CSRF_TOKEN']??null); }
             if ($path==='/api/session') { $result=$auth->status(); }
             elseif ($path==='/api/login') { $result=$auth->login($input); }
             elseif ($path==='/api/logout') { $result=$auth->logout(); }
@@ -50,6 +51,7 @@ try {
                 // Release the session lock before spatial queries or polling.
                 session_write_close();
                 if ($path==='/api/search-history') { $result=(new SweepLine\SearchHistory($db))->recent((int)$user['id']); }
+                elseif (preg_match('#^/api/search-history/([1-9]\\d{0,17})$#',$path,$m)) { $result=(new SweepLine\SearchHistory($db))->delete((int)$user['id'],(int)$m[1]); }
                 elseif ($path==='/api/coverage') { $result=$api->coverage(); }
                 elseif ($path==='/api/search') {
                     if (isset($input['record_history']) && !is_bool($input['record_history'])) { throw new InvalidArgumentException('record_history must be a JSON boolean'); }

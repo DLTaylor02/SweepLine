@@ -34,7 +34,7 @@ if ($session['user']['role']!=='superadmin' || $session['user']['email']!==null)
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345']),403,'Search requires CSRF');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>51],$csrf),422,'Search validation');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25.5],$csrf),422,'Fractional radius rejected via API');
-$data=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'record_history'=>true],$csrf),200,'Cached search is immediate');
+$data=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_stops'=>5,'record_history'=>true],$csrf),200,'Cached search is immediate');
 if (count($data['results'])!==2) { throw new RuntimeException('Cached fixture roads not returned'); }
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
 $jobs=expect(callApi($admin,'GET','/api/admin/data'),200,'SuperAdmin sees preparation status');
@@ -45,6 +45,12 @@ $memberSession=expect(callApi($member,'GET','/api/session'),200,'Member pre-logi
 $memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Member login');
 $history=expect(callApi($admin,'GET','/api/search-history'),200,'SuperAdmin views own history');
 if (count($history)!==1 || $history[0]['parameters']['radius_miles']!=25) { throw new RuntimeException('Search history missing or polluted by polling'); }
+$historyId=(int)$history[0]['id'];
+expect(callApi($member,'DELETE','/api/search-history/'.$historyId,null,$memberSession['csrf']),404,'History deletion cannot access another user');
+expect(callApi($admin,'DELETE','/api/search-history/'.$historyId),403,'History deletion requires CSRF');
+expect(callApi($admin,'DELETE','/api/search-history/'.$historyId,null,$csrf),200,'Owner deletes search');
+expect(callApi($admin,'DELETE','/api/search-history/'.$historyId,null,$csrf),404,'Deleted search is gone');
+if(expect(callApi($admin,'GET','/api/search-history'),200,'Reload deleted history')!==[]) { throw new RuntimeException('Deleted history retained'); }
 $memberHistory=expect(callApi($member,'GET','/api/search-history'),200,'Member views own history');
 if ($memberHistory!==[]) { throw new RuntimeException('Another user history leaked'); }
 $historyDb=SweepLine\Database::connect();$store=new SweepLine\SearchHistory($historyDb);
@@ -59,8 +65,9 @@ $db=SweepLine\Database::connect();
 $job=(new SweepLine\DataQueue($db))->ensure('auto-http-cancel','roads',['key'=>'auto-http-cancel','bounds'=>[-120,39,-119.5,39.5]]);
 expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/cancel',[],$csrf),200,'SuperAdmin cancels queued job');
 expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/cancel',[],$csrf),409,'Stale cancellation returns conflict');
-expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/retry',[],$csrf),200,'SuperAdmin resumes cancelled job');
-expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/cancel',[],$csrf),200,'Clean up resumed test job');
+$removed=expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/retry',[],$csrf),200,'Removed job retry is a no-op');
+if ($removed['queued']) { throw new RuntimeException('Cancelled job resurrected'); }
+expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/cancel',[],$csrf),409,'Removed cancelled job stays absent');
 expect(callApi($admin,'PATCH','/api/admin/users/'.$session['user']['id'],['active'=>false],$csrf),422,'SuperAdmin cannot disable own account');
 expect(callApi($admin,'PATCH','/api/admin/users/'.$id,['active'=>false],$csrf),200,'Disable member');
 expect(callApi($member,'GET','/api/coverage'),401,'Disabled member session invalidated');

@@ -16,6 +16,7 @@ final class DataWorker
     {
         $this->db->exec("UPDATE import_jobs SET status='failed',error='Worker interrupted; previous active data retained',finished_at=now() WHERE status='running'");
         $this->db->exec("UPDATE data_tasks SET status='cancelled',progress='Cancelled by SuperAdmin',updated_at=now() WHERE status='running' AND cancel_requested=true");
+        (new DataQueue($this->db))->purgeCancelled();
         $interrupted=$this->db->query("SELECT * FROM data_tasks WHERE status='running' AND cancel_requested=false")->fetchAll(PDO::FETCH_ASSOC);
         $queue=new DataQueue($this->db);
         foreach ($interrupted as $task) {
@@ -80,7 +81,7 @@ final class DataWorker
             $cancel=$this->db->prepare('SELECT cancel_requested FROM data_tasks WHERE id=? FOR UPDATE'); $cancel->execute([$id]);
             if ($e instanceof JobCancelled || $cancel->fetchColumn()) {
                 $this->db->prepare("UPDATE data_tasks SET status='cancelled',progress='Cancelled by SuperAdmin',error=null,updated_at=now() WHERE id=?")->execute([$id]);
-                $this->db->commit(); $this->heartbeat(); return true;
+                $this->db->commit(); (new DataQueue($this->db))->purgeCancelled(); $this->heartbeat(); return true;
             }
             $message=substr($e->getMessage(),0,1500);
             $size=$payload['bounds'][2]??null;
@@ -148,7 +149,7 @@ final class DataWorker
     }
     public function maintain(): void
     {
-        $queue=new DataQueue($this->db); $queue->ensure('us-zips','zips',[],true);
+        $queue=new DataQueue($this->db); $queue->purgeCancelled(); $queue->ensure('us-zips','zips',[],true);
         // Keep old active data, prune only nonactive automatic attempts after a week.
         $this->db->exec("DELETE FROM import_jobs j USING regions r WHERE j.region_id=r.id AND r.slug LIKE 'auto-%'
             AND j.id IS DISTINCT FROM r.active_job_id AND j.created_at<now()-interval '7 days' AND j.status IN ('complete','failed')");

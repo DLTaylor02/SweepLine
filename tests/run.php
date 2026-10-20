@@ -102,5 +102,7 @@ check(!SweepLine\StorageUsage::summarize(5000,$volumes)['available'],'Inconsiste
 check(!SweepLine\StorageUsage::summarize(100,[])['available'],'Missing volumes are explicitly unavailable');
 check(SweepLine\StorageUsage::summarize(0,$volumes)['available'],'Empty database size is supported');
 
+check(Validation::search(['zip'=>'12345'])['max_stops']===0,'Default stop limit is zero');
+
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

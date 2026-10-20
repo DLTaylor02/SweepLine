@@ -23,11 +23,11 @@ async function testFrontend(sources) {
   for(const n of ['username','name','email','password']){get('create-user').fields[n]=new Element();get('create-user')[n]=get('create-user').fields[n];}
   const search=get('search');
   for(const n of ['zip','radius','profile','min_length','max_length','max_stops','paved'])search[n]=new Element();
-  search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='5';search.paved.checked=true;
+  search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='0';search.paved.checked=true;
   get('admin-panel').hidden=true;
   const document={getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
-  let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false;
+  let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false,historyDeleted=false;
   let storage={available:true,database_bytes:100,other_bytes:500,free_bytes:400,total_bytes:1000,volumes:[{mount:'/'}],message:'Mounted local disks combined.'};
   const requests=[];
   const session=()=>({user:logged?{id:1,name:'Owner',role:'superadmin'}:null,csrf,admin_ready:adminReady});
@@ -37,7 +37,8 @@ async function testFrontend(sources) {
     else if(path==='/api/login'){logged=true;csrf='signed-in';data=session();}
     else if(path==='/api/logout'){logged=false;csrf='signed-out';data=session();}
     else if(path==='/api/search')data=searchResponses.shift()??{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}};
-    else if(path==='/api/search-history')data=[{id:1,created_at:'2026-10-19T12:00:00Z',parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:5,paved_only:true,min_length_miles:0,max_length_miles:null}}];
+    else if(path==='/api/search-history/1'&&options.method==='DELETE'){historyDeleted=true;data={deleted:true};}
+    else if(path==='/api/search-history')data=historyDeleted?[]:[{id:1,created_at:'2026-10-19T12:00:00Z',parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:5,paved_only:true,min_length_miles:0,max_length_miles:null}}];
     else if(path==='/api/coverage'||path==='/api/admin/users')data=[];
     else if(path==='/api/admin/data')data={storage,tasks:[{id:42,kind:'roads',task_key:'test-area',status:jobCancelled?'cancelled':'running',progress:'Analyzing roads',cancel_requested:jobCancelled}],worker_heartbeat:null,zip_last_sync:null};
     else if(path==='/api/admin/tasks/42/cancel'){jobCancelled=true;data={cancel_requested:true};}
@@ -63,6 +64,7 @@ async function testFrontend(sources) {
   check(!get('search-spinner').hidden&&!('value' in get('search-progress')),'Submitting immediately shows indeterminate preparation');
   await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
+  check(payload.max_stops===0,'New searches submit zero mapped stops by default');
   check(payload.radius_miles===5,'Numeric radius submitted directly');
   check(payload.max_length_miles===12.5&&!('min_length_miles'in payload),'Optional bounds preserved');
   check(payload.record_history===true,'New searches request a history entry');
@@ -100,7 +102,7 @@ async function testFrontend(sources) {
   check(!!cancel,'Running jobs show cancellation control');
   await cancel.onclick();await flush();
   check(requests.some(r=>r.path==='/api/admin/tasks/42/cancel'&&r.headers['X-CSRF-Token']==='signed-in'),'Cancel action sends authenticated CSRF request');
-  check(get('task-list').children[0].children.some(node=>node.textContent==='Retry'),'Cancelled task offers explicit retry');
+  check(get('task-list').children.length===0,'Cancelled tasks disappear from the job queue');
   get('admin-panel').hidden=true;
   get('submit').disabled=true;
   await get('sign-out').onclick();await flush();
@@ -131,10 +133,22 @@ async function testFrontend(sources) {
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(historyWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
   await flush();
   check(!get('history-panel').hidden&&get('history-list').children.length===1,'Previous searches render on their own page');
-  check(get('history-list').children[0].children.at(-1).href.includes('radius_miles=5'),'Run again link preserves search filters');
-  const replayWindow={...window,location:{pathname:'/',search:'?zip=12345&radius_miles=5&profile=open&max_stops=2&paved_only=false'}};
+  check(get('history-list').children[0].children.find(n=>n.textContent==='View results').href.includes('radius_miles=5'),'Run again link preserves search filters');
+  const title=get('history-list').children[0].children[0];
+  check(title.href.includes('open=1'),'History title opens results automatically');
+  await get('history-list').children[0].children.at(-1).onclick();await flush();
+  check(get('history-list').children.length===0&&get('history-status').textContent.includes('No previous searches'),'Deleted history entry disappears');
+  check(requests.some(r=>r.path==='/api/search-history/1'&&r.method==='DELETE'&&!!r.headers['X-CSRF-Token']),'History deletion sends CSRF-protected request');
+  const beforeReplay=requests.filter(r=>r.path==='/api/search').length;
+  const replayWindow={...window,SweepLineAccount:{user:null},location:{pathname:'/',search:'?open=1&zip=12345&radius_miles=5&profile=open&max_stops=2&paved_only=false'}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(replayWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
   check(search.radius.value==='5'&&search.profile.value==='open'&&search.paved.checked===false,'Replayed search restores saved form values');
+  check(requests.filter(r=>r.path==='/api/search').length===beforeReplay,'Saved search waits for authentication');
+  await events['sweepline:sessionchange'].at(-1)({detail:{user:{id:1}}});await flush();
+  check(requests.filter(r=>r.path==='/api/search').length===beforeReplay+1,'Saved search automatically fetches results after authentication');
+  check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).record_history===false,'Reopening saved search does not duplicate history');
+  await events['sweepline:sessionchange'].at(-1)({detail:{user:{id:1}}});await flush();
+  check(requests.filter(r=>r.path==='/api/search').length===beforeReplay+1,'Session refresh does not repeat saved search');
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){

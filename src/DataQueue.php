@@ -63,33 +63,45 @@ final class DataQueue
     }
     public function overview(): array
     {
-        return ['storage'=>StorageUsage::read($this->db),'tasks'=>$this->db->query("SELECT id,task_key,kind,status,attempts,progress,error,cancel_requested,next_attempt_at,updated_at FROM data_tasks ORDER BY CASE WHEN status IN ('running','queued','retry') THEN 0 ELSE 1 END,updated_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
-            'imports'=>$this->db->query("SELECT j.id,r.name,j.status,j.progress,j.error,j.cancel_requested,j.created_at FROM import_jobs j JOIN regions r ON r.id=j.region_id WHERE NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id) ORDER BY CASE WHEN j.status IN ('queued','running') THEN 0 ELSE 1 END,j.id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
-            'counts'=>$this->db->query('SELECT status,count(*) AS count FROM data_tasks GROUP BY status')->fetchAll(PDO::FETCH_ASSOC),
+        $this->purgeCancelled();
+        return ['storage'=>StorageUsage::read($this->db),'tasks'=>$this->db->query("SELECT id,task_key,kind,status,attempts,progress,error,cancel_requested,next_attempt_at,updated_at FROM data_tasks WHERE cancel_requested=false AND status<>'cancelled' ORDER BY CASE WHEN status IN ('running','queued','retry') THEN 0 ELSE 1 END,updated_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
+            'imports'=>$this->db->query("SELECT j.id,r.name,j.status,j.progress,j.error,j.cancel_requested,j.created_at FROM import_jobs j JOIN regions r ON r.id=j.region_id WHERE j.cancel_requested=false AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id) ORDER BY CASE WHEN j.status IN ('queued','running') THEN 0 ELSE 1 END,j.id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
+            'counts'=>$this->db->query('SELECT status,count(*) AS count FROM data_tasks WHERE cancel_requested=false GROUP BY status')->fetchAll(PDO::FETCH_ASSOC),
             'worker_heartbeat'=>$this->db->query("SELECT value FROM app_settings WHERE key='worker_heartbeat'")->fetchColumn()?:null,
             'zip_last_sync'=>$this->db->query("SELECT value FROM app_settings WHERE key='zip_last_sync'")->fetchColumn()?:null];
     }
+    public function purgeCancelled(): void
+    {
+        // Running rows remain private until the worker acknowledges cancellation.
+        $this->db->exec("UPDATE import_jobs j SET cancel_requested=true FROM data_tasks t WHERE t.import_job_id=j.id AND (t.status='cancelled' OR t.cancel_requested=true) AND j.status<>'complete'");
+        $this->db->exec("DELETE FROM data_tasks WHERE status='cancelled' OR (cancel_requested=true AND status<>'running')");
+        $this->db->exec("DELETE FROM import_jobs j WHERE cancel_requested=true AND status NOT IN ('running','complete')
+            AND NOT EXISTS(SELECT 1 FROM regions r WHERE r.active_job_id=j.id) AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id)");
+    }
     public function cancel(int $id,bool $import=false): array
     {
-        if ($import) {
-            // Linked automatic imports must be controlled through their parent task.
-            $q=$this->db->prepare("UPDATE import_jobs j SET cancel_requested=true,status=CASE WHEN status='queued' THEN 'failed' ELSE status END,
-                progress='Cancellation requested by SuperAdmin' WHERE id=? AND status IN ('queued','running')
-                AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id) RETURNING id");
-        } else {
-            $q=$this->db->prepare("UPDATE data_tasks t SET cancel_requested=true,
-                status=CASE WHEN status IN ('queued','retry') THEN 'cancelled' ELSE status END,
-                progress='Cancellation requested by SuperAdmin',updated_at=now()
-                WHERE id=? AND status IN ('queued','running','retry')
-                AND NOT EXISTS(SELECT 1 FROM import_jobs j WHERE j.id=t.import_job_id AND j.status='complete') RETURNING id");
-        }
-        $q->execute([$id]);
-        if (!$q->fetchColumn()) { throw new HttpException(409,'Job has already finished or changed. Refresh the job list.'); }
-        return ['cancel_requested'=>true];
+        $this->db->beginTransaction();
+        try {
+            if ($import) {
+                $q=$this->db->prepare("UPDATE import_jobs j SET cancel_requested=true,status=CASE WHEN status='queued' THEN 'failed' ELSE status END,
+                    progress='Cancellation requested by SuperAdmin' WHERE id=? AND cancel_requested=false AND status IN ('queued','running')
+                    AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id) RETURNING id");
+            } else {
+                $q=$this->db->prepare("UPDATE data_tasks t SET cancel_requested=true,task_key='cancelled-task:'||id,
+                    status=CASE WHEN status IN ('queued','retry') THEN 'cancelled' ELSE status END,
+                    progress='Cancellation requested by SuperAdmin',updated_at=now()
+                    WHERE id=? AND cancel_requested=false AND status IN ('queued','running','retry')
+                    AND NOT EXISTS(SELECT 1 FROM import_jobs j WHERE j.id=t.import_job_id AND j.status='complete') RETURNING task_key");
+            }
+            $q->execute([$id]);$key=$q->fetchColumn();
+            if ($key===false) { throw new HttpException(409,'Job has already finished or changed. Refresh the job list.'); }
+            $this->purgeCancelled();$this->db->commit();
+        } catch (\Throwable $e) { $this->db->rollBack();throw $e; }
+        return ['cancel_requested'=>true,'removed'=>true];
     }
     public function retry(int $id): array
     {
-        $q=$this->db->prepare("UPDATE data_tasks SET status='queued',cancel_requested=false,import_job_id=null,attempts=0,error=null,next_attempt_at=now(),progress='Retry requested',updated_at=now() WHERE id=? AND status IN ('failed','cancelled')");
+        $q=$this->db->prepare("UPDATE data_tasks SET status='queued',cancel_requested=false,import_job_id=null,attempts=0,error=null,next_attempt_at=now(),progress='Retry requested',updated_at=now() WHERE id=? AND status='failed' AND cancel_requested=false");
         $q->execute([$id]); return ['queued'=>$q->rowCount()>0];
     }
 }

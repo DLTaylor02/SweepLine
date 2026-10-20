@@ -17,7 +17,7 @@ check($downloads===1,'Worker fetches once per queued area');
 check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-test-pipeline'")->fetchColumn()==='complete','Download, analysis and activation complete');
 $activeJob=(int)$db->query("SELECT active_job_id FROM regions WHERE slug='auto-test-pipeline'")->fetchColumn();
 check($activeJob>0,'Automatic area activates validated dataset');
-check(count($api->search(['zip'=>'12345'])['results'])===2,'Overlapping automatic and manual cells do not duplicate identical roads');
+check(count($api->search(['max_stops'=>5,'zip'=>'12345'])['results'])===2,'Overlapping automatic and manual cells do not duplicate identical roads');
 check(!$worker->runOne() && $downloads===1,'Completed area reused without download');
 $db->exec("UPDATE data_tasks SET status='queued',attempts=0 WHERE task_key='auto-test-pipeline'");
 $failing=new SweepLine\DataWorker($db,static function(): void { throw new RuntimeException('Test provider unavailable'); });
@@ -55,23 +55,32 @@ check((bool)$db->query("SELECT value FROM app_settings WHERE key='zip_last_sync'
 // Keep only the original road fixture visible for subsequent HTTP checks.
 $db->exec("UPDATE regions SET active_job_id=null WHERE slug LIKE 'auto-%'");
 
-// Cancelled tasks must not be revived by searches, refreshes, or recovery.
+// Cancellation removes an attempt, while later demand creates a fresh job.
 $cancelTask=$queue->ensure('auto-cancel-test','roads',['key'=>'auto-cancel-test','bounds'=>[-120,39.5,-119.5,40]]);
 $cancelId=(int)$cancelTask['id'];
 check($queue->cancel($cancelId)['cancel_requested'],'Queued cancellation accepted');
-check($queue->ensure('auto-cancel-test','roads',[],true)['status']==='cancelled','Search does not resurrect cancelled work');
-check(!$worker->runOne(),'Cancelled task is not claimed');
-check($queue->retry($cancelId)['queued'],'Cancelled preparation can be explicitly resumed');
-$cancellingWorker=new SweepLine\DataWorker($db,static function(string $url,string $path,int $maxBytes,?string $post,?callable $progress) use ($queue,$cancelId): void {
+check(!$queue->retry($cancelId)['queued'],'Deleted attempt cannot be retried by old ID');
+check((int)$db->query('SELECT count(*) FROM data_tasks WHERE id='.$cancelId)->fetchColumn()===0,'Queued cancellation physically removes queue row');
+$replacement=$queue->ensure('auto-cancel-test','roads',['key'=>'auto-cancel-test','bounds'=>[-120,39.5,-119.5,40]]);
+check($replacement['status']==='queued' && $replacement['id']!=$cancelId,'New demand creates a fresh queued attempt');
+$db->exec("UPDATE data_tasks SET status='complete' WHERE id=".(int)$replacement['id']);
+$cancelTask=$queue->ensure('auto-cancel-running','roads',['key'=>'auto-cancel-running','bounds'=>[-120,39.5,-119.5,40]]);
+$cancelId=(int)$cancelTask['id'];$replacement=null;
+$cancellingWorker=new SweepLine\DataWorker($db,static function(string $url,string $path,int $maxBytes,?string $post,?callable $progress) use ($queue,$cancelId,&$replacement): void {
     copy(__DIR__.'/fixture.osm',$path);
     $queue->cancel($cancelId);
+    $replacement=$queue->ensure('auto-cancel-running','roads',['key'=>'auto-cancel-running','bounds'=>[-120,39.5,-119.5,40]]);
+    check($replacement['status']==='queued' && $replacement['id']!=$cancelId,'New demand can queue while previous attempt stops');
     $progress('Downloading fixture');
 });
 $cancellingWorker->runOne();
-check($queue->ensure('auto-cancel-test','roads')['status']==='cancelled','Running download acknowledges cancellation without retry');
+check((int)$db->query('SELECT count(*) FROM data_tasks WHERE id='.$cancelId)->fetchColumn()===0,'Cancelled running attempt is deleted');
 check(!is_file(SWEEPLINE_ROOT.'/var/downloads/roads-'.$cancelId.'.osm'),'Cancelled download cleaned up');
 $worker->recover();
-check($queue->ensure('auto-cancel-test','roads')['status']==='cancelled','Restart preserves cancellation');
+check($queue->ensure('auto-cancel-running','roads')['id']===$replacement['id'],'Restart preserves replacement attempt');
+check($worker->runOne(),'Replacement job runs after cancelled attempt stops');
+check($queue->ensure('auto-cancel-running','roads')['status']==='complete','Replacement completes normally');
+$db->exec("UPDATE regions SET active_job_id=null WHERE slug='auto-cancel-running'");
 try { $queue->cancel((int)$task['id']); check(false,'Completed task cancellation refused'); }
 catch (SweepLine\HttpException $e) { check($e->status===409,'Completed task cancellation refused'); }
 // Cancellation during analysis must not replace an active dataset.
@@ -90,3 +99,12 @@ try {
 check((int)$db->query('SELECT active_job_id FROM regions WHERE id='.(int)$region)->fetchColumn()===$activeJob,'Cancelled import preserves previous active data');
 $db->exec('UPDATE regions SET active_job_id=null WHERE id='.(int)$region);
 check($db->query('SELECT status FROM import_jobs WHERE id='.(int)$cancelImport['id'])->fetchColumn()==='failed','Cancelled manual import leaves running state');
+
+check((int)$db->query('SELECT count(*) FROM data_tasks WHERE id='.$cancelId)->fetchColumn()===0,'Worker acknowledgement physically removes running cancellation');
+$legacy=$queue->ensure('auto-legacy-cancelled','roads',['key'=>'auto-legacy-cancelled','bounds'=>[-120,39.5,-119.5,40]]);
+$db->exec("UPDATE data_tasks SET status='cancelled',cancel_requested=true WHERE id=".(int)$legacy['id']);
+$queue->purgeCancelled();
+check((int)$db->query("SELECT count(*) FROM data_tasks WHERE task_key='auto-legacy-cancelled'")->fetchColumn()===0,'Previously cancelled tasks are purged');
+check($queue->ensure('auto-legacy-cancelled','roads',['key'=>'auto-legacy-cancelled','bounds'=>[-120,39.5,-119.5,40]])['status']==='queued','Previously cancelled area can be queued again');
+$db->exec("UPDATE data_tasks SET status='complete' WHERE task_key='auto-legacy-cancelled'");
+check((int)$db->query('SELECT count(*) FROM import_jobs WHERE id='.(int)$cancelImport['id'])->fetchColumn()===0,'Cancelled inactive manual imports are removed');

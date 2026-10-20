@@ -78,12 +78,21 @@
       el('history-status').textContent=searches.length?'':'No previous searches yet. Searches you run from now on will appear here.';
       searches.forEach(item=>{
         const p=item.parameters,row=text('div','');row.className='history-row';
-        row.append(text('strong',p.zip+' · '+p.radius_miles+' miles · '+(p.profile==='twisty'?'Twisty Roads':'Open Highways')),
-          text('p',new Date(item.created_at).toLocaleString()),
+        const title=text('a',p.zip+' · '+p.radius_miles+' miles · '+(p.profile==='twisty'?'Twisty Roads':'Open Highways'));
+        row.append(title,text('p',new Date(item.created_at).toLocaleString()),
           text('p',`Length: ${p.min_length_miles>0?'over '+p.min_length_miles:'no minimum'} to ${p.max_length_miles??'no maximum'} miles · Stops: ${p.max_stops} · ${p.paved_only?'Known paved only':'All surfaces'}`));
-        const again=text('a','Run again');again.className='page-back';
-        again.href='/?'+new URLSearchParams(Object.entries(p).filter(([,v])=>v!==null)).toString();
-        row.append(again);el('history-list').append(row);
+        const again=text('a','View results');again.className='page-back';
+        again.href='/?open=1&'+new URLSearchParams(Object.entries(p).filter(([,v])=>v!==null)).toString();
+        title.href=again.href;
+        const remove=text('button','Delete search');remove.type='button';
+        remove.onclick=async()=>{
+          remove.disabled=true;
+          try {
+            await window.sweeplineRequest('/api/search-history/'+item.id,{method:'DELETE'});
+            await refreshHistory();
+          } catch(e) {el('history-status').textContent=e.message;remove.disabled=false;}
+        };
+        row.append(again,remove);el('history-list').append(row);
       });
     } catch(e) {el('history-status').textContent=e.message;}
   }
@@ -154,12 +163,12 @@
       el('task-list').replaceChildren();
       el('job-counts').textContent=(data.counts || []).map(item=>item.count+' '+item.status).join(' · ');
       const jobs=[...data.tasks.map(t=>({...t,source:'tasks'})),...(data.imports || []).map(t=>({...t,task_key:t.name,source:'imports'}))];
-      jobs.forEach(task=>{
+      jobs.filter(task=>task.status!=='cancelled'&&!task.cancel_requested).forEach(task=>{
         const row=text('div','');row.className='task-row';
         row.append(text('strong',task.kind==='zips'?'US ZIP coordinates':task.task_key),
           text('p',(task.cancel_requested && task.status==='running'?'Cancelling':task.cancel_requested && task.status==='failed'?'cancelled':task.status)+' · '+task.progress));
         if(task.error)row.append(text('p',task.error));
-        if(task.source==='tasks' && ['failed','cancelled'].includes(task.status)) {
+        if(task.source==='tasks' && task.status==='failed') {
           const retry=text('button','Retry');retry.type='button';retry.onclick=async()=>{
             try {await window.sweeplineRequest('/api/admin/tasks/'+task.id+'/retry',{method:'POST',body:'{}'});await refreshAdmin();}
             catch(e){el('admin-status').textContent=e.message;}
@@ -171,7 +180,7 @@
             cancel.disabled=true;
             try {
               await window.sweeplineRequest('/api/admin/'+task.source+'/'+task.id+'/cancel',{method:'POST',body:'{}'});
-              el('admin-status').textContent='Cancellation requested. Running jobs stop at their next checkpoint.';
+              el('admin-status').textContent='Job removed from the queue. Running work stops at its next checkpoint.';
               await refreshAdmin();
             } catch(e) {el('admin-status').textContent=e.message;cancel.disabled=false;}
           };row.append(cancel);

@@ -21,6 +21,13 @@ final class SearchHistory
             $this->db->commit();
         } catch (\Throwable $e) { $this->db->rollBack();throw $e; }
     }
+    public function delete(int $userId,int $id): array
+    {
+        $q=$this->db->prepare('DELETE FROM search_history WHERE id=? AND user_id=?');
+        $q->execute([$id,$userId]);
+        if (!$q->rowCount()) { throw new \OutOfBoundsException('Search not found'); }
+        return ['deleted'=>true];
+    }
     public function recent(int $userId): array
     {
         $q=$this->db->prepare('SELECT id,parameters,created_at FROM search_history WHERE user_id=? ORDER BY id DESC LIMIT 100');
