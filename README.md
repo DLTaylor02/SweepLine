@@ -2,7 +2,7 @@
 
 SweepLine discovers and ranks continuous driving roads near a US ZIP code. It runs on PHP, PostgreSQL/PostGIS, NGINX, and PHP-FPM, with a responsive MapLibre interface.
 
-**The operator installs the application and creates the SuperAdmin in the web UI. SweepLine handles ZIP coordinates, road downloads, analysis, caching, and data refreshes automatically. No manual geographic imports are required.**
+**The operator installs the application and chooses the SuperAdmin password in the installer terminal. SweepLine handles ZIP coordinates, road downloads, analysis, caching, and data refreshes automatically. No manual geographic imports are required.**
 
 ## Install
 
@@ -24,11 +24,29 @@ Press Enter to use **1279**, or enter another available port. Updates offer the 
 
 Installation reuses existing services, installs only missing dependencies, deploys to `/var/www/sweepline`, creates the isolated database/PostGIS extension, FPM pool/socket and NGINX site, applies versioned migrations, enables the background worker, queues automatic ZIP preparation, and checks HTTP/database health. Existing `.env`, runtime files, users, and imported data are preserved on updates. Conflicting ports and unrelated resources are refused. NGINX and FPM configurations are validated before reload; invalid replacements are restored.
 
-### Complete first-run setup
+### SuperAdmin setup in the terminal
 
-The installer prints the application URL and a **one-time setup code**. Open the URL, enter that code, and choose your name, email, and password to create the **SuperAdmin**. Setup is locked after the first account is created; the setup code is consumed and its file removed. There are no default or shared passwords.
+If no SuperAdmin exists, the installer prompts for its password and confirmation. Input is hidden. No email address is requested or required. Passwords must contain 12–72 bytes.
+
+After installation, sign in to the web UI with username **superadmin** and the password you chose. There is no browser-based account claiming, setup code, or default password.
+
+If a SuperAdmin already exists, the installer skips the password prompt and preserves its password. Upgrades assign an existing SuperAdmin the username `superadmin` without resetting credentials. Existing members receive usernames `user-<id>`; their previous email login continues to work. Web account email addresses are optional.
+
+A first installation requires an interactive terminal to choose a password. Unattended upgrades work when the SuperAdmin already exists.
 
 Sign in using that web account. Use **Manage** to create other users, enable/disable them, reset passwords, inspect data preparation, and retry failed jobs. Disabling a user or resetting their password invalidates existing sessions. Public registration is disabled. This implementation distinguishes only SuperAdmin and member; more detailed permission levels remain for later design.
+
+### Recover a lost SuperAdmin password
+
+From the deployed application directory, run:
+
+```bash
+sudo /var/www/sweepline/reset-superadmin
+```
+
+Enter and confirm a new password; input is hidden. The command requires server administrator access and never asks for the old web password or an email address. It changes only the existing SuperAdmin's password, re-enables that account if disabled, and invalidates its existing web sessions. Other users and application data are preserved. Passwords are hashed; no secret is passed in command-line arguments or saved in `.env`.
+
+For a custom deployment directory, run its `reset-superadmin` file, or set `APP_INSTALL_DIR` explicitly when invoking the command from a checkout. If no SuperAdmin exists, run the installer instead. Normal `sudo ./setup` reruns continue to preserve existing passwords; reset is an explicit recovery action.
 
 ### Linux service account versus web accounts
 
@@ -83,7 +101,7 @@ The header provides Adaptive, Light and Dark themes. **Adaptive is the default**
 
 The installer targets local PostgreSQL at 127.0.0.1:5432. It requires PHP >=8.2 with PDO/pdo_pgsql, XMLReader, SimpleXML, JSON, curl and ZipArchive. Composer supplies PSR-4 autoloading without third-party PHP libraries. It also provisions the original template's PHP modules and Debian tooling, matching PostGIS packages, NGINX, cron, and osmium-tool without adding a persistent application runtime. Existing PHP version packages are reused; global PHP settings and unrelated sites are not changed.
 
-The deployed `.env` is authoritative. Do not create it from `.env.example` before a fresh installation; the installer generates credentials while provisioning the database. Code is operator-owned; only `var/` is writable by the application. Secrets are mode 0640. Only `public/` is web-accessible, and only its front controller executes PHP. Session cookies are HttpOnly and SameSite=Lax, login/setup attempts are rate limited, passwords are hashed, and mutations require a session CSRF token. Use HTTPS for remotely accessed credentials.
+The deployed `.env` is authoritative. Do not create it from `.env.example` before a fresh installation; the installer generates credentials while provisioning the database. Code is operator-owned; only `var/` is writable by the application. Secrets are mode 0640. Only `public/` is web-accessible, and only its front controller executes PHP. Session cookies are HttpOnly and SameSite=Lax, login attempts are rate limited, passwords are hashed, and mutations require a session CSRF token. Use HTTPS for remotely accessed credentials.
 
 Downloads use HTTPS, bounded time/size limits and temporary files. ZIP extraction reads only `US.txt`, never arbitrary archive paths. The worker serializes jobs, checks for at least 512 MB free disk, observes the configured database budget, and caps the queue at 1024 pending areas. Automatic failed/superseded import attempts are pruned after a week and abandoned download files after a day; active datasets remain. Existing data is not deleted just because a refresh fails. These guards prevent unlimited background work on a shared server; persistent resource failures require capacity/configuration attention, which the UI reports.
 
@@ -105,8 +123,7 @@ JSON, same-origin sessions, no permissive CORS. Call `GET /api/session` to obtai
 | --- | --- |
 | `GET /api/health` | Public database/PostGIS/schema health |
 | `GET /api/profiles` | Public profile definitions |
-| `GET /api/session` | Current user, CSRF token, setup state |
-| `POST /api/setup` | One-time setup code, name/email/password → SuperAdmin |
+| `GET /api/session` | Current user, CSRF token, administrator readiness |
 | `POST /api/login`, `POST /api/logout` | Web session login/logout |
 | `POST /api/search` | Authenticated road discovery and automatic preparation |
 | `GET /api/zips/{zip}` | Authenticated local ZIP lookup; 202 during preparation |
@@ -117,17 +134,19 @@ JSON, same-origin sessions, no permissive CORS. Call `GET /api/session` to obtai
 | `GET /api/admin/data` | SuperAdmin worker/ZIP/task status |
 | `POST /api/admin/tasks/123/retry` | SuperAdmin retry of a failed preparation task |
 
+Login uses `{"username":"superadmin","password":"<YOUR_PASSWORD>"}`. SuperAdmin user creation requires a username, name and initial password; email may be omitted. The installer never passes the password in command-line arguments, writes it to `.env`, or prints it; only its hash is stored in the database.
+
 Search request template (replace `<US_ZIP>` with your chosen five-digit US ZIP code):
 
 ```json
 {"zip":"<US_ZIP>","radius_miles":50,"profile":"twisty","min_length_miles":2,"max_length_miles":20,"max_stops":5,"paved_only":true}
 ```
 
-200 means local data is ready. 202 includes `preparation` state/progress and any currently available results; poll the same search (the UI does this automatically). A terminal preparation failure is represented by `preparation.state="failed"` with a visible explanation; retry it through SuperAdmin management. Invalid inputs return 422; authentication 401; CSRF/authorization 403; absent resources 404; incorrect methods 405; setup/account conflicts 409; request/queue throttles 429; unavailable infrastructure 503. Passwords require 12–72 bytes. Initial setup locks against concurrent account creation. There is no email delivery, self-registration, forgotten-password email flow, or fine-grained role model yet.
+200 means local data is ready. 202 includes `preparation` state/progress and any currently available results; poll the same search (the UI does this automatically). A terminal preparation failure is represented by `preparation.state="failed"` with a visible explanation; retry it through SuperAdmin management. Invalid inputs return 422; authentication 401; CSRF/authorization 403; absent resources 404; incorrect methods 405; account conflicts 409; request/queue throttles 429; unavailable infrastructure 503. Passwords require 12–72 bytes. Terminal provisioning locks against concurrent account creation and never resets an existing administrator. There is no email delivery, self-registration, forgotten-password email flow, or fine-grained role model yet.
 
 ## Operations and updates
 
-Ordinary operation requires no import commands. SuperAdmin **Manage** shows worker heartbeat, ZIP refresh time, preparation tasks/errors, and retries. Logs are in `journalctl -u sweepline-worker` and `/var/log/sweepline/php-error.log`. The setup code is stored privately at `var/setup-code` until consumed; rerunning the installer preserves an unfinished setup code.
+Ordinary operation requires no import commands. SuperAdmin **Manage** shows worker heartbeat, ZIP refresh time, preparation tasks/errors, and retries. Logs are in `journalctl -u sweepline-worker` and `/var/log/sweepline/php-error.log`. SuperAdmin provisioning is handled by the installer; rerunning it preserves an existing administrator and password.
 
 Back up PostgreSQL, `.env`, and runtime data according to your existing server backup policy. To upgrade, run the updated checkout's `sudo ./setup`. The installer stops its owned worker while deploying code, preserves configuration/data, runs migrations and restarts it. Interrupted background work is recovered for automatic retry. The installer is not a transactional release manager for packages/code; keep backups for application rollback.
 
@@ -141,6 +160,8 @@ node tests/frontend.test.js
 find src bin public tests -name '*.php' -print0 | xargs -0 -n1 php -l
 bash -n setup
 bash -n setup.sh
+bash tests/installer-user.sh
+bash tests/installer-admin.sh
 ```
 
 Integration tests require a **fresh disposable** PostGIS database with the extension already enabled; never use production credentials. Set database environment variables, then:
@@ -154,7 +175,7 @@ php -S 127.0.0.1:8099 -t public public/index.php
 bash tests/http.sh http://127.0.0.1:8099
 ```
 
-Tests cover geometry, continuity, controls, scores, length bounds, geographic planning, ZIP ingestion, migration idempotence, dataset activation, queue deduplication, authentication/CSRF and admin authorization. HTTP tests create fixture users only in the disposable test database. The Linux CI workflow supplies PHP/PostGIS checks. A real acceptance run should additionally verify automatic provider downloads, preparation progress, map interaction, first-run setup and user management on Debian.
+Tests cover geometry, continuity, controls, scores, length bounds, geographic planning, ZIP ingestion, migration idempotence, dataset activation, queue deduplication, authentication/CSRF and admin authorization. HTTP tests create fixture users only in the disposable test database. The Linux CI workflow supplies PHP/PostGIS checks. A real acceptance run should additionally verify automatic provider downloads, preparation progress, map interaction, terminal SuperAdmin provisioning and user management on Debian.
 
 This Windows workspace has no PHP/PostgreSQL runtime. JavaScript behavior and shell syntax can be checked here, but PHP/PostGIS execution, provider integration and actual Debian deployment are not claimed verified until run in the documented environment.
 

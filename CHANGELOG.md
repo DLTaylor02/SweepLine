@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added an operator-only `reset-superadmin` command with hidden password confirmation, account reactivation, and invalidation of existing SuperAdmin sessions.
+
+- Moved SuperAdmin creation into the installer terminal: hidden password and confirmation only when no administrator exists, fixed username `superadmin`, and no required email.
+- Removed browser account claiming/setup codes; added username login, optional account emails, and a non-destructive migration preserving existing passwords.
+- Added terminal prompt, existing-account preservation, and username-only login regression coverage.
+
 - Fixed installation failing at Linux service-account creation because `useradd` received two login arguments; added account-creation and ownership-safeguard regression checks.
 
 - Removed the locality-specific download utility and documentation; replaced the initial regional map view and ZIP placeholder with a global overview and neutral input hint.
@@ -9,7 +15,7 @@
 - Fixed maximum-length SQL quoting and deduplicated exact road geometry across overlapping coverage cells.
 
 - Added the `setup` entry point, 1279 default-port prompt, and installation-driven initialization.
-- Added protected SuperAdmin setup, web sessions/CSRF, user management, and session invalidation.
+- Added installer-provisioned SuperAdmin accounts, web sessions/CSRF, user management, and session invalidation.
 - Added automatic ZIP initialization/refresh and cached, search-driven OSM preparation with progress polling, retries, dense-area subdivision, and resource guards.
 - Added SuperAdmin worker/task monitoring and retries; updated automated tests and install-and-use documentation.
 

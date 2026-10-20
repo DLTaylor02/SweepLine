@@ -22,33 +22,32 @@ function expect(array $response,int $code,string $message): array {
 expect(callApi($anonymous,'GET','/api/health'),200,'Public application health');
 expect(callApi($anonymous,'GET','/api/coverage'),401,'Coverage requires login');
 $session=expect(callApi($admin,'GET','/api/session'),200,'Get session and CSRF');
-if (!$session['setup_required']) { throw new RuntimeException('HTTP tests require a fresh initial setup'); }
+if (!$session['admin_ready']) { throw new RuntimeException('HTTP tests require terminal-provisioned SuperAdmin fixture'); }
 $csrf=$session['csrf'];
-expect(callApi($admin,'POST','/api/setup',['email'=>'owner@example.test','name'=>'Owner','password'=>'test-password-123','setup_code'=>'bad'],$csrf),403,'Wrong setup code rejected');
-expect(callApi($admin,'POST','/api/setup',[]),403,'CSRF required for setup');
-$code=trim(file_get_contents(SWEEPLINE_ROOT.'/var/setup-code'));
-$session=expect(callApi($admin,'POST','/api/setup',['email'=>'owner@example.test','name'=>'Owner','password'=>'test-password-123','setup_code'=>$code],$csrf),200,'Protected SuperAdmin setup');
+expect(callApi($admin,'POST','/api/setup',[],$csrf),404,'Browser account claiming removed');
+expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'test-password-123']),403,'Login requires CSRF');
+expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'wrong-password'],$csrf),401,'Wrong password rejected');
+$session=expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'test-password-123'],$csrf),200,'Installer-created SuperAdmin login without email');
 $csrf=$session['csrf'];
-if ($session['user']['role']!=='superadmin' || is_file(SWEEPLINE_ROOT.'/var/setup-code')) { throw new RuntimeException('Setup did not consume code or create correct role'); }
-expect(callApi($admin,'POST','/api/setup',['email'=>'other@example.test','password'=>'test-password-123','setup_code'=>$code],$csrf),409,'Setup cannot run twice');
+if ($session['user']['role']!=='superadmin' || $session['user']['email']!==null) { throw new RuntimeException('SuperAdmin role or optional email incorrect'); }
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345']),403,'Search requires CSRF');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>999],$csrf),422,'Search validation');
 $data=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25],$csrf),200,'Cached search is immediate');
 if (count($data['results'])!==2) { throw new RuntimeException('Cached fixture roads not returned'); }
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
 expect(callApi($admin,'GET','/api/admin/data'),200,'SuperAdmin sees preparation status');
-$created=expect(callApi($admin,'POST','/api/admin/users',['email'=>'member@example.test','name'=>'Member','password'=>'member-password-123'],$csrf),200,'SuperAdmin creates user');
+$created=expect(callApi($admin,'POST','/api/admin/users',['username'=>'member','name'=>'Member','password'=>'member-password-123'],$csrf),200,'SuperAdmin creates user without email');
 $id=(int)$created['id'];
 $memberSession=expect(callApi($member,'GET','/api/session'),200,'Member pre-login session');
-$memberSession=expect(callApi($member,'POST','/api/login',['email'=>'member@example.test','password'=>'member-password-123'],$memberSession['csrf']),200,'Member login');
+$memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Member login');
 expect(callApi($member,'GET','/api/admin/users'),403,'Members cannot manage users');
 expect(callApi($admin,'PATCH','/api/admin/users/'.$session['user']['id'],['active'=>false],$csrf),422,'SuperAdmin cannot disable own account');
 expect(callApi($admin,'PATCH','/api/admin/users/'.$id,['active'=>false],$csrf),200,'Disable member');
 expect(callApi($member,'GET','/api/coverage'),401,'Disabled member session invalidated');
 expect(callApi($admin,'PATCH','/api/admin/users/'.$id,['active'=>true,'password'=>'new-member-password-123'],$csrf),200,'Enable and reset password');
-expect(callApi($member,'POST','/api/login',['email'=>'member@example.test','password'=>'member-password-123'],$memberSession['csrf']),401,'Old password rejected');
+expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),401,'Old password rejected');
 $memberSession=expect(callApi($member,'GET','/api/session'),200,'Reload member CSRF');
-expect(callApi($member,'POST','/api/login',['email'=>'member@example.test','password'=>'new-member-password-123'],$memberSession['csrf']),200,'New password accepted');
+expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'new-member-password-123'],$memberSession['csrf']),200,'New password accepted');
 expect(callApi($admin,'POST','/api/logout',[],$csrf),200,'Logout');
 expect(callApi($admin,'GET','/api/admin/users'),401,'Logout ends administrative access');
 echo "$checks HTTP checks passed\n";

@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   const el=id=>document.getElementById(id);
-  let session={user:null,csrf:null,setup_required:false};
+  let session={user:null,csrf:null,admin_ready:false};
   let adminTimer;
   window.SweepLineAccount=session;
   window.sweeplineRequest=async (path,options={}) => {
@@ -23,17 +23,13 @@
     el('sign-out').hidden=!signed;el('admin-open').hidden=session.user?.role!=='superadmin';
     el('account-name').textContent=signed?session.user.name:'';
     if(!signed) {el('admin-panel').hidden=true;clearTimeout(adminTimer);}
-    el('account-form').hidden=signed;
-    el('setup-code-wrap').hidden=!session.setup_required;el('account-name-wrap').hidden=!session.setup_required;
-    el('account-form').elements.namedItem('setup_code').required=session.setup_required;
-    el('account-form').elements.namedItem('name').required=session.setup_required;
-    el('account-form').elements.namedItem('password').minLength=session.setup_required?12:1;
-    el('account-form').elements.namedItem('password').autocomplete=session.setup_required?'new-password':'current-password';
-    el('account-title').textContent=session.setup_required?'Create your SuperAdmin':'Sign in';
-    el('account-submit').textContent=session.setup_required?'Create SuperAdmin':'Sign in';
-    el('account-intro').textContent=session.setup_required?
-      'Enter the one-time code printed by the installer and choose your web account. Geographic data is prepared automatically.':
-      'Sign in to discover roads. Your web account is separate from the Linux service account.';
+    el('account-form').hidden=signed || !session.admin_ready;
+    el('account-title').textContent='Sign in';
+    el('account-submit').textContent='Sign in';
+    el('account-intro').textContent=session.admin_ready?
+      'Sign in with your username and password. Your web account is separate from the Linux service account.':
+      'The SuperAdmin account has not been initialized. Complete installation in the server terminal.';
+    el('account-retry').hidden=session.admin_ready || signed;
     window.SweepLineAccount=session;
     window.dispatchEvent(new CustomEvent('sweepline:sessionchange',{detail:session}));
   }
@@ -46,8 +42,8 @@
   el('account-form').onsubmit=async event=>{
     event.preventDefault();const form=event.target;el('account-submit').disabled=true;
     try {
-      session=await window.sweeplineRequest(session.setup_required?'/api/setup':'/api/login',
-        {method:'POST',body:JSON.stringify({email:form.email.value,password:form.password.value,name:form.elements.namedItem('name').value,setup_code:form.setup_code.value})});
+      session=await window.sweeplineRequest('/api/login',
+        {method:'POST',body:JSON.stringify({username:form.username.value,password:form.password.value})});
       form.reset();el('account-status').textContent='';paint();
     } catch(e) {el('account-status').textContent=e.message;}
     finally {el('account-submit').disabled=false;}
@@ -69,14 +65,14 @@
       el('user-list').replaceChildren();
       users.forEach(user=>{
         const row=text('div','');row.className='user-row';
-        row.append(text('strong',user.name),text('p',user.email+' · '+user.role+' · '+(user.active?'Active':'Disabled')));
+        row.append(text('strong',user.name),text('p',user.username+(user.email?' · '+user.email:'')+' · '+user.role+' · '+(user.active?'Active':'Disabled')));
         if(Number(user.id)!==Number(session.user.id)) {
           const toggle=text('button',user.active?'Disable':'Enable');toggle.type='button';
           toggle.onclick=async()=>{try{await updateUser(user.id,{active:!user.active});await refreshAdmin();}catch(e){el('admin-status').textContent=e.message;}};
           row.append(toggle);
         }
         const password=document.createElement('input');password.type='password';password.autocomplete='new-password';
-        password.placeholder='New password (12–72 bytes)';password.setAttribute('aria-label','New password for '+user.email);
+        password.placeholder='New password (12–72 bytes)';password.setAttribute('aria-label','New password for '+user.username);
         const reset=text('button','Reset password');reset.type='button';
         reset.onclick=async()=>{
           try {
@@ -112,7 +108,7 @@
   el('create-user').onsubmit=async event=>{
     event.preventDefault();const form=event.target;
     try {
-      await window.sweeplineRequest('/api/admin/users',{method:'POST',body:JSON.stringify({name:form.elements.namedItem('name').value,email:form.email.value,password:form.password.value})});
+      await window.sweeplineRequest('/api/admin/users',{method:'POST',body:JSON.stringify({username:form.username.value,name:form.elements.namedItem('name').value,email:form.email.value,password:form.password.value})});
       form.reset();el('admin-status').textContent='User created.';await refreshAdmin();
     } catch(e) {el('admin-status').textContent=e.message;}
   };

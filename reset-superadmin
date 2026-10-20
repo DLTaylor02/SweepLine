@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Operator-only recovery. No installation, package, NGINX or geographic-data changes.
+set -Eeuo pipefail
+source_dir="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+app_dir="${APP_INSTALL_DIR:-$source_dir}"
+if [[ ! -f "$app_dir/.sweepline-deployment" && -z "${APP_INSTALL_DIR:-}" ]]; then app_dir=/var/www/sweepline; fi
+if [[ $EUID -ne 0 ]]; then
+    exec sudo env APP_INSTALL_DIR="$app_dir" bash "$source_dir/$(basename "$0")"
+fi
+[[ -f "$app_dir/.env" && -f "$app_dir/.sweepline-deployment" ]] || { echo 'Select an existing SweepLine deployment using APP_INSTALL_DIR.' >&2; exit 1; }
+[[ "$(cat "$app_dir/.sweepline-deployment")" == sweepline ]] || { echo 'Deployment marker mismatch.' >&2; exit 1; }
+[[ -t 0 ]] || { echo 'Run recovery in an interactive terminal.' >&2; exit 1; }
+cd "$app_dir"
+if runuser -u sweepline -- php bin/superadmin.php --exists; then :
+else
+    probe_status=$?
+    if [[ "$probe_status" == 1 ]]; then echo 'No SuperAdmin exists. Run the installer to create one.' >&2
+    else echo 'Unable to check the SuperAdmin account. Check the application database.' >&2; fi
+    exit 1
+fi
+# Keep credentials out of shell tracing, process arguments, environment and files.
+trace_enabled=0
+if [[ $- == *x* ]]; then trace_enabled=1; set +x; fi
+while true; do
+    IFS= read -r -s -p 'New SuperAdmin password (12-72 bytes): ' recovery_password || exit 1
+    printf '\n'
+    IFS= read -r -s -p 'Confirm new SuperAdmin password: ' recovery_confirm || exit 1
+    printf '\n'
+    if [[ "$recovery_password" != "$recovery_confirm" ]]; then
+        unset recovery_password recovery_confirm
+        echo 'Passwords do not match. Please try again.'
+        continue
+    fi
+    if printf '%s' "$recovery_password" | runuser -u sweepline -- php bin/superadmin.php --reset; then
+        unset recovery_password recovery_confirm
+        break
+    else
+        reset_status=$?
+        unset recovery_password recovery_confirm
+        [[ "$reset_status" == 1 ]] || { echo 'Recovery failed. Check the application database.' >&2; exit 1; }
+    fi
+done
+[[ "$trace_enabled" != 1 ]] || set -x

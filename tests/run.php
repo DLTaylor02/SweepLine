@@ -68,9 +68,9 @@ foreach ([-1,0,151,INF,[], 'invalid'] as $invalidMaximum) {
     check(rejects(fn()=>Validation::search(['zip'=>'12345','max_length_miles'=>$invalidMaximum])),'Invalid maximum rejected '.json_encode($invalidMaximum,JSON_PARTIAL_OUTPUT_ON_ERROR));
 }
 
-check(rejects(fn()=>SweepLine\Auth::credentials(['email'=>'invalid','password'=>'long-password-123'])),'Invalid account email rejected');
-check(rejects(fn()=>SweepLine\Auth::credentials(['email'=>'test@example.test','password'=>'short'])),'Short account password rejected');
-check(SweepLine\Auth::credentials(['email'=>'TEST@example.test','password'=>'long-password-123'])['email']==='test@example.test','Account email normalized');
+check(rejects(fn()=>SweepLine\Auth::credentials(['username'=>'bad user','password'=>'long-password-123'])),'Invalid username rejected');
+check(rejects(fn()=>SweepLine\Auth::credentials(['username'=>'member','password'=>'short'])),'Short account password rejected');
+check(SweepLine\Auth::credentials(['username'=>'MEMBER','email'=>'TEST@example.test','password'=>'long-password-123'])['email']==='test@example.test','Account email normalized');
 $tiles=SweepLine\CoveragePlanner::tiles(-119.8,39.52,25);
 check(count($tiles)>0 && count($tiles)<100,'Coverage planning bounded and nonempty');
 check(count(array_unique(array_column($tiles,'key')))===count($tiles),'Reusable area keys are unique');
@@ -80,6 +80,12 @@ check(count($children)===4 && abs(($children[0]['bounds'][2]-$children[0]['bound
 foreach (SweepLine\CoveragePlanner::tiles(179.8,52,50) as $tile) {
     check($tile['bounds'][0]>=-180 && $tile['bounds'][2]<=180,'Dateline planning stays in longitude bounds');
 }
+
+
+check(SweepLine\Auth::credentials(['username'=>'member','password'=>'long-password-123'])['email']===null,'Email is optional');
+check(SweepLine\Auth::credentials(['username'=>'MEMBER','password'=>'long-password-123'])['username']==='member','Username normalized');
+check(rejects(fn()=>SweepLine\Auth::credentials(['username'=>'member','email'=>'invalid','password'=>'long-password-123'])),'Optional email validated when supplied');
+check(rejects(fn()=>SweepLine\Auth::validatePassword("long-password\0-invalid")),'Null bytes rejected in passwords');
 
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

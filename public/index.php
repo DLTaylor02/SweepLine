@@ -14,8 +14,9 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 try {
+    if ($path==='/api/setup') { throw new OutOfBoundsException('Endpoint not found'); }
     $method=$_SERVER['REQUEST_METHOD']??'GET';
-    $postPaths=['/api/search','/api/setup','/api/login','/api/logout','/api/admin/users'];
+    $postPaths=['/api/search','/api/login','/api/logout','/api/admin/users'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if ($path==='/api/admin/users' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='PATCH'; }
@@ -41,7 +42,6 @@ try {
             SweepLine\Auth::start(); $auth=new SweepLine\Auth($db);
             if (in_array($method,['POST','PATCH'],true)) { SweepLine\Auth::csrf($_SERVER['HTTP_X_CSRF_TOKEN']??null); }
             if ($path==='/api/session') { $result=$auth->status(); }
-            elseif ($path==='/api/setup') { $result=$auth->setup($input); }
             elseif ($path==='/api/login') { $result=$auth->login($input); }
             elseif ($path==='/api/logout') { $result=$auth->logout(); }
             else {

@@ -33,3 +33,23 @@ check(count($api->search(['zip'=>'12345','min_length_miles'=>0.25,'max_length_mi
 check(count($api->search(['zip'=>'12345','max_length_miles'=>0.3])['results'])===0,'Maximum below all candidate lengths returns no results');
 check(count($api->search(['zip'=>'12345','max_length_miles'=>null])['results'])===2,'Null maximum leaves discovery unbounded');
 require __DIR__.'/automation.php';
+
+check(!SweepLine\SuperAdmin::exists($db),'Fresh installation has no SuperAdmin');
+check(SweepLine\SuperAdmin::ensure($db,'test-password-123'),'Terminal provisioning creates SuperAdmin');
+$administrator=$db->query("SELECT * FROM app_users WHERE role='superadmin'")->fetch(PDO::FETCH_ASSOC);
+check($administrator['username']==='superadmin' && $administrator['email']===null,'SuperAdmin needs no email');
+check(password_verify('test-password-123',$administrator['password_hash']),'SuperAdmin password stored as a hash');
+check(!SweepLine\SuperAdmin::ensure($db,'different-password-123'),'Repeated provisioning preserves existing administrator');
+check($db->query("SELECT password_hash FROM app_users WHERE role='superadmin'")->fetchColumn()===$administrator['password_hash'],'Existing password is not reset');
+
+$db->exec("UPDATE app_users SET active=false WHERE role='superadmin'");
+$beforeReset=(int)$db->query("SELECT session_version FROM app_users WHERE role='superadmin'")->fetchColumn();
+check(SweepLine\SuperAdmin::reset($db,'recovered-password-123')==='superadmin','Explicit operator recovery resets the existing account');
+$recovered=$db->query("SELECT * FROM app_users WHERE role='superadmin'")->fetch(PDO::FETCH_ASSOC);
+check($recovered['id']===$administrator['id'] && $recovered['active'],'Recovery preserves identity and re-enables account');
+check((int)$recovered['session_version']===$beforeReset+1,'Recovery invalidates old web sessions');
+check(password_verify('recovered-password-123',$recovered['password_hash']) && !password_verify('test-password-123',$recovered['password_hash']),'New password replaces the lost credential');
+check(!SweepLine\SuperAdmin::ensure($db,'unused-installer-password'),'Installer still preserves explicitly reset password');
+check(rejects(fn()=>SweepLine\SuperAdmin::reset($db,'short')),'Invalid recovery password rejected');
+// Restore the explicit fixture password expected by the separate HTTP suite.
+SweepLine\SuperAdmin::reset($db,'test-password-123');

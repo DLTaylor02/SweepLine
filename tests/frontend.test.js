@@ -12,21 +12,21 @@ async function testFrontend(sources) {
     addEventListener(n,fn){this[n]=fn;}
   }
   const get=id=>elements[id]??=new Element(id);
-  for(const n of ['setup_code','name','email','password']){get('account-form').fields[n]=new Element();get('account-form')[n]=get('account-form').fields[n];}
-  for(const n of ['name','email','password']){get('create-user').fields[n]=new Element();get('create-user')[n]=get('create-user').fields[n];}
+  for(const n of ['username','password']){get('account-form').fields[n]=new Element();get('account-form')[n]=get('account-form').fields[n];}
+  for(const n of ['username','name','email','password']){get('create-user').fields[n]=new Element();get('create-user')[n]=get('create-user').fields[n];}
   const search=get('search');
   for(const n of ['zip','radius','custom_radius','profile','min_length','max_length','max_stops','paved'])search[n]=new Element();
   search.zip.value='12345';search.radius.value='50';search.profile.value='twisty';search.max_stops.value='5';search.paved.checked=true;
   get('admin-panel').hidden=true;
   const document={getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
-  let logged=false,setupNeeded=true,csrf='initial',searchResponses=[];
+  let logged=false,adminReady=true,csrf='initial',searchResponses=[];
   const requests=[];
-  const session=()=>({user:logged?{id:1,name:'Owner',role:'superadmin'}:null,csrf,setup_required:setupNeeded});
+  const session=()=>({user:logged?{id:1,name:'Owner',role:'superadmin'}:null,csrf,admin_ready:adminReady});
   const fetch=async(path,options={})=>{
     requests.push({path,...options});let status=200,data;
     if(path==='/api/session')data=session();
-    else if(path==='/api/setup'){logged=true;setupNeeded=false;csrf='signed-in';data=session();}
+    else if(path==='/api/login'){logged=true;csrf='signed-in';data=session();}
     else if(path==='/api/logout'){logged=false;csrf='signed-out';data=session();}
     else if(path==='/api/search')data=searchResponses.shift()??{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}};
     else if(path==='/api/coverage'||path==='/api/admin/users')data=[];
@@ -41,13 +41,13 @@ async function testFrontend(sources) {
   const flush=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
   let checks=0;const check=(ok,message)=>{if(!ok)throw Error(message);checks++;};
   await flush();
-  check(get('workspace').hidden&&!get('account-form').hidden,'First run shows setup gate');
-  check(!get('setup-code-wrap').hidden&&get('account-form').fields.setup_code.required,'Setup code required');
-  get('account-form').email.value='owner@example.test';get('account-form').password.value='long-password-123';get('account-form').fields.name.value='Owner';get('account-form').setup_code.value='code';
+  check(get('workspace').hidden&&!get('account-form').hidden,'Terminal-provisioned accounts use sign-in form');
+  check(!requests.some(r=>r.path==='/api/setup'),'Browser never requests account creation');
+  get('account-form').username.value='superadmin';get('account-form').password.value='long-password-123';
   await get('account-form').onsubmit({preventDefault(){},target:get('account-form')});await flush();
-  check(!get('workspace').hidden&&get('account-gate').hidden,'Setup reveals authenticated app');
+  check(!get('workspace').hidden&&get('account-gate').hidden,'Login reveals authenticated app');
   check(!get('admin-open').hidden,'SuperAdmin sees Manage');
-  check(requests.find(r=>r.path==='/api/setup').headers['X-CSRF-Token']==='initial','Setup uses CSRF');
+  check(requests.find(r=>r.path==='/api/login').headers['X-CSRF-Token']==='initial','Login uses CSRF');
   searchResponses=[{results:[],preparation:{state:'preparing',message:'Downloading roads',complete:0,total:3}},{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}}];
   search.max_length.value='12.5';search.onsubmit({preventDefault(){},target:search});await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
@@ -67,6 +67,11 @@ async function testFrontend(sources) {
   check(get('workspace').hidden&&!get('account-gate').hidden,'Signout hides workspace');
   check(get('results').children.length===0,'Signout clears results');
   check(!get('submit').disabled,'Signout clears pending submit state');
+  adminReady=false;
+  get('account-retry').onclick();await flush();
+  check(get('account-form').hidden&&get('account-intro').textContent.includes('terminal'),'Missing administrator directs operator to terminal without browser provisioning');
+  const loginBody=JSON.parse(requests.find(r=>r.path==='/api/login').body);
+  check(loginBody.username==='superadmin'&&!('email' in loginBody),'Login does not require email');
   let lateCoverage=0;
   const lateWindow={...window,SweepLineAccount:{user:{id:1}},sweeplineRequest:async()=>{lateCoverage++;return [];}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout',sources['app.js'])(lateWindow,document,fetch,function(){},setTimer,clearTimer);

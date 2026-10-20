@@ -65,6 +65,39 @@ ensure_system_user() {
     fi
 }
 
+project_provision_superadmin() {
+    local probe_status
+    if as_user "$SYSTEM_USER" "${PHP_CLI[@]}" bin/superadmin.php --exists; then
+        info "Existing SuperAdmin found; preserving its password"
+        return
+    else probe_status=$?; fi
+    [[ "$probe_status" == 1 ]] || die "Could not check for an existing SuperAdmin."
+    [[ -t 0 ]] || die "No SuperAdmin exists. Run the installer interactively to choose its password."
+    local superadmin_password superadmin_confirm trace_enabled=0
+    # Do not allow diagnostic shell tracing to reveal the password.
+    if [[ $- == *x* ]]; then trace_enabled=1; set +x; fi
+    while true; do
+        IFS= read -r -s -p "SuperAdmin password (12-72 bytes): " superadmin_password || die "Password entry cancelled."
+        printf '\n'
+        IFS= read -r -s -p "Confirm SuperAdmin password: " superadmin_confirm || die "Password confirmation cancelled."
+        printf '\n'
+        if [[ "$superadmin_password" != "$superadmin_confirm" ]]; then
+            unset superadmin_password superadmin_confirm
+            info "Passwords do not match. Please try again."
+            continue
+        fi
+        if printf '%s' "$superadmin_password" | as_user "$SYSTEM_USER" "${PHP_CLI[@]}" bin/superadmin.php --create; then
+            unset superadmin_password superadmin_confirm
+            break
+        else
+            probe_status=$?
+            unset superadmin_password superadmin_confirm
+            [[ "$probe_status" == 1 ]] || die "SuperAdmin provisioning failed."
+        fi
+    done
+    [[ "$trace_enabled" != 1 ]] || set -x
+}
+
 # Project hooks: customize these and keep them idempotent.
 project_install() {
     [[ "$DB_HOST" == "127.0.0.1" && "$DB_PORT" == "5432" ]] || die "Automatic provisioning requires the local PostgreSQL cluster on 127.0.0.1:5432."
@@ -82,6 +115,7 @@ project_install() {
     as_user "$SYSTEM_USER" "${PHP_CLI[@]}" bin/migrate.php
     install -d -o "$SYSTEM_USER" -g "$SYSTEM_USER" -m 0750 "$APP_DIR/var"
     as_user "$SYSTEM_USER" "${PHP_CLI[@]}" bin/bootstrap-app.php
+    project_provision_superadmin
 }
 project_cleanup() {
     :
@@ -291,7 +325,7 @@ fi
 chown -R "$INSTALL_USER:$SYSTEM_USER" "$APP_DIR"
 find "$APP_DIR" -type d -exec chmod 0750 {} +; find "$APP_DIR" -type f -exec chmod 0640 {} +
 chmod 0751 "$APP_DIR"
-chmod 0750 "$APP_DIR/$(basename "$0")" "$APP_DIR/setup"
+chmod 0750 "$APP_DIR/$(basename "$0")" "$APP_DIR/setup" "$APP_DIR/reset-superadmin"
 find "$APP_DIR/$PUBLIC_DIR_RELATIVE" -type d -exec chmod 0755 {} +
 find "$APP_DIR/$PUBLIC_DIR_RELATIVE" -type f -exec chmod 0644 {} +
 for path in "${WRITABLE_PATHS[@]}"; do
@@ -389,7 +423,5 @@ server_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"; server_ip="${server_i
 printf '\n%s is deployed and ready.\n' "$APP_NAME"
 printf 'Application: http://%s:%s/\nDeployment: %s\nConfiguration: %s\n' "$server_ip" "$PORT" "$APP_DIR" "$env_file"
 
-if [[ -f "$APP_DIR/var/setup-code" ]]; then
-    printf '\nOpen the web UI to create your SuperAdmin. One-time setup code: %s\n' "$(cat "$APP_DIR/var/setup-code")"
-fi
+printf '\nSign in to the web UI as superadmin using the password chosen during installation.\n'
 printf 'ZIP coordinates are prepared automatically. Searches prepare missing road coverage in the background.\n'
