@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restored the latest search and live preparation progress when returning to discovery or reloading, with account-scoped tab storage, fresh polling, history-link precedence, and sign-out cleanup.
+
 - Defaulted the mapped-stop plus uncertain-control limit to zero in the search form and API.
 
 - Added per-entry search history deletion with ownership and CSRF checks. Saved search links now automatically open current map results after sign-in without duplicating history.

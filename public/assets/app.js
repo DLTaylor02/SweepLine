@@ -1,7 +1,33 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let map, ready, roads = [], selected = null, request = 0, pollTimer, activeProfile='twisty';
-let pendingHistorySearch=false;
+let pendingHistorySearch=false, activeSearchUser=null, restoredSearchUser=null, explicitSearchParameters=false;
+const searchStorageKey=id=>'sweepline:active-search:'+id;
+function rememberSearch(payload) {
+  if(!activeSearchUser)return;
+  try {
+    const parameters={...payload};delete parameters._recorded;delete parameters._mapShown;
+    window.sessionStorage?.setItem(searchStorageKey(activeSearchUser),JSON.stringify(parameters));
+  } catch (_) { /* Search remains usable when browser storage is unavailable. */ }
+}
+function fillSearch(p) {
+  const form=$('search');
+  form.zip.value=p.zip;form.profile.value=p.profile;form.radius.value=String(p.radius_miles);
+  form.min_length.value=p.min_length_miles==null?'':String(p.min_length_miles);
+  form.max_length.value=p.max_length_miles==null?'':String(p.max_length_miles);
+  form.max_stops.value=String(p.max_stops);form.paved.checked=p.paved_only;
+}
+function restoreSearch(userId) {
+  try {
+    const raw=window.sessionStorage?.getItem(searchStorageKey(userId));
+    if(!raw)return false;
+    const p=JSON.parse(raw);
+    if(!p || !/^\d{5}$/.test(p.zip) || !Number.isInteger(p.radius_miles) || p.radius_miles<1 || p.radius_miles>50 ||
+      !['twisty','open'].includes(p.profile) || typeof p.paved_only!=='boolean' || !Number.isInteger(p.max_stops) ||
+      p.max_stops<0 || p.max_stops>100)return false;
+    fillSearch(p);return true;
+  } catch (_) {return false;}
+}
 const empty = () => ({type:'FeatureCollection',features:[]});
 const color = ['interpolate',['linear'],['get','score'],0,'#94a3b8',50,'#60a5fa',100,'#1d4ed8'];
 function setStatus(message, busy=false, preparation=null) {
@@ -122,17 +148,27 @@ async function discover(payload, sequence) {
 $('search').onsubmit = event => {
   event.preventDefault();clearTimeout(pollTimer);const sequence=++request,form=event.target;
   $('submit').disabled=true;setStatus('Preparing your road search…',true);$('road-detail').hidden=true;selected=null;
-  discover({_recorded:event.fromHistory===true,zip:form.zip.value,radius_miles:Number(form.radius.value),profile:form.profile.value,
+  const payload={_recorded:event.fromHistory===true,zip:form.zip.value,radius_miles:Number(form.radius.value),profile:form.profile.value,
     ...(form.min_length.value.trim()===''?{}:{min_length_miles:Number(form.min_length.value)}),
     ...(form.max_length.value.trim()===''?{}:{max_length_miles:Number(form.max_length.value)}),
-    max_stops:Number(form.max_stops.value),paved_only:form.paved.checked},sequence);
+    max_stops:Number(form.max_stops.value),paved_only:form.paved.checked};
+  rememberSearch(payload);discover(payload,sequence);
 };
 async function handleSession(event) {
   if(window.location?.pathname && window.location.pathname!=='/')return;
   if(!event.detail.user) {
+    if(activeSearchUser) {try {window.sessionStorage?.removeItem(searchStorageKey(activeSearchUser));}catch(_) {}}
+    activeSearchUser=null;restoredSearchUser=null;
     ++request;clearTimeout(pollTimer);roads=[];render();$('road-detail').hidden=true;$('submit').disabled=false;setStatus('Choose a ZIP code to explore roads nearby.');
     if(map && map.getSource('roads')) { map.getSource('roads').setData(empty());map.getSource('radius').setData(empty()); }
     return;
+  }
+  activeSearchUser=event.detail.user.id;
+  if(restoredSearchUser!==activeSearchUser) {
+    restoredSearchUser=activeSearchUser;
+    if(!explicitSearchParameters && restoreSearch(activeSearchUser)) {
+      pendingHistorySearch=true;setStatus('Restoring your search and checking preparation progress…',true);
+    }
   }
   if(!map)initMap();
   if(pendingHistorySearch) {
@@ -152,6 +188,7 @@ async function handleSession(event) {
 if(window.location?.pathname==='/') {
   const params=new URLSearchParams(window.location.search);
   if(params.has('zip')) {
+    explicitSearchParameters=true;
     const form=$('search');
     for(const key of ['zip','profile'])if(params.has(key))form[key].value=params.get(key);
     for(const [key,field] of [['radius_miles','radius'],['min_length_miles','min_length'],['max_length_miles','max_length'],['max_stops','max_stops']])
@@ -164,3 +201,10 @@ if(window.location?.pathname==='/') {
 
 window.addEventListener('sweepline:sessionchange',handleSession);
 if(window.SweepLineAccount?.user)handleSession({detail:window.SweepLineAccount});
+
+window.addEventListener('pageshow',event=>{
+  if(event.persisted && window.SweepLineAccount?.user) {
+    restoredSearchUser=null;explicitSearchParameters=false;
+    handleSession({detail:window.SweepLineAccount});
+  }
+});

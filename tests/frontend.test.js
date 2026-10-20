@@ -149,6 +149,31 @@ async function testFrontend(sources) {
   check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).record_history===false,'Reopening saved search does not duplicate history');
   await events['sweepline:sessionchange'].at(-1)({detail:{user:{id:1}}});await flush();
   check(requests.filter(r=>r.path==='/api/search').length===beforeReplay+1,'Session refresh does not repeat saved search');
+  const saved=new Map([['sweepline:active-search:1',JSON.stringify({zip:'12345',radius_miles:5,profile:'twisty',max_stops:0,paved_only:true})]]);
+  const tabStorage={getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value),removeItem:key=>saved.delete(key)};
+  const resumeEvents={};let resumed=0;
+  const resumeWindow={location:{pathname:'/',search:''},sessionStorage:tabStorage,SweepLineAccount:{user:{id:1}},
+    addEventListener:(name,fn)=>resumeEvents[name]=fn,
+    sweeplineRequest:async path=>{
+      if(path==='/api/search'){resumed++;return {results:[],preparation:{state:'preparing',message:'Analyzing connected roads and driving profiles',complete:3,total:9}};}
+      return [];
+    }};
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(resumeWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(resumed===1&&get('status').textContent.includes('3/9'),'Returning to discovery restores current preparation progress');
+  check(!get('search-spinner').hidden&&get('search-progress').value===3,'Returning search displays spinner and real area progress');
+  check(search.radius.value==='5'&&search.max_stops.value==='0','Returning search restores its saved filters');
+  await resumeEvents['sweepline:sessionchange']({detail:{user:{id:1}}});await flush();
+  check(resumed===1,'Repeated session notification does not start duplicate search');
+  resumeEvents.pageshow({persisted:true});await flush();
+  check(resumed===2,'Browser back/forward cache refreshes current preparation');
+  await resumeEvents['sweepline:sessionchange']({detail:{user:null}});
+  check(!saved.has('sweepline:active-search:1'),'Signing out removes remembered search');
+  saved.set('sweepline:active-search:1',JSON.stringify({zip:'12345',radius_miles:5,profile:'twisty',max_stops:0,paved_only:true}));
+  const otherWindow={...resumeWindow,SweepLineAccount:{user:{id:2}}};
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(otherWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(resumed===2,'Another account cannot resume the previous user search');
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){

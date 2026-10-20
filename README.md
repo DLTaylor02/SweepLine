@@ -210,3 +210,5 @@ The SuperAdmin Jobs page shows a live pie chart of **SweepLine database**, **oth
 `DELETE /api/search-history/{id}` deletes only a search owned by the signed-in user and requires CSRF protection. Missing entries and entries belonging to another account return 404. Opening history queries current cached data and prepares missing coverage automatically; history does not store old result snapshots.
 
 New searches default to a maximum of **0 mapped stops plus uncertain controls**. This excludes roads with either type of mapped control. Missing OSM controls can still exist in reality; saved searches retain the stop limit they were originally run with.
+
+The discovery page remembers your latest search in this browser tab, scoped to your signed-in account. Returning from Jobs, Manage, or History (or reloading) restores its filters, requests current results/progress, and resumes automatic updates without adding another history entry. Explicit history links take precedence. Signing out clears the remembered search. This tab-level restoration requires browser session storage; server jobs continue independently when you leave the page.
