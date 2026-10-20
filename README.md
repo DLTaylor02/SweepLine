@@ -139,7 +139,7 @@ Login uses `{"username":"superadmin","password":"<YOUR_PASSWORD>"}`. SuperAdmin 
 Search request template (replace `<US_ZIP>` with your chosen five-digit US ZIP code):
 
 ```json
-{"zip":"<US_ZIP>","radius_miles":50,"profile":"twisty","min_length_miles":2,"max_length_miles":20,"max_stops":0,"paved_only":true}
+{"zip":"<US_ZIP>","radius_miles":50,"profile":"twisty","min_length_miles":2,"max_length_miles":20,"max_stops":1,"paved_only":true}
 ```
 
 200 means local data is ready. 202 includes `preparation` state/progress and any currently available results; poll the same search (the UI does this automatically). A terminal preparation failure is represented by `preparation.state="failed"` with a visible explanation; retry it through SuperAdmin management. Invalid inputs return 422; authentication 401; CSRF/authorization 403; absent resources 404; incorrect methods 405; account conflicts 409; request/queue throttles 429; unavailable infrastructure 503. Passwords require 12–72 bytes. Terminal provisioning locks against concurrent account creation and never resets an existing administrator. There is no email delivery, self-registration, forgotten-password email flow, or fine-grained role model yet.
@@ -208,6 +208,6 @@ The SuperAdmin Jobs page shows a live pie chart of **SweepLine database**, **oth
 
 `DELETE /api/search-history/{id}` deletes only a search owned by the signed-in user and requires CSRF protection. Missing entries and entries belonging to another account return 404. Opening history queries current cached data and prepares missing coverage automatically; history does not store old result snapshots.
 
-New searches default to a maximum of **0 mapped stops plus uncertain controls**. This excludes roads with either type of mapped control. Missing OSM controls can still exist in reality; saved searches retain the stop limit they were originally run with.
+The minimum and default maximum is **1 mapped stop plus uncertain control**, counted together. Road endpoints are tracked separately and do not count as mandatory stops. Missing OSM controls can still exist in reality. Reopening older searches with a zero limit uses the new minimum of 1.
 
 The discovery page remembers your latest search in this browser tab, scoped to your signed-in account. Returning from Jobs, Manage, or History (or reloading) restores its filters, requests current results/progress, and resumes automatic updates without adding another history entry. Explicit history links take precedence. Signing out clears the remembered search. This tab-level restoration requires browser session storage; server jobs continue independently when you leave the page.

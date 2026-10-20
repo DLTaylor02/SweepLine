@@ -15,7 +15,7 @@ function fillSearch(p) {
   form.zip.value=p.zip;form.profile.value=p.profile;form.radius.value=String(p.radius_miles);
   form.min_length.value=p.min_length_miles==null?'':String(p.min_length_miles);
   form.max_length.value=p.max_length_miles==null?'':String(p.max_length_miles);
-  form.max_stops.value=String(p.max_stops);form.paved.checked=p.paved_only;
+  form.max_stops.value=String(Math.max(1,p.max_stops));form.paved.checked=p.paved_only;
 }
 function restoreSearch(userId) {
   try {
@@ -193,6 +193,7 @@ if(window.location?.pathname==='/') {
     for(const key of ['zip','profile'])if(params.has(key))form[key].value=params.get(key);
     for(const [key,field] of [['radius_miles','radius'],['min_length_miles','min_length'],['max_length_miles','max_length'],['max_stops','max_stops']])
       if(params.has(key))form[field].value=params.get(key);
+    if(form.max_stops.value==='0')form.max_stops.value='1';
     if(params.has('paved_only'))form.paved.checked=params.get('paved_only')==='true';
     pendingHistorySearch=params.get('open')==='1';
     setStatus(pendingHistorySearch?'Opening previous search…':'Previous search loaded. Select Discover roads to run it again.');

@@ -23,7 +23,7 @@ async function testFrontend(sources) {
   for(const n of ['username','name','email','password']){get('create-user').fields[n]=new Element();get('create-user')[n]=get('create-user').fields[n];}
   const search=get('search');
   for(const n of ['zip','radius','profile','min_length','max_length','max_stops','paved'])search[n]=new Element();
-  search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='0';search.paved.checked=true;
+  search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='1';search.paved.checked=true;
   get('admin-panel').hidden=true;
   const document={getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
@@ -64,7 +64,7 @@ async function testFrontend(sources) {
   check(!get('search-spinner').hidden&&!('value' in get('search-progress')),'Submitting immediately shows indeterminate preparation');
   await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
-  check(payload.max_stops===0,'New searches submit zero mapped stops by default');
+  check(payload.max_stops===1,'New searches submit one mapped stop by default');
   check(payload.radius_miles===5,'Numeric radius submitted directly');
   check(payload.max_length_miles===12.5&&!('min_length_miles'in payload),'Optional bounds preserved');
   check(payload.record_history===true,'New searches request a history entry');
@@ -162,7 +162,7 @@ async function testFrontend(sources) {
   await flush();
   check(resumed===1&&get('status').textContent.includes('3/9'),'Returning to discovery restores current preparation progress');
   check(!get('search-spinner').hidden&&get('search-progress').value===3,'Returning search displays spinner and real area progress');
-  check(search.radius.value==='5'&&search.max_stops.value==='0','Returning search restores its saved filters');
+  check(search.radius.value==='5'&&search.max_stops.value==='1','Returning search upgrades a legacy zero stop limit to one');
   await resumeEvents['sweepline:sessionchange']({detail:{user:{id:1}}});await flush();
   check(resumed===1,'Repeated session notification does not start duplicate search');
   resumeEvents.pageshow({persisted:true});await flush();
