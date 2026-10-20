@@ -28,7 +28,9 @@ final class Validation
         if ($maximum!==null && $maximum<=$minimum) {
             throw new \InvalidArgumentException('Maximum length must be greater than minimum length');
         }
-        return ['zip'=>self::zip($input['zip']??null),'radius_miles'=>self::number($input,'radius_miles',50,1,150),
+        $radius=self::number($input,'radius_miles',50,1,50);
+        if (floor($radius)!==$radius) { throw new \InvalidArgumentException('radius_miles must be an integer between 1 and 50'); }
+        return ['zip'=>self::zip($input['zip']??null),'radius_miles'=>$radius,
             'min_length_miles'=>$minimum,'max_length_miles'=>$maximum,
             'max_stops'=>(int)$max,'profile'=>$profile,'paved_only'=>$paved];
     }

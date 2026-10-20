@@ -31,7 +31,8 @@ $session=expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','pa
 $csrf=$session['csrf'];
 if ($session['user']['role']!=='superadmin' || $session['user']['email']!==null) { throw new RuntimeException('SuperAdmin role or optional email incorrect'); }
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345']),403,'Search requires CSRF');
-expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>999],$csrf),422,'Search validation');
+expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>51],$csrf),422,'Search validation');
+expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25.5],$csrf),422,'Fractional radius rejected via API');
 $data=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25],$csrf),200,'Cached search is immediate');
 if (count($data['results'])!==2) { throw new RuntimeException('Cached fixture roads not returned'); }
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
@@ -41,6 +42,16 @@ $id=(int)$created['id'];
 $memberSession=expect(callApi($member,'GET','/api/session'),200,'Member pre-login session');
 $memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Member login');
 expect(callApi($member,'GET','/api/admin/users'),403,'Members cannot manage users');
+expect(callApi($member,'GET','/api/admin/data'),403,'Members cannot view job management');
+expect(callApi($member,'POST','/api/admin/tasks/1/cancel',[],$memberSession['csrf']),403,'Members cannot cancel jobs');
+expect(callApi($admin,'POST','/api/admin/tasks/1/cancel',[]),403,'Job cancellation requires CSRF');
+expect(callApi($admin,'GET','/api/admin/tasks/1/cancel'),405,'Job cancellation requires POST');
+$db=SweepLine\Database::connect();
+$job=(new SweepLine\DataQueue($db))->ensure('auto-http-cancel','roads',['key'=>'auto-http-cancel','bounds'=>[-120,39,-119.5,39.5]]);
+expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/cancel',[],$csrf),200,'SuperAdmin cancels queued job');
+expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/cancel',[],$csrf),409,'Stale cancellation returns conflict');
+expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/retry',[],$csrf),200,'SuperAdmin resumes cancelled job');
+expect(callApi($admin,'POST','/api/admin/tasks/'.$job['id'].'/cancel',[],$csrf),200,'Clean up resumed test job');
 expect(callApi($admin,'PATCH','/api/admin/users/'.$session['user']['id'],['active'=>false],$csrf),422,'SuperAdmin cannot disable own account');
 expect(callApi($admin,'PATCH','/api/admin/users/'.$id,['active'=>false],$csrf),200,'Disable member');
 expect(callApi($member,'GET','/api/coverage'),401,'Disabled member session invalidated');

@@ -3,6 +3,7 @@
   const el=id=>document.getElementById(id);
   let session={user:null,csrf:null,admin_ready:false};
   let adminTimer;
+  const jobsPage=window.location?.pathname==='/jobs';
   window.SweepLineAccount=session;
   window.sweeplineRequest=async (path,options={}) => {
     const method=options.method || 'GET';
@@ -19,8 +20,15 @@
   };
   function paint() {
     const signed=!!session.user;
-    el('workspace').hidden=!signed;el('account-gate').hidden=signed;
+    el('workspace').hidden=!signed || jobsPage;el('account-gate').hidden=signed;
     el('sign-out').hidden=!signed;el('admin-open').hidden=session.user?.role!=='superadmin';
+    el('jobs-open').hidden=session.user?.role!=='superadmin';
+    if(jobsPage && signed) {
+      el('admin-panel').hidden=false;el('admin-users').hidden=true;
+      el('admin-panel').className='admin-panel jobs-page';
+      if(session.user.role==='superadmin')refreshAdmin();
+      else {el('admin-jobs').hidden=true;el('admin-status').textContent='SuperAdmin access required.';}
+    }
     el('account-name').textContent=signed?session.user.name:'';
     if(!signed) {el('admin-panel').hidden=true;clearTimeout(adminTimer);}
     el('account-form').hidden=signed || !session.admin_ready;
@@ -86,16 +94,29 @@
       el('worker-status').textContent='Worker last seen: '+(data.worker_heartbeat || 'waiting for startup')+
         '. ZIP coordinates updated: '+(data.zip_last_sync || 'preparing automatically')+'.';
       el('task-list').replaceChildren();
-      data.tasks.forEach(task=>{
+      el('job-counts').textContent=(data.counts || []).map(item=>item.count+' '+item.status).join(' · ');
+      const jobs=[...data.tasks.map(t=>({...t,source:'tasks'})),...(data.imports || []).map(t=>({...t,task_key:t.name,source:'imports'}))];
+      jobs.forEach(task=>{
         const row=text('div','');row.className='task-row';
         row.append(text('strong',task.kind==='zips'?'US ZIP coordinates':task.task_key),
-          text('p',task.status+' · '+task.progress));
+          text('p',(task.cancel_requested && task.status==='running'?'Cancelling':task.cancel_requested && task.status==='failed'?'cancelled':task.status)+' · '+task.progress));
         if(task.error)row.append(text('p',task.error));
-        if(task.status==='failed') {
+        if(task.source==='tasks' && ['failed','cancelled'].includes(task.status)) {
           const retry=text('button','Retry');retry.type='button';retry.onclick=async()=>{
             try {await window.sweeplineRequest('/api/admin/tasks/'+task.id+'/retry',{method:'POST',body:'{}'});await refreshAdmin();}
             catch(e){el('admin-status').textContent=e.message;}
           };row.append(retry);
+        }
+        if(['queued','running','retry'].includes(task.status) && !task.cancel_requested) {
+          const cancel=text('button','Cancel job');cancel.type='button';
+          cancel.onclick=async()=>{
+            cancel.disabled=true;
+            try {
+              await window.sweeplineRequest('/api/admin/'+task.source+'/'+task.id+'/cancel',{method:'POST',body:'{}'});
+              el('admin-status').textContent='Cancellation requested. Running jobs stop at their next checkpoint.';
+              await refreshAdmin();
+            } catch(e) {el('admin-status').textContent=e.message;cancel.disabled=false;}
+          };row.append(cancel);
         }
         el('task-list').append(row);
       });
@@ -103,7 +124,7 @@
     if(!el('admin-panel').hidden)adminTimer=setTimeout(refreshAdmin,15000);
   }
   el('admin-open').onclick=()=>{el('admin-panel').hidden=false;refreshAdmin();el('admin-panel').scrollIntoView({behavior:'smooth'});};
-  el('admin-close').onclick=()=>{el('admin-panel').hidden=true;clearTimeout(adminTimer);};
+  el('admin-close').onclick=()=>{if(jobsPage){window.location.href='/';return;}el('admin-panel').hidden=true;clearTimeout(adminTimer);};
   el('admin-refresh').onclick=refreshAdmin;
   el('create-user').onsubmit=async event=>{
     event.preventDefault();const form=event.target;

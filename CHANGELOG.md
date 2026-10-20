@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Replaced the radius dropdown with a whole-mile numeric input (1–50 miles, default 50), enforced by the API.
+
+- Added a SuperAdmin Jobs page with queue counts, progress, cancellation of queued/running automatic tasks and manual imports, and explicit retry of cancelled preparation tasks. Cancellation persists across searches and preserves active data.
+
 - Added visible search/preparation spinners, completed-area progress, and partial-result messaging with automatic updates; versioned frontend assets to refresh cached files after deployment.
 
 - Removed the login username hint and switched light/dark interface accents, tinted surfaces, and road/radius colors from green to blue.

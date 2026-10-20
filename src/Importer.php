@@ -9,16 +9,28 @@ final class Importer
 {
     private const CLASSES = ['motorway','trunk','primary','secondary','tertiary','unclassified','residential','living_street','service'];
     private bool $allowEmpty=false;
-    public function __construct(private PDO $db) {}
+    private int $jobId=0;
+    private float $lastCheck=0;
+    public function __construct(private PDO $db,private ?\Closure $checkTask=null) {}
+    private function checkpoint(bool $lock=false): void
+    {
+        if (!$lock && microtime(true)-$this->lastCheck<0.5) { return; }
+        $this->lastCheck=microtime(true);
+        if ($this->checkTask) { ($this->checkTask)($lock); }
+        $q=$this->db->prepare('SELECT cancel_requested FROM import_jobs WHERE id=?'.($lock?' FOR UPDATE':''));
+        $q->execute([$this->jobId]);
+        if ($q->fetchColumn()) { throw new JobCancelled('Cancelled by SuperAdmin'); }
+    }
     private function progress(int $id,string $message): void
     {
+        $this->checkpoint();
         $this->db->prepare('UPDATE import_jobs SET progress=? WHERE id=?')->execute([$message,$id]);
         $this->db->prepare("INSERT INTO app_settings(key,value) VALUES ('worker_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=now()")->execute([date('c')]);
         echo date('c')." job $id: $message\n";
     }
     public function run(array $job): void
     {
-        $id=(int)$job['id']; $this->allowEmpty=(bool)($job['allow_empty']??false);
+        $id=(int)$job['id']; $this->jobId=$id; $this->allowEmpty=(bool)($job['allow_empty']??false);
         try {
             $this->db->exec("SET statement_timeout = '0'");
             $this->db->prepare('UPDATE import_jobs SET source_sha256=? WHERE id=?')->execute([hash_file('sha256',$job['source_path']),$id]);
@@ -32,10 +44,11 @@ final class Importer
             $count=$this->db->prepare('SELECT count(*) FROM road_candidates WHERE job_id=?'); $count->execute([$id]);
             if ((int)$count->fetchColumn()<1 && !$this->allowEmpty) { throw new \RuntimeException('No usable candidates: previous dataset remains active'); }
             $this->db->beginTransaction();
+            $this->checkpoint(true);
             $this->db->prepare('UPDATE regions SET active_job_id=?, coverage=(SELECT coverage FROM import_jobs WHERE id=?), imported_at=now() WHERE id=?')->execute([$id,$id,$job['region_id']]);
             $this->db->prepare("UPDATE import_jobs SET status='complete',progress='Active',finished_at=now() WHERE id=?")->execute([$id]);
             $this->db->commit();
-            $this->progress($id,'Import validated and activated');
+            echo date('c')." job $id: Import validated and activated\n";
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) { $this->db->rollBack(); }
             $this->db->prepare("UPDATE import_jobs SET status='failed',error=?,finished_at=now() WHERE id=?")->execute([substr($e->getMessage(),0,2000),$id]);
@@ -50,6 +63,7 @@ final class Importer
         libxml_use_internal_errors(true); libxml_clear_errors();
         try {
             while ($xml->read()) {
+                $this->checkpoint();
                 if ($xml->nodeType===XMLReader::DOC_TYPE) { throw new \RuntimeException('DTD is forbidden'); }
                 if ($xml->nodeType===XMLReader::ELEMENT && $xml->depth===0 && $xml->name!=='osm') { throw new \RuntimeException('Expected an OSM XML root'); }
                 if ($xml->nodeType===XMLReader::ELEMENT && $xml->name==='remark') { throw new \RuntimeException('OSM extract contains an error remark; incomplete data refused'); }
@@ -102,7 +116,7 @@ final class Importer
             if (count($nodes)>10000) { throw new \RuntimeException('Way node limit exceeded'); }
             $q=$this->db->prepare('SELECT osm_id,lon,lat FROM osm_nodes WHERE job_id=? AND osm_id IN ('.implode(',',array_fill(0,count($nodes),'?')).')');
             $q->execute(array_merge([$id],$nodes)); $coords=[];
-            while ($row=$q->fetch(PDO::FETCH_ASSOC)) { $coords[$row['osm_id']]=[(float)$row['lon'],(float)$row['lat']]; }
+            while ($row=$q->fetch(PDO::FETCH_ASSOC)) { $this->checkpoint(); $coords[$row['osm_id']]=[(float)$row['lon'],(float)$row['lat']]; }
             $points=[]; foreach ($nodes as $node) { if (!isset($coords[$node])) { $missing++; continue 2; } $points[]=$coords[$node]; }
             if (Geometry::length($points)<15) { continue; }
             $direction=match($t['oneway']??'') {'yes','1','true'=>1,'-1'=>-1,default=>(($t['junction']??'')==='roundabout' || $t['highway']==='motorway') ? 1 : 0};
@@ -130,7 +144,8 @@ final class Importer
         $score=$this->db->prepare('INSERT INTO road_scores(candidate_id,profile,score,confidence,dimensions) VALUES (?,?,?,?,?::jsonb)');
         $member=$this->db->prepare('INSERT INTO candidate_segments(candidate_id,segment_id,position,reversed) VALUES (?,?,?,?::boolean)');
         $count=0;
-        foreach (RoadGraph::candidates($roads) as $candidate) {
+        foreach (RoadGraph::candidates($roads,fn()=>$this->checkpoint()) as $candidate) {
+            $this->checkpoint();
             foreach ($candidate['nodes'] as $node) {
                 $nodeTags=$tags[$node]??[];
                 if (in_array($nodeTags['access']??'', ['no','private'],true) || in_array($nodeTags['motor_vehicle']??'', ['no','private'],true) || in_array($nodeTags['barrier']??'', ['bollard','block','cycle_barrier'],true)) { continue 2; }

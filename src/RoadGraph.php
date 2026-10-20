@@ -9,10 +9,11 @@ final class RoadGraph
         return strtolower(trim($road['ref'] ?: ($road['name'] ?: '')));
     }
     /** Split at shared OSM nodes, then follow unambiguous, direction-compatible continuations. */
-    public static function candidates(array $roads): \Generator
+    public static function candidates(array $roads,?callable $checkpoint=null): \Generator
     {
         $uses=[]; $neighbors=[];
         foreach ($roads as $r) {
+            if ($checkpoint) { $checkpoint(); }
             foreach (array_unique($r['nodes']) as $n) { $uses[$n]=($uses[$n]??0)+1; }
             for ($i=1;$i<count($r['nodes']);$i++) {
                 $a=$r['nodes'][$i-1]; $b=$r['nodes'][$i];
@@ -38,6 +39,7 @@ final class RoadGraph
         }
         $visited=[];
         foreach ($edges as $seed=>$edge) {
+            if ($checkpoint) { $checkpoint(); }
             if (isset($visited[$seed])) { continue; }
             $visited[$seed]=true; $chain=[$edge]; $length=Geometry::length($edge['points']);
             // Extend both ends. Reversing the chain preserves each way's legal direction.

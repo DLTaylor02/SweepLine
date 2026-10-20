@@ -50,24 +50,46 @@ final class DataQueue
     }
     private function summary(array $tasks,bool $roads): array
     {
-        $complete=0; $failed=0; $failureMessage=null; $message=$roads?'Preparing road coverage':'Preparing US ZIP coordinates';
+        $complete=0; $failed=0; $pending=0; $failureMessage=null; $message=$roads?'Preparing road coverage':'Preparing US ZIP coordinates';
         foreach ($tasks as $task) {
             if ($task['status']==='complete') { $complete++; }
-            if ($task['status']==='failed') { $failed++; $failureMessage=$task['error']?:'Data preparation failed.'; }
+            if (in_array($task['status'],['queued','running','retry'],true) && !($task['cancel_requested']??false)) { $pending++; }
+            if ($task['status']==='cancelled' || ($task['cancel_requested']??false)) { $failed++; $failureMessage='Preparation cancelled by a SuperAdmin. Existing results remain available.'; }
+            elseif ($task['status']==='failed') { $failed++; $failureMessage=$task['error']?:'Data preparation failed.'; }
             elseif ($task['status']==='running' || $task['status']==='retry') { $message=$task['progress']; }
         }
-        return ['state'=>$failed?'failed':($complete===count($tasks)?'ready':'preparing'),
+        return ['state'=>$pending?'preparing':($failed?'failed':'ready'),
             'complete'=>$complete,'total'=>count($tasks),'failed'=>$failed,'message'=>$failureMessage??$message];
     }
     public function overview(): array
     {
-        return ['tasks'=>$this->db->query('SELECT id,task_key,kind,status,attempts,progress,error,updated_at FROM data_tasks ORDER BY updated_at DESC LIMIT 100')->fetchAll(PDO::FETCH_ASSOC),
+        return ['tasks'=>$this->db->query("SELECT id,task_key,kind,status,attempts,progress,error,cancel_requested,next_attempt_at,updated_at FROM data_tasks ORDER BY CASE WHEN status IN ('running','queued','retry') THEN 0 ELSE 1 END,updated_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
+            'imports'=>$this->db->query("SELECT j.id,r.name,j.status,j.progress,j.error,j.cancel_requested,j.created_at FROM import_jobs j JOIN regions r ON r.id=j.region_id WHERE NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id) ORDER BY CASE WHEN j.status IN ('queued','running') THEN 0 ELSE 1 END,j.id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
+            'counts'=>$this->db->query('SELECT status,count(*) AS count FROM data_tasks GROUP BY status')->fetchAll(PDO::FETCH_ASSOC),
             'worker_heartbeat'=>$this->db->query("SELECT value FROM app_settings WHERE key='worker_heartbeat'")->fetchColumn()?:null,
             'zip_last_sync'=>$this->db->query("SELECT value FROM app_settings WHERE key='zip_last_sync'")->fetchColumn()?:null];
     }
+    public function cancel(int $id,bool $import=false): array
+    {
+        if ($import) {
+            // Linked automatic imports must be controlled through their parent task.
+            $q=$this->db->prepare("UPDATE import_jobs j SET cancel_requested=true,status=CASE WHEN status='queued' THEN 'failed' ELSE status END,
+                progress='Cancellation requested by SuperAdmin' WHERE id=? AND status IN ('queued','running')
+                AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id) RETURNING id");
+        } else {
+            $q=$this->db->prepare("UPDATE data_tasks t SET cancel_requested=true,
+                status=CASE WHEN status IN ('queued','retry') THEN 'cancelled' ELSE status END,
+                progress='Cancellation requested by SuperAdmin',updated_at=now()
+                WHERE id=? AND status IN ('queued','running','retry')
+                AND NOT EXISTS(SELECT 1 FROM import_jobs j WHERE j.id=t.import_job_id AND j.status='complete') RETURNING id");
+        }
+        $q->execute([$id]);
+        if (!$q->fetchColumn()) { throw new HttpException(409,'Job has already finished or changed. Refresh the job list.'); }
+        return ['cancel_requested'=>true];
+    }
     public function retry(int $id): array
     {
-        $q=$this->db->prepare("UPDATE data_tasks SET status='queued',attempts=0,error=null,next_attempt_at=now(),progress='Retry requested',updated_at=now() WHERE id=? AND status='failed'");
+        $q=$this->db->prepare("UPDATE data_tasks SET status='queued',cancel_requested=false,import_job_id=null,attempts=0,error=null,next_attempt_at=now(),progress='Retry requested',updated_at=now() WHERE id=? AND status IN ('failed','cancelled')");
         $q->execute([$id]); return ['queued'=>$q->rowCount()>0];
     }
 }

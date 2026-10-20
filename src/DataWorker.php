@@ -15,7 +15,8 @@ final class DataWorker
     public function recover(): void
     {
         $this->db->exec("UPDATE import_jobs SET status='failed',error='Worker interrupted; previous active data retained',finished_at=now() WHERE status='running'");
-        $interrupted=$this->db->query("SELECT * FROM data_tasks WHERE status='running'")->fetchAll(PDO::FETCH_ASSOC);
+        $this->db->exec("UPDATE data_tasks SET status='cancelled',progress='Cancelled by SuperAdmin',updated_at=now() WHERE status='running' AND cancel_requested=true");
+        $interrupted=$this->db->query("SELECT * FROM data_tasks WHERE status='running' AND cancel_requested=false")->fetchAll(PDO::FETCH_ASSOC);
         $queue=new DataQueue($this->db);
         foreach ($interrupted as $task) {
             $tile=json_decode($task['payload'],true);
@@ -34,8 +35,16 @@ final class DataWorker
             }
         }
     }
+    private function checkpoint(int $id,bool $lock=false): void
+    {
+        $q=$this->db->prepare('SELECT cancel_requested FROM data_tasks WHERE id=?'.($lock?' FOR UPDATE':''));
+        $q->execute([$id]);
+        if ($q->fetchColumn()) { throw new JobCancelled('Cancelled by SuperAdmin'); }
+        if ($lock) { $this->db->prepare("UPDATE data_tasks SET status='complete',progress='Local data ready',error=null,updated_at=now() WHERE id=?")->execute([$id]); }
+    }
     private function progress(int $id,string $message): void
     {
+        $this->checkpoint($id);
         $this->db->prepare('UPDATE data_tasks SET progress=?,updated_at=now() WHERE id=?')->execute([$message,$id]);
         $this->heartbeat(); echo date('c')." task $id: $message\n";
     }
@@ -46,13 +55,14 @@ final class DataWorker
     public function runOne(): bool
     {
         $this->db->beginTransaction();
-        $task=$this->db->query("SELECT * FROM data_tasks WHERE status IN ('queued','retry') AND next_attempt_at<=now() ORDER BY CASE kind WHEN 'zips' THEN 0 ELSE 1 END,id FOR UPDATE SKIP LOCKED LIMIT 1")->fetch(PDO::FETCH_ASSOC);
-        if ($task) { $this->db->prepare("UPDATE data_tasks SET status='running',attempts=attempts+1,progress='Starting preparation',updated_at=now() WHERE id=?")->execute([$task['id']]); $task['attempts']++; }
+        $task=$this->db->query("SELECT * FROM data_tasks WHERE status IN ('queued','retry') AND cancel_requested=false AND next_attempt_at<=now() ORDER BY CASE kind WHEN 'zips' THEN 0 ELSE 1 END,id FOR UPDATE SKIP LOCKED LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if ($task) { $this->db->prepare("UPDATE data_tasks SET status='running',import_job_id=null,attempts=attempts+1,progress='Starting preparation',updated_at=now() WHERE id=?")->execute([$task['id']]); $task['attempts']++; }
         $this->db->commit();
         if (!$task) { return false; }
         $id=(int)$task['id']; $payload=json_decode($task['payload'],true,512,JSON_THROW_ON_ERROR);
         try {
             $this->db->exec("SET statement_timeout='0'");
+            $this->checkpoint($id);
             $dir=SWEEPLINE_ROOT.'/var/downloads';
             if (!is_dir($dir)) { mkdir($dir,0750,true); }
             $free=disk_free_space($dir);
@@ -63,9 +73,15 @@ final class DataWorker
             }
             if ($task['kind']==='zips') { $this->zips($id,$dir); }
             else { $this->roads($id,$dir,$payload); }
-            $this->db->prepare("UPDATE data_tasks SET status='complete',progress='Local data ready',error=null,updated_at=now() WHERE id=?")->execute([$id]);
+            $this->db->prepare("UPDATE data_tasks SET status='complete',progress='Local data ready',error=null,updated_at=now() WHERE id=? AND cancel_requested=false")->execute([$id]);
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) { $this->db->rollBack(); }
+            $this->db->beginTransaction();
+            $cancel=$this->db->prepare('SELECT cancel_requested FROM data_tasks WHERE id=? FOR UPDATE'); $cancel->execute([$id]);
+            if ($e instanceof JobCancelled || $cancel->fetchColumn()) {
+                $this->db->prepare("UPDATE data_tasks SET status='cancelled',progress='Cancelled by SuperAdmin',error=null,updated_at=now() WHERE id=?")->execute([$id]);
+                $this->db->commit(); $this->heartbeat(); return true;
+            }
             $message=substr($e->getMessage(),0,1500);
             $size=$payload['bounds'][2]??null;
             $width=$size!==null ? $payload['bounds'][2]-$payload['bounds'][0] : 0;
@@ -73,17 +89,16 @@ final class DataWorker
                 str_contains($message,'error remark');
             if ($task['kind']==='roads' && $width>0.125 && $oversized) {
                 $queue=new DataQueue($this->db);
-                $this->db->beginTransaction();
                 try {
                     foreach (CoveragePlanner::children($payload) as $child) { $queue->ensure($child['key'],'roads',$child); }
                     $this->db->prepare("UPDATE data_tasks SET status='split',progress='Divided dense area into smaller downloads',error=null,updated_at=now() WHERE id=?")->execute([$id]);
-                    $this->db->commit();
                 } catch (\Throwable $splitError) { $this->db->rollBack(); throw $splitError; }
             } else {
                 $retry=(int)$task['attempts']<4; $delay=min(3600,60*(5**max(0,(int)$task['attempts']-1)));
                 $this->db->prepare("UPDATE data_tasks SET status=?,error=?,progress=?,next_attempt_at=now()+(? * interval '1 second'),updated_at=now() WHERE id=?")
                     ->execute([$retry?'retry':'failed',$message,$retry?'Provider or processing error; automatic retry scheduled':$message,$delay,$id]);
             }
+            $this->db->commit();
             error_log("Data task $id: $message");
         }
         $this->heartbeat(); return true;
@@ -105,7 +120,7 @@ final class DataWorker
                 if ($written>52428800) { throw new \RuntimeException('ZIP coordinates exceed extraction limit.'); }
             } finally { $zip->close(); }
             $this->progress($id,'Importing US ZIP coordinates');
-            $count=ZipImporter::run($this->db,$text); $this->progress($id,"Updated $count ZIP coordinates");
+            $count=ZipImporter::run($this->db,$text,fn($lock=false)=>$this->checkpoint($id,$lock)); $this->progress($id,"Updated $count ZIP coordinates");
         } finally {
             foreach ([$archive,$text] as $file) { if (is_file($file)) { unlink($file); } }
         }
@@ -127,7 +142,7 @@ final class DataWorker
             $q->execute([$region,$path,$w,$s,$e,$n]); $job=$q->fetch(PDO::FETCH_ASSOC);
             $this->db->prepare('UPDATE data_tasks SET import_job_id=? WHERE id=?')->execute([$job['id'],$id]);
             $this->db->commit(); $this->progress($id,'Analyzing connected roads and driving profiles');
-            (new Importer($this->db))->run($job);
+            (new Importer($this->db,fn($lock=false)=>$this->checkpoint($id,$lock)))->run($job);
             // Active imported geometry remains; only the validated temporary download is discarded.
         } finally { if (is_file($path)) { unlink($path); } }
     }

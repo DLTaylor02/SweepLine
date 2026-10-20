@@ -73,7 +73,7 @@ A first search covering a large uncached radius can take many minutes or longer.
 
 - **Twisty Roads:** sustained curves, meaningful length, and fewer intersections/controls.
 - **Open Highways:** straightness, continuous stretches, suitable posted limits, and fewer interruptions, for lawful driving.
-- Radius: 1–150 miles. Search distance uses indexed PostGIS geography, not a longitude/latitude bounding box.
+- Radius: whole miles from 1–50, entered directly (default 50). Search distance uses indexed PostGIS geography, not a longitude/latitude bounding box.
 - Optional minimum length: 0–30 miles; roads must be strictly longer.
 - Optional maximum length: a positive value up to 150 miles; the upper bound is inclusive and must exceed the minimum.
 - Blank bounds impose no user-specified length limit. Importer candidate-size limits still apply.
@@ -188,3 +188,11 @@ Road data is © [OpenStreetMap contributors](https://www.openstreetmap.org/copyr
 ## License
 
 Application code is [MIT licensed](LICENSE), copyright 2026 SweepLine contributors. External datasets, map tiles, fonts, and MapLibre retain their respective licenses.
+
+### Managing background jobs
+
+SuperAdmins can open **Jobs** (`/jobs`) to review preparation tasks and manual imports, worker heartbeat, progress, errors, and queue counts. Cancel queued/retrying jobs immediately or request cancellation of running downloads and analysis. Cancellation is cooperative: it is checked during downloads and processing, with a final check before activating a road dataset. A database statement already executing must finish before its next checkpoint. Existing active geographic data remains available. These jobs are shared across searches, so cancelling an area can affect other users.
+
+Cancelled preparation tasks remain cancelled across searches and worker restarts. Use **Retry** to explicitly resume them; cancellation does not delete cached data. Completed jobs cannot be cancelled. Manual imports can be cancelled here; to rerun one, submit a new import using the documented CLI workflow. The list prioritizes active work and shows up to 100 tasks and 100 manual imports. Job controls require SuperAdmin authorization and CSRF protection.
+
+Additional endpoints: `POST /api/admin/tasks/{id}/cancel`, `POST /api/admin/tasks/{id}/retry` (failed or cancelled tasks), and `POST /api/admin/imports/{id}/cancel`.

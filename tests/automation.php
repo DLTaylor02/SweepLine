@@ -54,3 +54,39 @@ check($db->query("SELECT status FROM data_tasks WHERE task_key='us-zips'")->fetc
 check((bool)$db->query("SELECT value FROM app_settings WHERE key='zip_last_sync'")->fetchColumn(),'ZIP refresh timestamp recorded');
 // Keep only the original road fixture visible for subsequent HTTP checks.
 $db->exec("UPDATE regions SET active_job_id=null WHERE slug LIKE 'auto-%'");
+
+// Cancelled tasks must not be revived by searches, refreshes, or recovery.
+$cancelTask=$queue->ensure('auto-cancel-test','roads',['key'=>'auto-cancel-test','bounds'=>[-120,39.5,-119.5,40]]);
+$cancelId=(int)$cancelTask['id'];
+check($queue->cancel($cancelId)['cancel_requested'],'Queued cancellation accepted');
+check($queue->ensure('auto-cancel-test','roads',[],true)['status']==='cancelled','Search does not resurrect cancelled work');
+check(!$worker->runOne(),'Cancelled task is not claimed');
+check($queue->retry($cancelId)['queued'],'Cancelled preparation can be explicitly resumed');
+$cancellingWorker=new SweepLine\DataWorker($db,static function(string $url,string $path,int $maxBytes,?string $post,?callable $progress) use ($queue,$cancelId): void {
+    copy(__DIR__.'/fixture.osm',$path);
+    $queue->cancel($cancelId);
+    $progress('Downloading fixture');
+});
+$cancellingWorker->runOne();
+check($queue->ensure('auto-cancel-test','roads')['status']==='cancelled','Running download acknowledges cancellation without retry');
+check(!is_file(SWEEPLINE_ROOT.'/var/downloads/roads-'.$cancelId.'.osm'),'Cancelled download cleaned up');
+$worker->recover();
+check($queue->ensure('auto-cancel-test','roads')['status']==='cancelled','Restart preserves cancellation');
+try { $queue->cancel((int)$task['id']); check(false,'Completed task cancellation refused'); }
+catch (SweepLine\HttpException $e) { check($e->status===409,'Completed task cancellation refused'); }
+// Cancellation during analysis must not replace an active dataset.
+$region=$db->query("SELECT id FROM regions WHERE slug='auto-test-pipeline'")->fetchColumn();
+$q=$db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage,allow_empty) SELECT region_id,'running',?,coverage,true FROM import_jobs WHERE id=? RETURNING *");
+$q->execute([__DIR__.'/fixture.osm',$activeJob]);$cancelImport=$q->fetch(PDO::FETCH_ASSOC);
+$db->exec('UPDATE regions SET active_job_id='.(int)$activeJob.' WHERE id='.(int)$region);
+$cancelDb=SweepLine\Database::connect();$cancelQueue=new SweepLine\DataQueue($cancelDb);$requested=false;
+try {
+    (new SweepLine\Importer($db,function($lock=false) use ($cancelQueue,$cancelDb,$cancelImport,&$requested): void {
+        $progress=$cancelDb->query('SELECT progress FROM import_jobs WHERE id='.(int)$cancelImport['id'])->fetchColumn();
+        if (!$requested && ($lock || str_contains($progress,'Building connectivity'))) { $cancelQueue->cancel((int)$cancelImport['id'],true);$requested=true; }
+    }))->run($cancelImport);
+    check(false,'Importer honours cancellation');
+} catch (SweepLine\JobCancelled $e) { check(true,'Importer honours cancellation'); }
+check((int)$db->query('SELECT active_job_id FROM regions WHERE id='.(int)$region)->fetchColumn()===$activeJob,'Cancelled import preserves previous active data');
+$db->exec('UPDATE regions SET active_job_id=null WHERE id='.(int)$region);
+check($db->query('SELECT status FROM import_jobs WHERE id='.(int)$cancelImport['id'])->fetchColumn()==='failed','Cancelled manual import leaves running state');

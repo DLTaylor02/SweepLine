@@ -5,7 +5,7 @@ if (!is_string($path)) { http_response_code(400); exit('Invalid request'); }
 // PHP built-in development server may serve public assets; production uses NGINX.
 if (PHP_SAPI==='cli-server' && preg_match('#^/assets/[a-zA-Z0-9_.-]+$#',$path) && is_file(__DIR__.$path)) { return false; }
 if (!str_starts_with($path,'/api/')) {
-    if ($path!=='/') { http_response_code(404); exit('Not found'); }
+    if (!in_array($path,['/','/jobs'],true)) { http_response_code(404); exit('Not found'); }
     header('Cache-Control: no-store');
     require __DIR__.'/home.php'; exit;
 }
@@ -20,7 +20,8 @@ try {
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if ($path==='/api/admin/users' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='PATCH'; }
-    if (preg_match('#^/api/admin/tasks/[1-9]\\d{0,17}/retry$#',$path)) { $expected='POST'; }
+    if (preg_match('#^/api/admin/tasks/[1-9]\\d{0,17}/(?:retry|cancel)$#',$path)) { $expected='POST'; }
+    if (preg_match('#^/api/admin/imports/[1-9]\\d{0,17}/cancel$#',$path)) { $expected='POST'; }
     if ($method!==$expected) { header('Allow: '.$expected); throw new SweepLine\HttpException(405,'Method not allowed'); }
     $input=[];
     if (in_array($method,['POST','PATCH'],true)) {
@@ -72,8 +73,11 @@ try {
                     $result=$method==='GET'?$auth->users():$auth->create($input);
                 } elseif (preg_match('#^/api/admin/users/([1-9]\\d{0,17})$#',$path,$m)) { $result=$auth->update((int)$m[1],$input); }
                 elseif ($path==='/api/admin/data') { $result=(new SweepLine\DataQueue($db))->overview(); }
-                elseif (preg_match('#^/api/admin/tasks/([1-9]\\d{0,17})/retry$#',$path,$m)) {
-                    $result=(new SweepLine\DataQueue($db))->retry((int)$m[1]);
+                elseif (preg_match('#^/api/admin/tasks/([1-9]\\d{0,17})/(retry|cancel)$#',$path,$m)) {
+                    $queue=new SweepLine\DataQueue($db);
+                    $result=$m[2]==='cancel'?$queue->cancel((int)$m[1]):$queue->retry((int)$m[1]);
+                } elseif (preg_match('#^/api/admin/imports/([1-9]\\d{0,17})/cancel$#',$path,$m)) {
+                    $result=(new SweepLine\DataQueue($db))->cancel((int)$m[1],true);
                 } else { throw new OutOfBoundsException('Endpoint not found'); }
             }
         }

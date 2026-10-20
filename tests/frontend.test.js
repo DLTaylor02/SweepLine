@@ -16,12 +16,12 @@ async function testFrontend(sources) {
   for(const n of ['username','password']){get('account-form').fields[n]=new Element();get('account-form')[n]=get('account-form').fields[n];}
   for(const n of ['username','name','email','password']){get('create-user').fields[n]=new Element();get('create-user')[n]=get('create-user').fields[n];}
   const search=get('search');
-  for(const n of ['zip','radius','custom_radius','profile','min_length','max_length','max_stops','paved'])search[n]=new Element();
+  for(const n of ['zip','radius','profile','min_length','max_length','max_stops','paved'])search[n]=new Element();
   search.zip.value='12345';search.radius.value='50';search.profile.value='twisty';search.max_stops.value='5';search.paved.checked=true;
   get('admin-panel').hidden=true;
   const document={getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
-  let logged=false,adminReady=true,csrf='initial',searchResponses=[];
+  let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false;
   const requests=[];
   const session=()=>({user:logged?{id:1,name:'Owner',role:'superadmin'}:null,csrf,admin_ready:adminReady});
   const fetch=async(path,options={})=>{
@@ -31,7 +31,8 @@ async function testFrontend(sources) {
     else if(path==='/api/logout'){logged=false;csrf='signed-out';data=session();}
     else if(path==='/api/search')data=searchResponses.shift()??{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}};
     else if(path==='/api/coverage'||path==='/api/admin/users')data=[];
-    else if(path==='/api/admin/data')data={tasks:[],worker_heartbeat:null,zip_last_sync:null};
+    else if(path==='/api/admin/data')data={tasks:[{id:42,kind:'roads',task_key:'test-area',status:jobCancelled?'cancelled':'running',progress:'Analyzing roads',cancel_requested:jobCancelled}],worker_heartbeat:null,zip_last_sync:null};
+    else if(path==='/api/admin/tasks/42/cancel'){jobCancelled=true;data={cancel_requested:true};}
     else {status=401;data={error:'Please sign in'};}
     return {ok:status<400,status,json:async()=>data};
   };
@@ -54,6 +55,7 @@ async function testFrontend(sources) {
   check(!get('search-spinner').hidden&&!('value' in get('search-progress')),'Submitting immediately shows indeterminate preparation');
   await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
+  check(payload.radius_miles===50,'Numeric radius submitted directly');
   check(payload.max_length_miles===12.5&&!('min_length_miles'in payload),'Optional bounds preserved');
   check(req.headers['X-CSRF-Token']==='signed-in','Search uses rotated CSRF');
   check(get('status').textContent.includes('0/3'),'Preparation progress displayed');
@@ -73,6 +75,12 @@ async function testFrontend(sources) {
   check(timers.length===beforeFailure&&get('status').textContent.includes('SuperAdmin'),'Terminal preparation failure stops polling with actionable message');
   check(get('search-spinner').hidden&&get('search-progress').hidden,'Terminal failure clears loading state');
   get('admin-open').onclick();await flush();check(!get('admin-panel').hidden,'Manage opens');
+  check(!get('jobs-open').hidden,'SuperAdmin sees dedicated Jobs page link');
+  const cancel=get('task-list').children[0].children.find(node=>node.textContent==='Cancel job');
+  check(!!cancel,'Running jobs show cancellation control');
+  await cancel.onclick();await flush();
+  check(requests.some(r=>r.path==='/api/admin/tasks/42/cancel'&&r.headers['X-CSRF-Token']==='signed-in'),'Cancel action sends authenticated CSRF request');
+  check(get('task-list').children[0].children.some(node=>node.textContent==='Retry'),'Cancelled task offers explicit retry');
   get('admin-close').onclick();check(get('admin-panel').hidden,'Manage closes');
   get('submit').disabled=true;
   await get('sign-out').onclick();await flush();
@@ -88,6 +96,11 @@ async function testFrontend(sources) {
   const lateWindow={...window,SweepLineAccount:{user:{id:1}},sweeplineRequest:async()=>{lateCoverage++;return [];}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout',sources['app.js'])(lateWindow,document,fetch,function(){},setTimer,clearTimer);
   await flush();check(lateCoverage===1,'Late-loading app hydrates an already authenticated session');
+  logged=true;adminReady=true;
+  const jobsWindow={...window,location:{pathname:'/jobs'}};
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout',sources['account.js'])(jobsWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer);
+  await flush();
+  check(!get('admin-panel').hidden&&get('workspace').hidden&&get('admin-users').hidden,'Dedicated Jobs page opens management without search or user forms');
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){

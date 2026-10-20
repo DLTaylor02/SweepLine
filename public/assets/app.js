@@ -89,7 +89,6 @@ async function selectRoad(id) {
     detail.append(text('p','Elevation unavailable. Score dimensions are weighted for the selected profile. Completeness measures mapped attributes, not certainty that every control is present.'));
   } catch(e) { if(selected===id) detail.append(text('p',e.message)); }
 }
-$('search').radius.onchange = e => {$('custom-wrap').hidden=e.target.value!=='custom';};
 
 async function discover(payload, sequence) {
   try {
@@ -121,7 +120,7 @@ async function discover(payload, sequence) {
 $('search').onsubmit = event => {
   event.preventDefault();clearTimeout(pollTimer);const sequence=++request,form=event.target;
   $('submit').disabled=true;setStatus('Preparing your road search…',true);$('road-detail').hidden=true;selected=null;
-  discover({zip:form.zip.value,radius_miles:Number(form.radius.value==='custom'?form.custom_radius.value:form.radius.value),profile:form.profile.value,
+  discover({zip:form.zip.value,radius_miles:Number(form.radius.value),profile:form.profile.value,
     ...(form.min_length.value.trim()===''?{}:{min_length_miles:Number(form.min_length.value)}),
     ...(form.max_length.value.trim()===''?{}:{max_length_miles:Number(form.max_length.value)}),
     max_stops:Number(form.max_stops.value),paved_only:form.paved.checked},sequence);
