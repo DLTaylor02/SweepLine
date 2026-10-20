@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Consolidated installation on `sudo ./setup.sh`, removed the redundant `setup` wrapper, and updated documentation and CI checks.
+
 - Restored the latest search and live preparation progress when returning to discovery or reloading, with account-scoped tab storage, fresh polling, history-link precedence, and sign-out cleanup.
 
 - Defaulted the mapped-stop plus uncertain-control limit to zero in the search form and API.
@@ -37,7 +39,7 @@
 
 - Fixed maximum-length SQL quoting and deduplicated exact road geometry across overlapping coverage cells.
 
-- Added the `setup` entry point, 1279 default-port prompt, and installation-driven initialization.
+- Added the 1279 default-port prompt and installation-driven initialization.
 - Added installer-provisioned SuperAdmin accounts, web sessions/CSRF, user management, and session invalidation.
 - Added automatic ZIP initialization/refresh and cached, search-driven OSM preparation with progress polling, retries, dense-area subdivision, and resource guards.
 - Added SuperAdmin worker/task monitoring and retries; updated automated tests and install-and-use documentation.

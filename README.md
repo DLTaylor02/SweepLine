@@ -9,10 +9,10 @@ SweepLine discovers and ranks continuous driving roads near a US ZIP code. It ru
 On Debian 12+ with systemd, from a trusted checkout:
 
 ```bash
-sudo ./setup
+sudo ./setup.sh
 ```
 
-The executable `setup` entry point calls the established `setup.sh` installer. If an archive or checkout has lost executable permissions, use `sudo bash setup` (or restore permission with `chmod +x setup`).
+`setup.sh` contains the complete installer. If an archive or checkout has lost executable permissions, restore them with `chmod +x setup.sh`, or run `sudo bash setup.sh`.
 
 The installer prompts:
 
@@ -46,7 +46,7 @@ sudo /var/www/sweepline/reset-superadmin
 
 Enter and confirm a new password; input is hidden. The command requires server administrator access and never asks for the old web password or an email address. It changes only the existing SuperAdmin's password, re-enables that account if disabled, and invalidates its existing web sessions. Other users and application data are preserved. Passwords are hashed; no secret is passed in command-line arguments or saved in `.env`.
 
-For a custom deployment directory, run its `reset-superadmin` file, or set `APP_INSTALL_DIR` explicitly when invoking the command from a checkout. If no SuperAdmin exists, run the installer instead. Normal `sudo ./setup` reruns continue to preserve existing passwords; reset is an explicit recovery action.
+For a custom deployment directory, run its `reset-superadmin` file, or set `APP_INSTALL_DIR` explicitly when invoking the command from a checkout. If no SuperAdmin exists, run the installer instead. Normal `sudo ./setup.sh` reruns continue to preserve existing passwords; reset is an explicit recovery action.
 
 ### Linux service account versus web accounts
 
@@ -148,7 +148,7 @@ Search request template (replace `<US_ZIP>` with your chosen five-digit US ZIP c
 
 Ordinary operation requires no import commands. SuperAdmin **Manage** shows worker heartbeat, ZIP refresh time, preparation tasks/errors, and retries. Logs are in `journalctl -u sweepline-worker` and `/var/log/sweepline/php-error.log`. SuperAdmin provisioning is handled by the installer; rerunning it preserves an existing administrator and password.
 
-Back up PostgreSQL, `.env`, and runtime data according to your existing server backup policy. To upgrade, run the updated checkout's `sudo ./setup`. The installer stops its owned worker while deploying code, preserves configuration/data, runs migrations and restarts it. Interrupted background work is recovered for automatic retry. The installer is not a transactional release manager for packages/code; keep backups for application rollback.
+Back up PostgreSQL, `.env`, and runtime data according to your existing server backup policy. To upgrade, run the updated checkout's `sudo ./setup.sh`. The installer stops its owned worker while deploying code, preserves configuration/data, runs migrations and restarts it. Interrupted background work is recovered for automatic retry. The installer is not a transactional release manager for packages/code; keep backups for application rollback.
 
 ## Development and verification
 
@@ -158,7 +158,6 @@ php tests/run.php
 # Optional frontend checks with Node (development/CI only):
 node tests/frontend.test.js
 find src bin public tests -name '*.php' -print0 | xargs -0 -n1 php -l
-bash -n setup
 bash -n setup.sh
 bash tests/installer-user.sh
 bash tests/installer-admin.sh

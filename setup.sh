@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Reusable Debian/Ubuntu installer for an isolated PHP, Composer, PostgreSQL,
 # Nginx application. Edit Configuration and Project hooks, then run:
-#   sudo ./setup   (default port 1279; press Enter at the prompt)
+#   sudo ./setup.sh   (default port 1279; press Enter at the prompt)
 set -Eeuo pipefail
 
 # Configuration
@@ -325,7 +325,7 @@ fi
 chown -R "$INSTALL_USER:$SYSTEM_USER" "$APP_DIR"
 find "$APP_DIR" -type d -exec chmod 0750 {} +; find "$APP_DIR" -type f -exec chmod 0640 {} +
 chmod 0751 "$APP_DIR"
-chmod 0750 "$APP_DIR/$(basename "$0")" "$APP_DIR/setup" "$APP_DIR/reset-superadmin"
+chmod 0750 "$APP_DIR/$(basename "$0")" "$APP_DIR/reset-superadmin"
 find "$APP_DIR/$PUBLIC_DIR_RELATIVE" -type d -exec chmod 0755 {} +
 find "$APP_DIR/$PUBLIC_DIR_RELATIVE" -type f -exec chmod 0644 {} +
 for path in "${WRITABLE_PATHS[@]}"; do

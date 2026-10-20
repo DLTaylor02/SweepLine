@@ -34,7 +34,7 @@ Web requests never import or score roads. Radius must be a whole number from 1 t
 
 ## 8. Installation bootstrap and web-managed data
 
-The entry point is `sudo ./setup`; all system provisioning remains in the established `setup.sh` template. The default port prompt uses 1279 for a fresh install and preserves an existing port on upgrades. The non-login Linux user is a service identity, independent of application accounts.
+The sole installer entry point is `sudo ./setup.sh`; all system provisioning remains in the established installer template. The default port prompt uses 1279 for a fresh install and preserves an existing port on upgrades. The non-login Linux user is a service identity, independent of application accounts.
 
 Migrations 002/003 add hashed-password users, usernames, optional email addresses, login attempt counters, settings and a persistent data queue. The installer checks for an existing SuperAdmin, prompts for and confirms a hidden password only if missing, and passes the secret to its PHP CLI helper over standard input. Account creation serializes under a table lock; existing credentials are never reset. Browser account claiming is removed. Upgrades add usernames while preserving account/password data and legacy email login. Session IDs regenerate on login; cookies are HttpOnly/SameSite, mutations require CSRF, and account changes invalidate sessions via version counters. Only SuperAdmin/member capabilities are defined pending permission design.
 

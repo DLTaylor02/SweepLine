@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# SweepLine installation entry point. All provisioning remains in the established template.
-set -Eeuo pipefail
-source_dir="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
-exec bash "$source_dir/setup.sh" "$@"
