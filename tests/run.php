@@ -91,5 +91,16 @@ check(SweepLine\Auth::credentials(['username'=>'MEMBER','password'=>'long-passwo
 check(rejects(fn()=>SweepLine\Auth::credentials(['username'=>'member','email'=>'invalid','password'=>'long-password-123'])),'Optional email validated when supplied');
 check(rejects(fn()=>SweepLine\Auth::validatePassword("long-password\0-invalid")),'Null bytes rejected in passwords');
 
+check(Validation::search(['zip'=>'12345'])['radius_miles']===5.0,'Default search radius is five miles');
+
+$diskReport="Filesystem Type 1B-blocks Avail Mounted on\n/dev/sda1 ext4 1000 400 /\n/dev/sda1 ext4 1000 400 /bind\ntmpfs tmpfs 900 800 /run\n/dev/loop0 squashfs 500 0 /snap/test\n/dev/sdb1 xfs 2000 1000 /srv\n";
+$volumes=SweepLine\StorageUsage::volumes($diskReport);
+check(count($volumes)===2,'Storage excludes memory/image mounts and duplicate devices');
+$usage=SweepLine\StorageUsage::summarize(100,$volumes);
+check($usage['available'] && $usage['total_bytes']===3000.0 && $usage['free_bytes']===1400.0 && $usage['other_bytes']===1500.0,'Storage categories reconcile to local capacity');
+check(!SweepLine\StorageUsage::summarize(5000,$volumes)['available'],'Inconsistent database/disk totals do not produce a pie');
+check(!SweepLine\StorageUsage::summarize(100,[])['available'],'Missing volumes are explicitly unavailable');
+check(SweepLine\StorageUsage::summarize(0,$volumes)['available'],'Empty database size is supported');
+
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

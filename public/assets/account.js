@@ -4,6 +4,9 @@
   let session={user:null,csrf:null,admin_ready:false};
   let adminTimer;
   const jobsPage=window.location?.pathname==='/jobs';
+  const managePage=window.location?.pathname==='/manage';
+  const historyPage=window.location?.pathname==='/history';
+  const adminPage=jobsPage || managePage;
   window.SweepLineAccount=session;
   window.sweeplineRequest=async (path,options={}) => {
     const method=options.method || 'GET';
@@ -20,17 +23,22 @@
   };
   function paint() {
     const signed=!!session.user;
-    el('workspace').hidden=!signed || jobsPage;el('account-gate').hidden=signed;
+    el('workspace').hidden=!signed || adminPage || historyPage;el('account-gate').hidden=signed;
     el('sign-out').hidden=!signed;el('admin-open').hidden=session.user?.role!=='superadmin';
     el('jobs-open').hidden=session.user?.role!=='superadmin';
-    if(jobsPage && signed) {
-      el('admin-panel').hidden=false;el('admin-users').hidden=true;
+    el('history-open').hidden=!signed;el('history-panel').hidden=!signed || !historyPage;
+    if(historyPage && signed)refreshHistory();
+    el('admin-panel').hidden=!signed || !adminPage;
+    if(adminPage && signed) {
+      el('admin-panel').hidden=false;el('admin-users').hidden=jobsPage;
+      el('admin-jobs').hidden=managePage;
+      el('admin-page-title').textContent=jobsPage?'Background jobs':'Manage users';
       el('admin-panel').className='admin-panel jobs-page';
       if(session.user.role==='superadmin')refreshAdmin();
-      else {el('admin-jobs').hidden=true;el('admin-status').textContent='SuperAdmin access required.';}
+      else {el('admin-jobs').hidden=true;el('admin-users').hidden=true;el('admin-status').textContent='SuperAdmin access required.';}
     }
     el('account-name').textContent=signed?session.user.name:'';
-    if(!signed) {el('admin-panel').hidden=true;clearTimeout(adminTimer);}
+    if(!signed) {el('history-list').replaceChildren();el('admin-panel').hidden=true;clearTimeout(adminTimer);}
     el('account-form').hidden=signed || !session.admin_ready;
     el('account-title').textContent='Sign in';
     el('account-submit').textContent='Sign in';
@@ -61,15 +69,63 @@
     catch(e) {el('status').textContent=e.message;}
   };
   const text=(tag,value)=>{const node=document.createElement(tag);node.textContent=value;return node;};
+  async function refreshHistory() {
+    el('history-status').textContent='Loading previous searches…';
+    try {
+      const searches=await window.sweeplineRequest('/api/search-history');
+      if(!session.user)return;
+      el('history-list').replaceChildren();
+      el('history-status').textContent=searches.length?'':'No previous searches yet. Searches you run from now on will appear here.';
+      searches.forEach(item=>{
+        const p=item.parameters,row=text('div','');row.className='history-row';
+        row.append(text('strong',p.zip+' · '+p.radius_miles+' miles · '+(p.profile==='twisty'?'Twisty Roads':'Open Highways')),
+          text('p',new Date(item.created_at).toLocaleString()),
+          text('p',`Length: ${p.min_length_miles>0?'over '+p.min_length_miles:'no minimum'} to ${p.max_length_miles??'no maximum'} miles · Stops: ${p.max_stops} · ${p.paved_only?'Known paved only':'All surfaces'}`));
+        const again=text('a','Run again');again.className='page-back';
+        again.href='/?'+new URLSearchParams(Object.entries(p).filter(([,v])=>v!==null)).toString();
+        row.append(again);el('history-list').append(row);
+      });
+    } catch(e) {el('history-status').textContent=e.message;}
+  }
   async function updateUser(id,payload) {
     await window.sweeplineRequest('/api/admin/users/'+id,{method:'PATCH',body:JSON.stringify(payload)});
+  }
+  function renderStorage(storage) {
+    const pie=el('storage-pie'),legend=el('storage-legend');
+    pie.hidden=true;legend.replaceChildren();
+    if(!storage){el('storage-note').textContent='Storage reporting unavailable.';return;}
+    const size=value=>{
+      const units=['B','KiB','MiB','GiB','TiB','PiB'];let n=value,index=0;
+      while(n>=1024&&index<units.length-1){n/=1024;index++;}
+      return n.toFixed(index?1:0)+' '+units[index];
+    };
+    const slices=storage.available?[
+      ['SweepLine database',storage.database_bytes,'#2563a6'],
+      ['Other used space',storage.other_bytes,'#f08a38'],
+      ['Free space',storage.free_bytes,'#94a3b8']
+    ]:[['SweepLine database',storage.database_bytes,'#2563a6']];
+    const labels=[];
+    slices.forEach(([label,bytes,color])=>{
+      const row=text('li',''),swatch=text('span','');swatch.className='storage-swatch';swatch.style.background=color;
+      const percentage=storage.available?' ('+(bytes/storage.total_bytes*100).toFixed(1)+'%)':'';
+      const description=label+': '+size(bytes)+percentage;labels.push(description);
+      row.append(swatch,text('span',description));legend.append(row);
+    });
+    el('storage-note').textContent=storage.message+(storage.available?' Volumes: '+storage.volumes.map(v=>v.mount).join(', ')+'. Total: '+size(storage.total_bytes)+'.':'');
+    if(storage.available) {
+      const db=storage.database_bytes/storage.total_bytes*100;
+      const used=(storage.database_bytes+storage.other_bytes)/storage.total_bytes*100;
+      pie.style.background=`conic-gradient(#2563a6 0% ${db}%, #f08a38 ${db}% ${used}%, #94a3b8 ${used}% 100%)`;
+      pie.setAttribute('aria-label',labels.join('; '));pie.hidden=false;
+    }
   }
   async function refreshAdmin() {
     clearTimeout(adminTimer);
     if(el('admin-panel').hidden || session.user?.role!=='superadmin')return;
     if(el('user-list').contains(document.activeElement)) { adminTimer=setTimeout(refreshAdmin,15000);return; }
     try {
-      const [users,data]=await Promise.all([window.sweeplineRequest('/api/admin/users'),window.sweeplineRequest('/api/admin/data')]);
+      const users=managePage?await window.sweeplineRequest('/api/admin/users'):[];
+      const data=jobsPage?await window.sweeplineRequest('/api/admin/data'):null;
       el('user-list').replaceChildren();
       users.forEach(user=>{
         const row=text('div','');row.className='user-row';
@@ -91,6 +147,8 @@
         };
         row.append(password,reset);el('user-list').append(row);
       });
+      if(data) {
+      renderStorage(data.storage);
       el('worker-status').textContent='Worker last seen: '+(data.worker_heartbeat || 'waiting for startup')+
         '. ZIP coordinates updated: '+(data.zip_last_sync || 'preparing automatically')+'.';
       el('task-list').replaceChildren();
@@ -120,11 +178,10 @@
         }
         el('task-list').append(row);
       });
+      }
     } catch(e) {el('admin-status').textContent=e.message;}
     if(!el('admin-panel').hidden)adminTimer=setTimeout(refreshAdmin,15000);
   }
-  el('admin-open').onclick=()=>{el('admin-panel').hidden=false;refreshAdmin();el('admin-panel').scrollIntoView({behavior:'smooth'});};
-  el('admin-close').onclick=()=>{if(jobsPage){window.location.href='/';return;}el('admin-panel').hidden=true;clearTimeout(adminTimer);};
   el('admin-refresh').onclick=refreshAdmin;
   el('create-user').onsubmit=async event=>{
     event.preventDefault();const form=event.target;

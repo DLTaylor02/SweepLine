@@ -92,9 +92,10 @@ async function selectRoad(id) {
 
 async function discover(payload, sequence) {
   try {
-    const params={...payload};delete params._mapShown;
+    const params={...payload};delete params._mapShown;delete params._recorded;params.record_history=!payload._recorded;
     const data=await api('/api/search',{method:'POST',body:JSON.stringify(params)});
     if(sequence!==request)return;
+    payload._recorded=true;
     roads=data.results || [];activeProfile=payload.profile;render();
     const preparation=data.preparation;
     if(preparation && preparation.state!=='ready') {
@@ -126,6 +127,7 @@ $('search').onsubmit = event => {
     max_stops:Number(form.max_stops.value),paved_only:form.paved.checked},sequence);
 };
 async function handleSession(event) {
+  if(window.location?.pathname && window.location.pathname!=='/')return;
   if(!event.detail.user) {
     ++request;clearTimeout(pollTimer);roads=[];render();$('road-detail').hidden=true;$('submit').disabled=false;setStatus('Choose a ZIP code to explore roads nearby.');
     if(map && map.getSource('roads')) { map.getSource('roads').setData(empty());map.getSource('radius').setData(empty()); }
@@ -140,3 +142,15 @@ async function handleSession(event) {
 }
 window.addEventListener('sweepline:sessionchange',handleSession);
 if(window.SweepLineAccount?.user)handleSession({detail:window.SweepLineAccount});
+
+if(window.location?.pathname==='/') {
+  const params=new URLSearchParams(window.location.search);
+  if(params.has('zip')) {
+    const form=$('search');
+    for(const key of ['zip','profile'])if(params.has(key))form[key].value=params.get(key);
+    for(const [key,field] of [['radius_miles','radius'],['min_length_miles','min_length'],['max_length_miles','max_length'],['max_stops','max_stops']])
+      if(params.has(key))form[field].value=params.get(key);
+    if(params.has('paved_only'))form.paved.checked=params.get('paved_only')==='true';
+    setStatus('Previous search loaded. Select Discover roads to run it again.');
+  }
+}

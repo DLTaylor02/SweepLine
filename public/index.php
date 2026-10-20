@@ -5,7 +5,7 @@ if (!is_string($path)) { http_response_code(400); exit('Invalid request'); }
 // PHP built-in development server may serve public assets; production uses NGINX.
 if (PHP_SAPI==='cli-server' && preg_match('#^/assets/[a-zA-Z0-9_.-]+$#',$path) && is_file(__DIR__.$path)) { return false; }
 if (!str_starts_with($path,'/api/')) {
-    if (!in_array($path,['/','/jobs'],true)) { http_response_code(404); exit('Not found'); }
+    if (!in_array($path,['/','/jobs','/manage','/history'],true)) { http_response_code(404); exit('Not found'); }
     header('Cache-Control: no-store');
     require __DIR__.'/home.php'; exit;
 }
@@ -46,11 +46,13 @@ try {
             elseif ($path==='/api/login') { $result=$auth->login($input); }
             elseif ($path==='/api/logout') { $result=$auth->logout(); }
             else {
-                $auth->requireUser(str_starts_with($path,'/api/admin/'));
+                $user=$auth->requireUser(str_starts_with($path,'/api/admin/'));
                 // Release the session lock before spatial queries or polling.
                 session_write_close();
-                if ($path==='/api/coverage') { $result=$api->coverage(); }
+                if ($path==='/api/search-history') { $result=(new SweepLine\SearchHistory($db))->recent((int)$user['id']); }
+                elseif ($path==='/api/coverage') { $result=$api->coverage(); }
                 elseif ($path==='/api/search') {
+                    if (isset($input['record_history']) && !is_bool($input['record_history'])) { throw new InvalidArgumentException('record_history must be a JSON boolean'); }
                     $p=SweepLine\Validation::search($input); $queue=new SweepLine\DataQueue($db); $preparation=$queue->prepare($p);
                     if ($preparation['state']==='ready') { $result=$api->search($p); $result['preparation']=$preparation; }
                     else {
@@ -58,6 +60,7 @@ try {
                         try { $result=$api->search($p); } catch (OutOfBoundsException $e) { $result=['results'=>[]]; }
                         $result['preparation']=$preparation;
                     }
+                    if ($input['record_history']??false) { (new SweepLine\SearchHistory($db))->record((int)$user['id'],$p); }
                 } elseif (preg_match('#^/api/zips/(.*)$#',$path,$m)) {
                     SweepLine\Validation::zip($m[1]);
                     try { $result=$api->zip($m[1]); }

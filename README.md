@@ -73,7 +73,7 @@ A first search covering a large uncached radius can take many minutes or longer.
 
 - **Twisty Roads:** sustained curves, meaningful length, and fewer intersections/controls.
 - **Open Highways:** straightness, continuous stretches, suitable posted limits, and fewer interruptions, for lawful driving.
-- Radius: whole miles from 1–50, entered directly (default 50). Search distance uses indexed PostGIS geography, not a longitude/latitude bounding box.
+- Radius: whole miles from 1–50, entered directly (default 5). Search distance uses indexed PostGIS geography, not a longitude/latitude bounding box.
 - Optional minimum length: 0–30 miles; roads must be strictly longer.
 - Optional maximum length: a positive value up to 150 miles; the upper bound is inclusive and must exceed the minimum.
 - Blank bounds impose no user-specified length limit. Importer candidate-size limits still apply.
@@ -196,3 +196,13 @@ SuperAdmins can open **Jobs** (`/jobs`) to review preparation tasks and manual i
 Cancelled preparation tasks remain cancelled across searches and worker restarts. Use **Retry** to explicitly resume them; cancellation does not delete cached data. Completed jobs cannot be cancelled. Manual imports can be cancelled here; to rerun one, submit a new import using the documented CLI workflow. The list prioritizes active work and shows up to 100 tasks and 100 manual imports. Job controls require SuperAdmin authorization and CSRF protection.
 
 Additional endpoints: `POST /api/admin/tasks/{id}/cancel`, `POST /api/admin/tasks/{id}/retry` (failed or cancelled tasks), and `POST /api/admin/imports/{id}/cancel`.
+
+### Pages and previous searches
+
+The header links share the same button styling. **Manage** (`/manage`) is a dedicated SuperAdmin user-management page; all worker status, ZIP sync status, preparation progress, errors, counts, cancellation and retry controls live on **Jobs** (`/jobs`). **History** (`/history`) is available to every signed-in user and shows only their latest 100 searches across browsers. Searches made before this feature was installed cannot be recovered. **Run again** restores the ZIP and all filters on the discovery form; select Discover roads to run against current data. History stores search parameters and timestamps, not road-result snapshots. The radius defaults to 5 whole miles (maximum 50).
+
+`GET /api/search-history` returns the signed-in user's recent searches. The browser sends `record_history: true` for an initial `POST /api/search`, and false for background progress polling. Identical submissions within ten seconds are deduplicated. Search parameters include location information and remain in the application database, scoped to their account; older entries are removed automatically as the 100-entry limit is reached.
+
+### Jobs storage chart
+
+The SuperAdmin Jobs page shows a live pie chart of **SweepLine database**, **other used space**, and **free space**, refreshing with job status. The database slice uses PostgreSQL's actual database size. Disk totals combine mounted local persistent filesystems reported by Debian's `df`; repeated mounts are counted once. Memory filesystems and network mounts are excluded. Other used space includes other databases, SweepLine downloads/source/logs, unrelated files, metadata, and reserved filesystem space. Free space means space available to ordinary users. The mounted volumes and combined total appear below the chart; this is not a report of unmounted disks. A database hosted remotely cannot be combined with local disk totals, so the page shows database size and an explanation instead of a misleading pie chart. No extra database or filesystem privileges are granted.

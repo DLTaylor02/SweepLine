@@ -20,6 +20,7 @@ function expect(array $response,int $code,string $message): array {
     echo "PASS $message\n";return $response['data'];
 }
 expect(callApi($anonymous,'GET','/api/health'),200,'Public application health');
+expect(callApi($anonymous,'GET','/api/search-history'),401,'Search history requires login');
 expect(callApi($anonymous,'GET','/api/coverage'),401,'Coverage requires login');
 $session=expect(callApi($admin,'GET','/api/session'),200,'Get session and CSRF');
 if (!$session['admin_ready']) { throw new RuntimeException('HTTP tests require terminal-provisioned SuperAdmin fixture'); }
@@ -33,14 +34,22 @@ if ($session['user']['role']!=='superadmin' || $session['user']['email']!==null)
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345']),403,'Search requires CSRF');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>51],$csrf),422,'Search validation');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25.5],$csrf),422,'Fractional radius rejected via API');
-$data=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25],$csrf),200,'Cached search is immediate');
+$data=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'record_history'=>true],$csrf),200,'Cached search is immediate');
 if (count($data['results'])!==2) { throw new RuntimeException('Cached fixture roads not returned'); }
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
-expect(callApi($admin,'GET','/api/admin/data'),200,'SuperAdmin sees preparation status');
+$jobs=expect(callApi($admin,'GET','/api/admin/data'),200,'SuperAdmin sees preparation status');
+if (!isset($jobs['storage']['database_bytes']) || !array_key_exists('available',$jobs['storage'])) { throw new RuntimeException('Storage report missing from Jobs API'); }
 $created=expect(callApi($admin,'POST','/api/admin/users',['username'=>'member','name'=>'Member','password'=>'member-password-123'],$csrf),200,'SuperAdmin creates user without email');
 $id=(int)$created['id'];
 $memberSession=expect(callApi($member,'GET','/api/session'),200,'Member pre-login session');
 $memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Member login');
+$history=expect(callApi($admin,'GET','/api/search-history'),200,'SuperAdmin views own history');
+if (count($history)!==1 || $history[0]['parameters']['radius_miles']!=25) { throw new RuntimeException('Search history missing or polluted by polling'); }
+$memberHistory=expect(callApi($member,'GET','/api/search-history'),200,'Member views own history');
+if ($memberHistory!==[]) { throw new RuntimeException('Another user history leaked'); }
+$historyDb=SweepLine\Database::connect();$store=new SweepLine\SearchHistory($historyDb);
+for($n=0;$n<105;$n++) { $store->record((int)$created['id'],SweepLine\Validation::search(['zip'=>str_pad((string)$n,5,'0',STR_PAD_LEFT)])); }
+if(count($store->recent((int)$created['id']))!==100) { throw new RuntimeException('History retention not bounded'); }
 expect(callApi($member,'GET','/api/admin/users'),403,'Members cannot manage users');
 expect(callApi($member,'GET','/api/admin/data'),403,'Members cannot view job management');
 expect(callApi($member,'POST','/api/admin/tasks/1/cancel',[],$memberSession['csrf']),403,'Members cannot cancel jobs');
