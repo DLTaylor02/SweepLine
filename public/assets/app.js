@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 let map, ready, roads = [], selected = null, request = 0, pollTimer, activeProfile='twisty';
 const empty = () => ({type:'FeatureCollection',features:[]});
-const color = ['interpolate',['linear'],['get','score'],0,'#a28663',50,'#7ca455',100,'#167260'];
+const color = ['interpolate',['linear'],['get','score'],0,'#94a3b8',50,'#60a5fa',100,'#1d4ed8'];
 function setStatus(message) { $('status').textContent = message; }
 async function api(path, options) { return window.sweeplineRequest(path, options); }
 function syncMapTheme() {
@@ -10,9 +10,9 @@ function syncMapTheme() {
   const dark = document.documentElement.dataset.theme === 'dark';
   map.setPaintProperty('basemap', 'raster-brightness-max', dark ? 0.32 : 1);
   map.setPaintProperty('basemap', 'raster-saturation', dark ? -0.85 : -0.65);
-  map.setPaintProperty('roads-outline', 'line-color', dark ? '#15292c' : '#ffffff');
-  map.setPaintProperty('radius-line', 'line-color', dark ? '#8bd5bd' : '#176956');
-  map.setPaintProperty('radius-fill', 'fill-color', dark ? '#8bd5bd' : '#176956');
+  map.setPaintProperty('roads-outline', 'line-color', dark ? '#15253b' : '#ffffff');
+  map.setPaintProperty('radius-line', 'line-color', dark ? '#8bbcff' : '#2563a6');
+  map.setPaintProperty('radius-fill', 'fill-color', dark ? '#8bbcff' : '#2563a6');
 }
 window.addEventListener('sweepline:themechange', syncMapTheme);
 function initMap() {
@@ -21,8 +21,8 @@ function initMap() {
   map.addControl(new maplibregl.NavigationControl(),'top-right');
   ready = new Promise(resolve => map.on('load', () => {
     map.addSource('radius',{type:'geojson',data:empty()});
-    map.addLayer({id:'radius-fill',type:'fill',source:'radius',paint:{'fill-color':'#176956','fill-opacity':0.035}});
-    map.addLayer({id:'radius-line',type:'line',source:'radius',paint:{'line-color':'#176956','line-width':1.5,'line-dasharray':[3,3]}});
+    map.addLayer({id:'radius-fill',type:'fill',source:'radius',paint:{'fill-color':'#2563a6','fill-opacity':0.035}});
+    map.addLayer({id:'radius-line',type:'line',source:'radius',paint:{'line-color':'#2563a6','line-width':1.5,'line-dasharray':[3,3]}});
     map.addSource('roads',{type:'geojson',data:empty()});
     map.addLayer({id:'roads-outline',type:'line',source:'roads',paint:{'line-color':'#fff','line-width':7}});
     map.addLayer({id:'roads',type:'line',source:'roads',paint:{'line-color':color,'line-width':4}});

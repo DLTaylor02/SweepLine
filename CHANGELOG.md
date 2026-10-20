@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Removed the login username hint and switched light/dark interface accents, tinted surfaces, and road/radius colors from green to blue.
+
 - Added an operator-only `reset-superadmin` command with hidden password confirmation, account reactivation, and invalidation of existing SuperAdmin sessions.
 
 - Moved SuperAdmin creation into the installer terminal: hidden password and confirmation only when no administrator exists, fixed username `superadmin`, and no required email.
