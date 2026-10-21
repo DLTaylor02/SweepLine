@@ -120,7 +120,7 @@ $kmz=SweepLine\RoadExport::kmz($export);$archivePath=tempnam(sys_get_temp_dir(),
 try {$archive=new ZipArchive();check($archive->open($archivePath)===true,'KMZ is a readable archive');check($archive->getFromName('doc.kml')===SweepLine\RoadExport::kml($export),'KMZ contains standalone doc.kml');$archive->close();}
 finally {unlink($archivePath);}
 $pdf=SweepLine\RoadExport::pdf($export);
-check(str_starts_with($pdf,'%PDF-1.4') && str_contains($pdf,'Road-section directions'),'PDF includes directions and a real PDF header');
+check(str_starts_with($pdf,'%PDF-1.4') && str_contains($pdf,'Road-shape notes'),'PDF includes directions and a real PDF header');
 preg_match('/startxref\n(\d+)\n%%EOF/',$pdf,$xref);
 check(isset($xref[1]) && substr($pdf,(int)$xref[1],4)==='xref','PDF cross-reference offset is correct');
 $longExport=$export;$longExport['instructions']=array_fill(0,150,'Follow the selected road to the next mapped section endpoint.');
@@ -129,6 +129,33 @@ $oneWay=$exportRoad;$oneWay['parts']=[['name'=>'One way','ref'=>null,'direction'
 $oriented=SweepLine\RoadExport::prepare($oneWay);
 check($oriented['geometry']['coordinates'][0]===end($exportRoad['geometry']['coordinates']),'Exports orient one-way roads legally');
 check(str_contains($oriented['instructions'][0],'39.015000, -119.980000'),'Directions match exported track orientation');
+
+// Shape-note mileage is based on the track, even when full source ways repeat.
+$repeated=$exportRoad;$repeated['parts']=array_fill(0,9,['name'=>'Repeated full way','ref'=>null,'direction'=>0,'reversed'=>false,'geometry'=>$exportRoad['geometry']]);
+$fixed=SweepLine\RoadExport::prepare($repeated);
+check(abs($fixed['length_m']-SweepLine\Geometry::length($exportRoad['geometry']['coordinates']))<0.01,'Repeated OSM member ways never multiply export mileage');
+check(count($fixed['instructions'])<12,'Repeated member ways never duplicate instructions');
+$xy=static fn($x,$y)=>[-120+$x/(111195*cos(deg2rad(39))),39+$y/111195];
+$right=SweepLine\RoadNotes::analyze([$xy(0,0),$xy(500,0),$xy(500,-500)]);
+$left=SweepLine\RoadNotes::analyze([$xy(0,0),$xy(500,0),$xy(500,500)]);
+check(count($right['notes'])===1 && $right['notes'][0]['direction']==='right' && abs($right['notes'][0]['angle_degrees']-90)<=5,'Right-angle corner produces an approximate right 90 note');
+check(count($left['notes'])===1 && $left['notes'][0]['direction']==='left' && abs($left['notes'][0]['angle_degrees']-90)<=5,'Left-angle corner produces an approximate left 90 note');
+$sBend=SweepLine\RoadNotes::analyze([$xy(0,0),$xy(500,0),$xy(500,500),$xy(1000,500)]);
+check(count($sBend['notes'])===2 && $sBend['notes'][0]['direction']==='left' && $sBend['notes'][1]['direction']==='right','Opposing bends are separate notes');
+$previousDistance=0;
+foreach ($sBend['notes'] as $note) {
+    check($note['distance_m']>=$previousDistance && $note['end_distance_m']<=$sBend['length_m'],'Note mileages are monotonic and bounded by road length');
+    $previousDistance=$note['distance_m'];
+}
+check(SweepLine\RoadNotes::analyze([$xy(0,0),$xy(1000,0)])['notes']===[],'Straight road has no fabricated turns');
+$noisy=[];for($i=0;$i<=300;$i++) {$noisy[]=$xy($i*3,$i%2?0.15:-0.15);}
+check(SweepLine\RoadNotes::analyze($noisy)['notes']===[],'Tiny mapping zigzags do not create bend notes');
+$arc=[];$denseArc=[];
+for($i=0;$i<=90;$i++) {$point=$xy(200*sin(deg2rad($i)),200*(1-cos(deg2rad($i))));$denseArc[]=$point;if($i%5===0)$arc[]=$point;}
+$sparseNotes=SweepLine\RoadNotes::analyze($arc);$denseNotes=SweepLine\RoadNotes::analyze($denseArc);
+check(count($sparseNotes['notes'])===1 && count($denseNotes['notes'])===1 &&
+    abs($sparseNotes['notes'][0]['angle_degrees']-$denseNotes['notes'][0]['angle_degrees'])<=5,'Uneven geometry sampling does not materially change bend angle');
+check(str_contains(SweepLine\RoadNotes::instructions([$xy(0,0),$xy(500,0),$xy(500,-500)],$right)[1],'degrees'),'Note text contains mileage and turn angle');
 
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

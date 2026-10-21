@@ -9,10 +9,6 @@ final class RoadExport
     {
         return htmlspecialchars($text,ENT_XML1|ENT_QUOTES,'UTF-8');
     }
-    private static function coordinate(array $p): string
-    {
-        return sprintf('%.6f, %.6f',$p[1],$p[0]);
-    }
     /** Orient a one-way chain legally, and use the same ordering in all formats. */
     public static function prepare(array $road): array
     {
@@ -30,21 +26,11 @@ final class RoadExport
         }
         $points=$road['geometry']['coordinates'];
         if (count($points)<2) {throw new \InvalidArgumentException('Road geometry is empty.');}
-        if (!$parts) {$parts=[['name'=>$road['name'],'ref'=>$road['ref']??null,'reversed'=>false,'geometry'=>$road['geometry']]];}
-        $instructions=['Start on '.$road['name'].' at '.self::coordinate($points[0]).'.'];
-        $distance=0;
-        foreach ($parts as $part) {
-            $p=$part['geometry']['coordinates'];if ($part['reversed']) {$p=array_reverse($p);}
-            if (count($p)<2) {continue;}
-            $length=Geometry::length($p);$distance+=$length;
-            $heading=fmod(Geometry::bearing($p[0],$p[1])+360,360);
-            $direction=['north','northeast','east','southeast','south','southwest','west','northwest'][(int)round($heading/45)%8];
-            $name=$part['name']?:($part['ref']?:$road['name']);
-            $instructions[]=sprintf('At %.2f mi, follow %s initially %s for %.2f mi to %s.',
-                ($distance-$length)/1609.344,$name,$direction,$length/1609.344,self::coordinate($p[count($p)-1]));
-        }
-        $instructions[]='End of selected stretch at '.self::coordinate($points[count($points)-1]).'.';
-        $road['instructions']=$instructions;
+        // Never sum part geometries: several pieces can refer to one full OSM way.
+        $analysis=RoadNotes::analyze($points);
+        $road['length_m']=$analysis['length_m'];
+        $road['notes']=$analysis['notes'];
+        $road['instructions']=RoadNotes::instructions($points,$analysis);
         return $road;
     }
     public static function gpx(array $road): string
@@ -56,7 +42,7 @@ final class RoadExport
         foreach ([['Start',$p[0]],['End',$p[count($p)-1]]] as [$label,$point]) {
             $out.=sprintf('<wpt lat="%.9f" lon="%.9f"><name>%s</name></wpt>',$point[1],$point[0],$label);
         }
-        $out.='<trk><name>'.$name.'</name><desc>'.self::xml(implode("\n",$road['instructions'])).'</desc><trkseg>';
+        $out.='<trk><name>'.$name.'</name><desc>'.self::xml("Approximate road-shape notes. Mileage from start; (+mi) since previous note.\n".implode("\n",$road['instructions'])).'</desc><trkseg>';
         foreach ($p as $point) {$out.=sprintf('<trkpt lat="%.9f" lon="%.9f"/>',$point[1],$point[0]);}
         return $out.'</trkseg></trk></gpx>';
     }
@@ -67,7 +53,7 @@ final class RoadExport
         $out='<?xml version="1.0" encoding="UTF-8"?>'."\n".
             '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>'.$name.'</name>'.
             '<description>Road data © OpenStreetMap contributors. Verify access and conditions.</description>'.
-            '<Placemark><name>'.$name.'</name><description>'.self::xml(implode("\n",$road['instructions'])).'</description>'.
+            '<Placemark><name>'.$name.'</name><description>'.self::xml("Approximate road-shape notes. Mileage from start; (+mi) since previous note.\n".implode("\n",$road['instructions'])).'</description>'.
             '<Style><LineStyle><color>ffa66325</color><width>4</width></LineStyle></Style>'.
             '<LineString><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode><coordinates>'.
             implode(' ',$coordinates).'</coordinates></LineString></Placemark>';
@@ -122,9 +108,10 @@ final class RoadExport
         foreach ([['S',$first],['E',$last]] as [$label,$p]) {
             [$x,$y]=$plot($p);$content.=self::pdfText($label,$x+4,$y+4,12);
         }
-        $lines=['Road-section directions (not turn-by-turn navigation):',...$road['instructions'],
+        $lines=['Road-shape notes - cumulative mileage from start:',...$road['instructions'],
             'Instructions describe the selected road only; no route to its start is included.',
-            'Initial compass headings describe section starts, not every bend.',
+            'Parentheses show distance since the previous note; angles are approximate.',
+            'Generated from mapped geometry, not surveyed rally pace notes or junction maneuvers.',
             'Obey posted signs and verify access, closures, stops and conditions.',
             'Road data (c) OpenStreetMap contributors - openstreetmap.org/copyright'];
         $pages=[];$y=400;
