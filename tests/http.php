@@ -46,6 +46,7 @@ foreach (['gpx'=>'application/gpx+xml','kmz'=>'application/vnd.google-earth.kmz'
     curl_setopt_array($admin,[CURLOPT_URL=>$base.'/api/roads/'.$exportId.'/export?format='.$format,CURLOPT_POSTFIELDS=>null,CURLOPT_CUSTOMREQUEST=>'GET',CURLOPT_HTTPHEADER=>[]]);
     $bytes=curl_exec($admin);
     if (curl_getinfo($admin,CURLINFO_HTTP_CODE)!==200 || !str_starts_with(curl_getinfo($admin,CURLINFO_CONTENT_TYPE),$mime) || !$bytes) {throw new RuntimeException('Road export failed: '.$format);}
+    if ($format==='pdf' && (!str_contains($bytes,'Local OSM street map') || !str_contains($bytes,'/Helvetica-Bold'))) {throw new RuntimeException('Styled PDF basemap or fonts missing');}
     if (($format==='pdf' && !str_starts_with($bytes,'%PDF-')) || ($format==='kmz' && !str_starts_with($bytes,'PK')) || ($format==='gpx' && simplexml_load_string($bytes)===false)) {throw new RuntimeException('Invalid road export: '.$format);}
 }
 expect(callApi($anonymous,'GET','/api/roads/'.$exportId.'/export?format=gpx'),401,'Exports require authentication');
@@ -77,8 +78,12 @@ $savedAgain=expect(callApi($admin,'POST','/api/favorites',$favoriteBody,$csrf),2
 if($saved['id']!==$savedAgain['id']) {throw new RuntimeException('Duplicate favorite created');}
 $favorites=expect(callApi($admin,'GET','/api/favorites'),200,'List favorite roads');
 if(count($favorites)!==1 || !isset($favorites[0]['road']['geometry']['coordinates'])) {throw new RuntimeException('Favorite thumbnail geometry missing');}
+expect(callApi($member,'GET','/api/favorites/'.$saved['id'].'/thumbnail'),404,'Other account cannot read thumbnail');
 expect(callApi($member,'GET','/api/favorites/'.$saved['id']),404,'Other account cannot read favorite');
 expect(callApi($member,'DELETE','/api/favorites/'.$saved['id'],null,$memberSession['csrf']),404,'Other account cannot delete favorite');
+curl_setopt_array($admin,[CURLOPT_URL=>$base.'/api/favorites/'.$saved['id'].'/thumbnail',CURLOPT_POSTFIELDS=>null,CURLOPT_CUSTOMREQUEST=>'GET',CURLOPT_HTTPHEADER=>[]]);
+$thumbnail=curl_exec($admin);
+if(curl_getinfo($admin,CURLINFO_HTTP_CODE)!==200 || simplexml_load_string($thumbnail)===false || !str_contains(curl_getinfo($admin,CURLINFO_CONTENT_TYPE),'image/svg+xml')) {throw new RuntimeException('Favorite geographic thumbnail failed');}
 $favoriteDb=SweepLine\Database::connect();
 $jobQuery=$favoriteDb->prepare('SELECT job_id FROM road_candidates WHERE id=?');$jobQuery->execute([$exportId]);$snapshotJob=(int)$jobQuery->fetchColumn();
 $favoriteDb->exec('UPDATE regions SET active_job_id=null WHERE active_job_id='.$snapshotJob);

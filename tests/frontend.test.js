@@ -198,7 +198,8 @@ async function testFrontend(sources) {
   await flush();
   check(!get('favorites-panel').hidden&&get('workspace').hidden,'Favorites has a dedicated page');
   const card=get('favorites-list').children[0];
-  check(card.children[0].href==='/?favorite=7'&&card.children[0].children[0].children[0].points.includes(','),'Favorite card has geometry thumbnail and direct map link');
+  check(card.children[0].href==='/?favorite=7'&&card.children[0].children[0].src==='/api/favorites/7/thumbnail','Favorite card has geographic thumbnail and direct map link');
+  check(card.children[0].children[0].loading==='lazy'&&card.children[0].children[0].alt.includes('basemap'),'Geographic thumbnails load lazily with accessible descriptions');
   await card.children[1].onclick();await flush();
   check(get('favorites-list').children.length===0,'Favorites page can remove a road');
   const favoriteMapWindow={...window,SweepLineAccount:{user:{id:1}},location:{pathname:'/',search:'?favorite=7'},sweeplineRequest:async path=>path==='/api/favorites/7'?savedFavorite:[]};

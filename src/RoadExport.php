@@ -81,64 +81,9 @@ final class RoadExport
             return $bytes;
         } finally {unlink($path);}
     }
-    private static function pdfText(string $text,float $x,float $y,int $size=11): string
-    {
-        if (function_exists('iconv')) {$text=iconv('UTF-8','ASCII//TRANSLIT//IGNORE',$text)?:$text;}
-        $text=preg_replace('/[^\x20-\x7e]/','?',$text);
-        $text=str_replace(['\\','(',')'],['\\\\','\\(','\\)'],$text);
-        return sprintf("BT /F1 %d Tf %.2f %.2f Td (%s) Tj ET\n",$size,$x,$y,$text);
-    }
-    /** Small dependency-free, multipage US Letter PDF with a vector road sketch. */
     public static function pdf(array $road): string
     {
-        $points=$road['geometry']['coordinates'];$first=$points[0];$last=$points[count($points)-1];
-        $content=self::pdfText('SweepLine - '.$road['name'],40,750,17).
-            self::pdfText(sprintf('%.2f miles | %d mapped stops + %d uncertain controls',
-                $road['length_m']/1609.344,$road['mandatory_stops'],$road['uncertain_controls']),40,725).
-            self::pdfText('Start: '.self::coordinate($first).'   End: '.self::coordinate($last),40,706).
-            self::pdfText('Road overview - north up; S = start, E = end. No basemap.',40,682);
-        $cos=cos(deg2rad(($first[1]+$last[1])/2));$xs=[];$ys=[];
-        foreach ($points as $p) {$xs[]=$p[0]*$cos;$ys[]=$p[1];}
-        $minX=min($xs);$minY=min($ys);$dx=max($xs)-$minX;$dy=max($ys)-$minY;
-        $scale=min(480/max($dx,0.000001),210/max($dy,0.000001));
-        $plot=static fn($p)=>[56+($p[0]*$cos-$minX)*$scale,440+($p[1]-$minY)*$scale];
-        $content.="q 0.145 0.388 0.651 RG 1.7 w\n";
-        $stride=max(1,(int)ceil(count($points)/3000));
-        foreach ($points as $i=>$p) {
-            if ($i!==0 && $i!==count($points)-1 && $i%$stride!==0) {continue;}
-            [$x,$y]=$plot($p);$content.=sprintf("%.2f %.2f %s\n",$x,$y,$i===0?'m':'l');
-        }
-        $content.="S Q\n";
-        foreach ([['S',$first],['E',$last]] as [$label,$p]) {
-            [$x,$y]=$plot($p);$content.=self::pdfText($label,$x+4,$y+4,12);
-        }
-        $lines=['Road-shape notes - cumulative mileage from start:',...$road['instructions'],
-            'Instructions describe the selected road only; no route to its start is included.',
-            'Parentheses show distance since the previous note; angles are approximate.',
-            'Generated from mapped geometry, not surveyed rally pace notes or junction maneuvers.',
-            'Obey posted signs and verify access, closures, stops and conditions.',
-            'Road data (c) OpenStreetMap contributors - openstreetmap.org/copyright'];
-        $pages=[];$y=400;
-        foreach ($lines as $line) {
-            foreach (explode("\n",wordwrap($line,85,"\n",true)) as $wrapped) {
-                if ($y<50) {$pages[]=$content;$content=self::pdfText($road['name'].' - continued',40,750,14);$y=720;}
-                $content.=self::pdfText($wrapped,40,$y);$y-=16;
-            }
-            $y-=8;
-        }
-        $pages[]=$content;
-        $objects=[1=>'<< /Type /Catalog /Pages 2 0 R >>',2=>'',3=>'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];$kids=[];
-        foreach ($pages as $i=>$stream) {
-            $pageId=4+$i*2;$streamId=$pageId+1;$kids[]=$pageId.' 0 R';
-            $objects[$pageId]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents '.$streamId.' 0 R >>';
-            $objects[$streamId]='<< /Length '.strlen($stream)." >>\nstream\n".$stream."endstream";
-        }
-        $objects[2]='<< /Type /Pages /Count '.count($pages).' /Kids ['.implode(' ',$kids).'] >>';
-        ksort($objects);$pdf="%PDF-1.4\n";$offsets=[0];
-        foreach ($objects as $id=>$object) {$offsets[$id]=strlen($pdf);$pdf.="$id 0 obj\n$object\nendobj\n";}
-        $xref=strlen($pdf);$pdf.="xref\n0 ".(count($objects)+1)."\n0000000000 65535 f \n";
-        foreach ($objects as $id=>$_) {$pdf.=sprintf("%010d 00000 n \n",$offsets[$id]);}
-        return $pdf.'trailer << /Size '.(count($objects)+1)." /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n";
+        return RoadPdf::render($road);
     }
     public static function download(array $road,string $format): never
     {

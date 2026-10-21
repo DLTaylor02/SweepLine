@@ -59,7 +59,7 @@ final class Api
         $row=$q->fetch(PDO::FETCH_ASSOC) ?: throw new \OutOfBoundsException('Road not found in active coverage'); unset($row['geom']);
         return $this->decode($row);
     }
-    public function exportRoad(int $id,string $profile): array
+    public function exportRoad(int $id,string $profile,bool $withMap=false): array
     {
         $road=$this->detail($id,$profile);
         $q=$this->db->prepare('SELECT ST_AsGeoJSON(c.geom::geometry,9) FROM road_candidates c WHERE c.id=?');
@@ -68,6 +68,7 @@ final class Api
             FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id WHERE m.candidate_id=? ORDER BY m.position');
         $q->execute([$id]);$road['parts']=$q->fetchAll(PDO::FETCH_ASSOC);
         foreach ($road['parts'] as &$part) { $part['geometry']=json_decode($part['geometry'],true,512,JSON_THROW_ON_ERROR); }
+        if ($withMap) {$road['basemap']=ExportMap::load($this->db,$road);}
         return $road;
     }
     private function decode(array $row): array

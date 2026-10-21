@@ -17,7 +17,7 @@ final class Favorites
         $search=Validation::search($input['search']);$profile=$input['profile']??$search['profile'];
         if (!is_string($profile) || $profile!==$search['profile']) {throw new \InvalidArgumentException('Profile must match the search');}
         // Only server-owned road data is saved; clients cannot inject geometry or scores.
-        $road=(new Api($this->db))->exportRoad((int)$id,$profile);$key=$road['geometry_key'];
+        $road=(new Api($this->db))->exportRoad((int)$id,$profile,true);$key=$road['geometry_key'];
         $this->db->beginTransaction();
         try {
             $this->db->prepare('SELECT id FROM app_users WHERE id=? FOR UPDATE')->execute([$user]);
@@ -32,7 +32,7 @@ final class Favorites
     }
     public function recent(int $user): array
     {
-        $q=$this->db->prepare("SELECT id,profile,created_at,search_parameters,snapshot-'geometry'-'parts' AS road,
+        $q=$this->db->prepare("SELECT id,profile,created_at,search_parameters,snapshot-'geometry'-'parts'-'basemap' AS road,
             ST_AsGeoJSON(ST_SimplifyPreserveTopology(ST_GeomFromGeoJSON((snapshot->'geometry')::text),0.0001),6) AS geometry
             FROM favorites WHERE user_id=? ORDER BY id DESC LIMIT 200");
         $q->execute([$user]);$rows=$q->fetchAll(PDO::FETCH_ASSOC);

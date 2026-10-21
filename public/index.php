@@ -56,9 +56,16 @@ try {
                     $favorites=new SweepLine\Favorites($db);$result=$method==='GET'?$favorites->recent((int)$user['id']):$favorites->save((int)$user['id'],$input);
                 } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})$#',$path,$m)) {
                     $favorites=new SweepLine\Favorites($db);$result=$method==='DELETE'?$favorites->delete((int)$user['id'],(int)$m[1]):$favorites->detail((int)$user['id'],(int)$m[1]);
+                } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})/thumbnail$#',$path,$m)) {
+                    $favorite=(new SweepLine\Favorites($db))->detail((int)$user['id'],(int)$m[1]);
+                    if (!isset($favorite['road']['basemap'])) {$favorite['road']['basemap']=SweepLine\ExportMap::load($db,$favorite['road']);}
+                    header('Content-Type: image/svg+xml; charset=utf-8');header("Content-Security-Policy: default-src 'none'; style-src 'none'; sandbox");
+                    echo SweepLine\FavoriteThumbnail::render($favorite['road']);exit;
                 } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})/export$#',$path,$m)) {
                     $format=$_GET['format']??'';if (!is_string($format)) {throw new InvalidArgumentException('Invalid export format');}
-                    $favorite=(new SweepLine\Favorites($db))->detail((int)$user['id'],(int)$m[1]);SweepLine\RoadExport::download($favorite['road'],$format);
+                    $favorite=(new SweepLine\Favorites($db))->detail((int)$user['id'],(int)$m[1]);
+                    if ($format==='pdf' && !isset($favorite['road']['basemap'])) {$favorite['road']['basemap']=SweepLine\ExportMap::load($db,$favorite['road']);}
+                    SweepLine\RoadExport::download($favorite['road'],$format);
                 }
                 elseif ($path==='/api/search-history') { $result=(new SweepLine\SearchHistory($db))->recent((int)$user['id']); }
                 elseif (preg_match('#^/api/search-history/([1-9]\\d{0,17})$#',$path,$m)) { $result=(new SweepLine\SearchHistory($db))->delete((int)$user['id'],(int)$m[1]); }
@@ -96,7 +103,7 @@ try {
                 } elseif (preg_match('#^/api/roads/([1-9]\\d{0,17})/export$#',$path,$m)) {
                     $format=$_GET['format']??'';$profile=$_GET['profile']??'twisty';
                     if (!is_string($format) || !in_array($format,['gpx','kmz','pdf'],true) || !is_string($profile)) { throw new InvalidArgumentException('Invalid export format or profile'); }
-                    SweepLine\RoadExport::download($api->exportRoad((int)$m[1],$profile),$format);
+                    SweepLine\RoadExport::download($api->exportRoad((int)$m[1],$profile,$format==='pdf'),$format);
                 } elseif ($path==='/api/admin/users') {
                     $result=$method==='GET'?$auth->users():$auth->create($input);
                 } elseif (preg_match('#^/api/admin/users/([1-9]\\d{0,17})$#',$path,$m)) { $result=$auth->update((int)$m[1],$input); }

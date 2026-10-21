@@ -72,16 +72,11 @@
     catch(e) {el('status').textContent=e.message;}
   };
   const text=(tag,value)=>{const node=document.createElement(tag);node.textContent=value;return node;};
-  function thumbnail(road) {
-    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
-    svg.setAttribute('viewBox','0 0 180 110');svg.setAttribute('role','img');svg.setAttribute('aria-label','Geometry of '+road.name);
-    const coords=road.geometry.coordinates,cos=Math.cos(coords[0][1]*Math.PI/180);
-    const points=coords.map(p=>[Number(p[0])*cos,Number(p[1])]);
-    const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),minX=Math.min(...xs),minY=Math.min(...ys);
-    const scale=Math.min(156/Math.max(Math.max(...xs)-minX,0.000001),86/Math.max(Math.max(...ys)-minY,0.000001));
-    const line=document.createElementNS('http://www.w3.org/2000/svg','polyline');
-    line.setAttribute('points',points.filter((p,i)=>i%Math.max(1,Math.ceil(points.length/400))===0||i===points.length-1).map(p=>[12+(p[0]-minX)*scale,98-(p[1]-minY)*scale].join(',')).join(' '));
-    svg.append(line);return svg;
+  function thumbnail(road,id) {
+    const image=document.createElement('img');
+    image.src='/api/favorites/'+id+'/thumbnail';image.alt=road.name+' on a geographic street basemap';
+    image.loading='lazy';image.decoding='async';image.width=532;image.height=280;
+    return image;
   }
   async function refreshFavorites() {
     const userId=session.user.id;
@@ -93,7 +88,7 @@
       items.forEach(item=>{
         const road=item.road,card=text('article','');card.className='favorite-card';
         const link=text('a','');link.href='/?favorite='+item.id;link.className='favorite-link';
-        link.append(thumbnail(road),text('h3',road.name),text('p',`${road.score}/100 · ${(road.length_m/1609.344).toFixed(1)} mi · ${item.profile==='twisty'?'Twisty Roads':'Open Highways'}`),
+        link.append(thumbnail(road,item.id),text('h3',road.name),text('p',`${road.score}/100 · ${(road.length_m/1609.344).toFixed(1)} mi · ${item.profile==='twisty'?'Twisty Roads':'Open Highways'}`),
           text('p',`${road.metrics.curve_density.toFixed(1)} curve samples/mi · ${road.mandatory_stops} mapped stops + ${road.uncertain_controls} uncertain`),
           text('p',`${road.speed_mph==null?'Speed unknown':road.speed_mph.toFixed(0)+' mph minimum posted'} · ${Math.round(road.confidence*100)}% attribute completeness`));
         const remove=text('button','Remove favorite');remove.type='button';

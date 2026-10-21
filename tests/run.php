@@ -123,8 +123,9 @@ $pdf=SweepLine\RoadExport::pdf($export);
 check(str_starts_with($pdf,'%PDF-1.4') && str_contains($pdf,'Road-shape notes'),'PDF includes directions and a real PDF header');
 preg_match('/startxref\n(\d+)\n%%EOF/',$pdf,$xref);
 check(isset($xref[1]) && substr($pdf,(int)$xref[1],4)==='xref','PDF cross-reference offset is correct');
-$longExport=$export;$longExport['instructions']=array_fill(0,150,'Follow the selected road to the next mapped section endpoint.');
-check(str_contains(SweepLine\RoadExport::pdf($longExport),'/Count 5') || preg_match('/\/Type \/Pages \/Count ([2-9]|[1-9][0-9]+)/',SweepLine\RoadExport::pdf($longExport))===1,'Long PDF directions paginate');
+$longExport=$export;$longExport['notes']=array_fill(0,150,['distance_m'=>500,'distance_since_previous_m'=>100,'angle_degrees'=>65,'description'=>'Right bend']);
+preg_match('/\/Type \/Pages \/Count (\d+)/',SweepLine\RoadExport::pdf($longExport),$pageCount);
+check(isset($pageCount[1]) && (int)$pageCount[1]>10,'Long bend-note lists paginate into separate roadbook pages');
 $oneWay=$exportRoad;$oneWay['parts']=[['name'=>'One way','ref'=>null,'direction'=>-1,'reversed'=>false,'geometry'=>$exportRoad['geometry']]];
 $oriented=SweepLine\RoadExport::prepare($oneWay);
 check($oriented['geometry']['coordinates'][0]===end($exportRoad['geometry']['coordinates']),'Exports orient one-way roads legally');
@@ -156,6 +157,23 @@ $sparseNotes=SweepLine\RoadNotes::analyze($arc);$denseNotes=SweepLine\RoadNotes:
 check(count($sparseNotes['notes'])===1 && count($denseNotes['notes'])===1 &&
     abs($sparseNotes['notes'][0]['angle_degrees']-$denseNotes['notes'][0]['angle_degrees'])<=5,'Uneven geometry sampling does not materially change bend angle');
 check(str_contains(SweepLine\RoadNotes::instructions([$xy(0,0),$xy(500,0),$xy(500,-500)],$right)[1],'degrees'),'Note text contains mileage and turn angle');
+
+check(str_contains($pdf,'/BaseFont /Helvetica-Bold') && str_contains($pdf,'/BaseFont /Helvetica-Oblique'),'PDF includes bold and supporting font styles');
+check(str_contains($pdf,'ROAD OVERVIEW') && str_contains($pdf,'CUMULATIVE MI') && str_contains($pdf,'READING YOUR ROADBOOK'),'PDF groups overview, metrics and bend notes into clear sections');
+$mapped=$export;$mapped['basemap']=['roads'=>[['name'=>'Sample cross road','highway'=>'secondary',
+    'geometry'=>['type'=>'LineString','coordinates'=>[[-120,39.005],[-119.98,39.005]]]]],'truncated'=>false];
+$mapPdf=SweepLine\RoadExport::pdf($mapped);
+check(str_contains($mapPdf,'Local OSM street map') && str_contains($mapPdf,'Sample cross road'),'PDF renders a labeled surrounding-road basemap');
+$projected=SweepLine\ExportMap::project([-120,39]);$mapBounds=SweepLine\ExportMap::bounds($export['geometry']['coordinates']);
+check($projected[0]>=$mapBounds[0] && $projected[0]<=$mapBounds[2] && $projected[1]>=$mapBounds[1] && $projected[1]<=$mapBounds[3],'PDF projection places road endpoints inside map bounds');
+check(abs(($mapBounds[2]-$mapBounds[0])/($mapBounds[3]-$mapBounds[1])-532/280)<0.0001,'Basemap viewport preserves map panel aspect ratio');
+check(str_contains($pdf,'Surrounding roads unavailable'),'Missing local context is clearly labeled');
+
+$thumb=SweepLine\FavoriteThumbnail::render($mapped);
+check(simplexml_load_string($thumb)!==false && str_contains($thumb,'Sample cross road'),'Favorite thumbnail contains a valid SVG street basemap');
+check(str_contains($thumb,'#2563a6') && str_contains($thumb,'OpenStreetMap contributors'),'Thumbnail highlights route above basemap with attribution');
+$escapedThumb=$mapped;$escapedThumb['name']='<script>alert("bad")</script>';
+check(!str_contains(SweepLine\FavoriteThumbnail::render($escapedThumb),'<script>'),'Thumbnail escapes saved road names');
 
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);
