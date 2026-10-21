@@ -17,7 +17,7 @@
 .map-tag{display:flex;align-items:center;gap:10px;max-width:calc(100% - 85px);letter-spacing:.7px}
 .map-tag span{margin:0;font-size:10px}
 @keyframes search-spin{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){.spinner{animation:none;border-style:dashed}}
+
 
 .jobs-page .admin-columns{grid-template-columns:1fr}.task-row button{margin:5px 8px 0 0}.account-actions a{font-size:12px;font-weight:700}
 
