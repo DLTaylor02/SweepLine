@@ -13,11 +13,11 @@ $region=$db->query("INSERT INTO regions(slug,name) VALUES ('test','Synthetic tes
 $q=$db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage) VALUES (?,'running',?,ST_MakeEnvelope(-121,38,-118,41,4326)) RETURNING *");
 $q->execute([$region,__DIR__.'/fixture.osm']); $job=$q->fetch(PDO::FETCH_ASSOC);
 (new SweepLine\Importer($db))->run($job);
-$data=$api->search(['max_stops'=>5,'zip'=>'12345','radius_miles'=>25,'min_length_miles'=>0.25]);
+$data=$api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345','radius_miles'=>25,'min_length_miles'=>0.25]);
 check(count($data['results'])===2,'Import, score and search real database');
 check($data['results'][0]['mandatory_stops']===1,'Merged road counts all-way stop once');
 check($api->detail($data['results'][0]['id'],'twisty')['name']==='Synthetic Main','Road detail endpoint service');
-foreach ($api->search(['zip'=>'12345','max_stops'=>1])['results'] as $road) { check($road['mandatory_stops']+$road['uncertain_controls']<=1,'Stop limit includes uncertain controls'); }
+foreach ($api->search(['profile'=>'open','zip'=>'12345','max_stops'=>1])['results'] as $road) { check($road['mandatory_stops']+$road['uncertain_controls']<=1,'Stop limit includes uncertain controls'); }
 $q->execute([$region,__DIR__.'/fixture.osm']); $badJob=$q->fetch(PDO::FETCH_ASSOC); $badJob['source_path']=__DIR__.'/missing.osm';
 try { (new SweepLine\Importer($db))->run($badJob); } catch (Throwable $e) { /* expected */ }
 check((int)$db->query('SELECT active_job_id FROM regions')->fetchColumn()===(int)$job['id'],'Failed replacement preserves active data');
@@ -25,14 +25,36 @@ $outside=$db->query("SELECT ST_DWithin(ST_GeogFromText('POINT(-119.80 39.52)'),S
 check(!$outside,'PostGIS radius excludes distant coordinates');
 
 $longestMiles=(float)$db->query('SELECT max(length_m)/1609.344 FROM road_candidates')->fetchColumn();
-check(count($api->search(['max_stops'=>5,'zip'=>'12345','min_length_miles'=>$longestMiles+0.01])['results'])===0,'Length threshold excludes shorter candidates');
-check(count($api->search(['max_stops'=>5,'zip'=>'12345','min_length_miles'=>2])['results'])===1,'Length filter retains longer road and excludes short side road');
-check($api->search(['zip'=>'12345'])['results']===$api->search(['zip'=>'12345','max_stops'=>1])['results'],'Default stop filter allows at most one control');
-check(count($api->search(['max_stops'=>5,'zip'=>'12345'])['results'])===2,'Omitted length includes short road candidates');
-check(count($api->search(['max_stops'=>5,'zip'=>'12345','max_length_miles'=>2])['results'])===1,'Maximum length excludes long road and retains short side road');
-check(count($api->search(['max_stops'=>5,'zip'=>'12345','min_length_miles'=>0.25,'max_length_miles'=>2])['results'])===1,'Combined length bounds filter candidates');
-check(count($api->search(['max_stops'=>5,'zip'=>'12345','max_length_miles'=>0.3])['results'])===0,'Maximum below all candidate lengths returns no results');
-check(count($api->search(['max_stops'=>5,'zip'=>'12345','max_length_miles'=>null])['results'])===2,'Null maximum leaves discovery unbounded');
+check(count($api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345','min_length_miles'=>$longestMiles+0.01])['results'])===0,'Length threshold excludes shorter candidates');
+check(count($api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345','min_length_miles'=>2])['results'])===1,'Length filter retains longer road and excludes short side road');
+check($api->search(['profile'=>'open','zip'=>'12345'])['results']===$api->search(['profile'=>'open','zip'=>'12345','max_stops'=>1])['results'],'Default stop filter allows at most one control');
+check(count($api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345'])['results'])===2,'Omitted length includes short road candidates');
+check(count($api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345','max_length_miles'=>2])['results'])===1,'Maximum length excludes long road and retains short side road');
+check(count($api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345','min_length_miles'=>0.25,'max_length_miles'=>2])['results'])===1,'Combined length bounds filter candidates');
+check(count($api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345','max_length_miles'=>0.3])['results'])===0,'Maximum below all candidate lengths returns no results');
+check(count($api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345','max_length_miles'=>null])['results'])===2,'Null maximum leaves discovery unbounded');
+
+// Qualification applies before ranking, independently of the generic Open fixtures.
+$mainId=(int)$data['results'][0]['id'];
+$original=$api->detail($mainId,'twisty');
+$db->exec("UPDATE driving_profiles SET definition='{}'::jsonb WHERE slug='twisty'");
+$db->exec("UPDATE road_scores SET score=0 WHERE profile='twisty'");
+SweepLine\Scorer::refreshScores($db);
+$refreshed=$api->detail($mainId,'twisty');
+check(abs($refreshed['score']-SweepLine\Scorer::score($refreshed['metrics'],'twisty')['score'])<=0.1,'Existing cached scores refresh from centralized weights');
+$before=$db->query('SELECT id,metrics,highway FROM road_candidates ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+try {
+    $db->exec("UPDATE road_candidates SET metrics=metrics||'{\"curvature\":0,\"curve_density\":0,\"sustained_curve_m\":0}'::jsonb");
+    check($api->search(['zip'=>'12345','profile'=>'twisty','max_stops'=>5])['results']===[],'Straight candidates are removed even with favorable other dimensions');
+    $db->exec("UPDATE road_candidates SET highway='motorway',metrics=metrics||'{\"curvature\":0.4,\"curve_density\":20,\"sustained_curve_m\":180}'::jsonb WHERE id=".$mainId);
+    $eligible=$api->search(['zip'=>'12345','profile'=>'twisty','max_stops'=>5])['results'];
+    check(count($eligible)===1 && $eligible[0]['id']===$mainId,'Qualifying geometry passes regardless of motorway classification');
+    check(count($api->search(['zip'=>'12345','profile'=>'open','max_stops'=>5])['results'])===2,'Twisty qualification does not restrict Open Highway results');
+} finally {
+    $restore=$db->prepare('UPDATE road_candidates SET metrics=?::jsonb,highway=? WHERE id=?');
+    foreach ($before as $row) {$restore->execute([$row['metrics'],$row['highway'],$row['id']]);}
+}
+
 require __DIR__.'/automation.php';
 
 check(!SweepLine\SuperAdmin::exists($db),'Fresh installation has no SuperAdmin');

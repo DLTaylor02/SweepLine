@@ -175,5 +175,19 @@ check(str_contains($thumb,'#2563a6') && str_contains($thumb,'OpenStreetMap contr
 $escapedThumb=$mapped;$escapedThumb['name']='<script>alert("bad")</script>';
 check(!str_contains(SweepLine\FavoriteThumbnail::render($escapedThumb),'<script>'),'Thumbnail escapes saved road names');
 
+check(!Scorer::qualifies($metrics,'twisty'),'Straight geometry is not eligible for Twisty Roads');
+check(Scorer::qualifies($winding,'twisty'),'Sustained winding geometry remains eligible');
+$motorway=$m;$motorway['highway']='motorway';
+check(Scorer::qualifies($motorway,'twisty'),'Motorways remain eligible when their geometry qualifies');
+check(Scorer::qualifies($metrics,'open'),'Open Highway eligibility is unchanged for straight roads');
+check(!Scorer::qualifies([],'twisty'),'Missing curvature metrics cannot qualify');
+$isolated=['curvature'=>0.3,'curve_density'=>2,'sustained_curve_m'=>30];
+check(!Scorer::qualifies($isolated,'twisty'),'An isolated short bend cannot qualify a mostly straight road');
+check(Scorer::qualifies(Scorer::profiles()['twisty']['eligibility'],'twisty'),'Exact configured qualification boundaries are inclusive');
+$longStraight=$m;$longStraight['length_m']=50000;$longStraight['curvature']=0;
+$longStraight['intersections']=0;$longStraight['mandatory_stops']=0;$longStraight['uncertain_controls']=0;$longStraight['highway']='motorway';
+$shortWinding=$m;$shortWinding['curvature']=0.8;$shortWinding['length_m']=4000;
+check(Scorer::score($shortWinding,'twisty')['score']>Scorer::score($longStraight,'twisty')['score'],'Strong curvature outweighs straight-road length and interruption advantages');
+
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

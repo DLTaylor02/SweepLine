@@ -39,7 +39,7 @@ expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=0'),404,'Map ZIP distan
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345']),403,'Search requires CSRF');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>51],$csrf),422,'Search validation');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25.5],$csrf),422,'Fractional radius rejected via API');
-$data=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_stops'=>5,'record_history'=>true],$csrf),200,'Cached search is immediate');
+$data=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_stops'=>5,'profile'=>'open','record_history'=>true],$csrf),200,'Cached search is immediate');
 if (count($data['results'])!==2) { throw new RuntimeException('Cached fixture roads not returned'); }
 $exportId=$data['results'][0]['id'];
 foreach (['gpx'=>'application/gpx+xml','kmz'=>'application/vnd.google-earth.kmz','pdf'=>'application/pdf'] as $format=>$mime) {
@@ -51,7 +51,7 @@ foreach (['gpx'=>'application/gpx+xml','kmz'=>'application/vnd.google-earth.kmz'
 }
 expect(callApi($anonymous,'GET','/api/roads/'.$exportId.'/export?format=gpx'),401,'Exports require authentication');
 expect(callApi($admin,'GET','/api/roads/'.$exportId.'/export?format=exe'),422,'Export format validated');
-expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
+expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'profile'=>'open','max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
 $jobs=expect(callApi($admin,'GET','/api/admin/data'),200,'SuperAdmin sees preparation status');
 if (!isset($jobs['storage']['database_bytes']) || !array_key_exists('available',$jobs['storage'])) { throw new RuntimeException('Storage report missing from Jobs API'); }
 $created=expect(callApi($admin,'POST','/api/admin/users',['username'=>'member','name'=>'Member','password'=>'member-password-123'],$csrf),200,'SuperAdmin creates user without email');

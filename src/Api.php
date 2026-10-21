@@ -37,13 +37,15 @@ final class Api
             FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id
             JOIN road_scores s ON s.candidate_id=c.id AND s.profile=:profile
             WHERE ST_DWithin(c.geom,ST_SetSRID(ST_MakePoint(:lon,:lat),4326)::geography,:meters)
+            AND NOT EXISTS (SELECT 1 FROM jsonb_each_text(CAST(:eligibility AS jsonb)) e
+                WHERE COALESCE((c.metrics->>e.key)::double precision,0)<CAST(e.value AS double precision))
             AND c.length_m > :minimum
             AND c.length_m <= :maximum
             AND c.mandatory_stops+c.uncertain_controls <= :stops
             AND (CAST(:paved AS boolean)=false OR c.surface_known_paved=true)
             ORDER BY c.geometry_key,r.imported_at DESC,s.confidence DESC,c.id) ranked
             ORDER BY score DESC,length_m DESC,id LIMIT 101');
-        $q->execute(['profile'=>$p['profile'],'lon'=>$zip['lon'],'lat'=>$zip['lat'],'meters'=>$p['radius_miles']*1609.344,
+        $q->execute(['eligibility'=>json_encode((object)(Scorer::profiles()[$p['profile']]['eligibility']??[]),JSON_THROW_ON_ERROR),'profile'=>$p['profile'],'lon'=>$zip['lon'],'lat'=>$zip['lat'],'meters'=>$p['radius_miles']*1609.344,
             'minimum'=>$p['min_length_miles']*1609.344,'maximum'=>$p['max_length_miles']===null ? PHP_FLOAT_MAX : $p['max_length_miles']*1609.344,'stops'=>$p['max_stops'],'paved'=>$p['paved_only']?'true':'false']);
         $rows=$q->fetchAll(PDO::FETCH_ASSOC); $truncated=count($rows)>100; $rows=array_slice($rows,0,100);
         $results=array_map([$this,'decode'],$rows);

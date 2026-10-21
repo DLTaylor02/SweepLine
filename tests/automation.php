@@ -17,7 +17,7 @@ check($downloads===1,'Worker fetches once per queued area');
 check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-test-pipeline'")->fetchColumn()==='complete','Download, analysis and activation complete');
 $activeJob=(int)$db->query("SELECT active_job_id FROM regions WHERE slug='auto-test-pipeline'")->fetchColumn();
 check($activeJob>0,'Automatic area activates validated dataset');
-check(count($api->search(['max_stops'=>5,'zip'=>'12345'])['results'])===2,'Overlapping automatic and manual cells do not duplicate identical roads');
+check(count($api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345'])['results'])===2,'Overlapping automatic and manual cells do not duplicate identical roads');
 check(!$worker->runOne() && $downloads===1,'Completed area reused without download');
 $db->exec("UPDATE data_tasks SET status='queued',attempts=0 WHERE task_key='auto-test-pipeline'");
 $failing=new SweepLine\DataWorker($db,static function(): void { throw new RuntimeException('Test provider unavailable'); });

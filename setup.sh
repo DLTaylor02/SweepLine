@@ -113,6 +113,7 @@ project_install() {
     fi
     runuser -u postgres -- psql -d "$DB_NAME" -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS postgis'
     as_user "$SYSTEM_USER" "${PHP_CLI[@]}" bin/migrate.php
+    as_user "$SYSTEM_USER" "${PHP_CLI[@]}" bin/rescore.php
     install -d -o "$SYSTEM_USER" -g "$SYSTEM_USER" -m 0750 "$APP_DIR/var"
     as_user "$SYSTEM_USER" "${PHP_CLI[@]}" bin/bootstrap-app.php
     project_provision_superadmin
