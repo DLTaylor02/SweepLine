@@ -69,7 +69,7 @@ final class RoadNotes
         $coord=static fn($p)=>sprintf('%.6f, %.6f',$p[1],$p[0]);
         $lines=['0.00 mi: Start at '.$coord($points[0]).'.'];
         foreach ($analysis['notes'] as $note) {
-            $lines[]=sprintf('%.2f mi (+%.2f mi): %s, approximately %d degrees.',
+            $lines[]=sprintf('%.2f mi (+%.2f mi): %s, %d degrees.',
                 $note['distance_m']/1609.344,$note['distance_since_previous_m']/1609.344,
                 $note['description'],$note['angle_degrees']);
         }

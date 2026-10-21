@@ -9,6 +9,10 @@ final class RoadExport
     {
         return htmlspecialchars($text,ENT_XML1|ENT_QUOTES,'UTF-8');
     }
+    private static function coordinate(array $point): string
+    {
+        return sprintf('%.6f, %.6f',$point[1],$point[0]);
+    }
     /** Orient a one-way chain legally, and use the same ordering in all formats. */
     public static function prepare(array $road): array
     {
