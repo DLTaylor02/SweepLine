@@ -231,7 +231,7 @@ foreach ([['min_curvature_quality'=>1.1],['min_sustained_curve_m'=>-1],['surface
 check(Scorer::qualityScore(0)===1.0 && Scorer::qualityScore(1)===10.0,'Quality normalized endpoints');
 check(abs(Scorer::rawQuality(2.08)-0.12)<0.000001,'Quality default preserves raw threshold');
 $imperial=Validation::search(['zip'=>'12345']);
-check($imperial['min_sustained_curve_ft']==197 && abs($imperial['min_sustained_curve_m']-60.0456)<0.001,'Sustained default uses feet');
+check($imperial['min_sustained_curve_ft']==150 && abs($imperial['min_sustained_curve_m']-45.72)<0.001,'Sustained default uses feet');
 foreach ([0,10.1] as $invalidQuality) {check(rejects(fn()=>Validation::search(['zip'=>'12345','min_curvature_quality_score'=>$invalidQuality])),'Invalid normalized quality rejected');}
 $tight=[];for($i=0;$i<40;$i++) {$tight[]=[-119+($i%2)*0.00018,39+$i*0.00018];}
 check(Geometry::metrics($tight)['curve_density']>0,'Tight turns contribute to curvature');

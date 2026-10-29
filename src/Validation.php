@@ -36,8 +36,8 @@ final class Validation
             ? self::number($input,'min_curve_density_score',2.2,1,10)
             : (isset($input['min_curve_density'])?Scorer::densityScore(self::number($input,'min_curve_density',7,0,Scorer::MAX_CURVE_DENSITY)):2.2);
         $quality=isset($input['min_curvature_quality_score'])?self::number($input,'min_curvature_quality_score',2.08,1,10):Scorer::qualityScore(self::number($input,'min_curvature_quality',0.12,0,1));
-        $sustained=isset($input['min_sustained_curve_ft'])?self::number($input,'min_sustained_curve_ft',197,0,164042):
-            (isset($input['min_sustained_curve_m'])?self::number($input,'min_sustained_curve_m',60,0,50000)/0.3048:197);
+        $sustained=isset($input['min_sustained_curve_ft'])?self::number($input,'min_sustained_curve_ft',150,0,164042):
+            (isset($input['min_sustained_curve_m'])?self::number($input,'min_sustained_curve_m',45.72,0,50000)/0.3048:150);
         return ['zip'=>self::zip($input['zip']??null),'radius_miles'=>$radius,
             'min_length_miles'=>$minimum,'max_length_miles'=>$maximum,
             'min_curve_density_score'=>$density,'min_curve_density'=>Scorer::rawDensity($density),

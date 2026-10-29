@@ -19,7 +19,7 @@ function fillSearch(p) {
   form.min_length.value=p.min_length_miles==null?'':String(p.min_length_miles);
   form.max_length.value=p.max_length_miles==null?'':String(p.max_length_miles);
   form.min_curve_density_score.value=String(p.min_curve_density_score??(p.min_curve_density==null?2.2:1+9*p.min_curve_density/53.6448));
-  form.min_curvature_quality_score.value=String(p.min_curvature_quality_score??(1+9*(p.min_curvature_quality??0.12)));form.min_sustained_curve_ft.value=String(p.min_sustained_curve_ft??(p.min_sustained_curve_m==null?197:p.min_sustained_curve_m/0.3048));
+  form.min_curvature_quality_score.value=String(p.min_curvature_quality_score??(1+9*(p.min_curvature_quality??0.12)));form.min_sustained_curve_ft.value=String(p.min_sustained_curve_ft??(p.min_sustained_curve_m==null?150:p.min_sustained_curve_m/0.3048));
   form.surface_filter.value=p.surface_filter??(p.paved_only===true?'known_paved':p.paved_only===false?'any':'exclude_unpaved');
   form.max_stops.value=String(Math.max(1,p.max_stops));
 }

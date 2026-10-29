@@ -58,7 +58,7 @@ final class RoadExport
             '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>'.$name.'</name>'.
             '<description>Road data © OpenStreetMap contributors. Verify access and conditions.</description>'.
             '<Placemark><name>'.$name.'</name><description>'.self::xml("Approximate road-shape notes. Mileage from start; (+mi) since previous note.\n".implode("\n",$road['instructions'])).'</description>'.
-            '<Style><LineStyle><color>ffa66325</color><width>4</width></LineStyle></Style>'.
+            '<Style><LineStyle><color>ffd500ff</color><width>8</width></LineStyle></Style>'.
             '<LineString><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode><coordinates>'.
             implode(' ',$coordinates).'</coordinates></LineString></Placemark>';
         $points=$road['geometry']['coordinates'];
