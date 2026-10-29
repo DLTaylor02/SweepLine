@@ -259,3 +259,12 @@ Curve density is displayed and filtered on a linear 1–10 scale: `1 + 9 × raw_
 Advanced Twisty filters also include `min_curvature_quality` (0–1, default 0.12) and `min_sustained_curve_m` (0–50,000 meters, default 120). Open Highways ignores all three geometry gates. History, resumed searches and Favorites retain them.
 
 `surface_filter` supports `exclude_unpaved` (default: allow unknown, reject any explicitly unpaved piece), `known_paved` (all pieces must have recognized paved tags), or `any`. Missing/unrecognized tags remain unknown; any explicitly gravel/dirt/unpaved section makes the full candidate unpaved. Paved recognition now includes chipseal, paving stones and stone paving. Legacy `paved_only: true/false` maps to known_paved/any. Migration 009 backfills existing candidates without downloading OSM again. Surface confidence remains separate from the inclusion policy.
+
+### Tight turns and imperial curve-length controls
+
+Twisty geometry metrics now include tight turns: the former 40 m minimum radius and 55-degree sample-angle exclusion have been removed. The existing maximum qualifying radius remains 600 m. Thirty-meter resampling and road-class/continuity rules still apply. The installer recalculates affected active road metrics and scores from stored geometry in batches; no OSM download is required. Existing Favorites remain historical snapshots.
+
+Curvature quality uses `min_curvature_quality_score` on a linear 1–10 scale (`1 + 9 × raw quality`), default 2.08 (the former 0.12). A hint explains the scale. Sustained curve length is entered in feet via `min_sustained_curve_ft`, default **197 ft**, approximately the requested 60 meters. Legacy raw-quality and meter-based API fields/saved searches are converted without changing their meaning. Radius/length remain miles, speed mph, and notes/map scales miles or feet; internal geographic calculations and standard export coordinates retain their required units.
+
+Rally-note exports explicitly label extremely tight bends and hairpins when the smoothed mapped geometry estimates a local radius of 131 feet or less and at least 45 degrees of total turn. Broad sweeping hairpins retain the normal hairpin label. These estimates depend on OSM geometry detail.
+

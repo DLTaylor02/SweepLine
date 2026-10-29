@@ -7,6 +7,7 @@ final class RoadNotes
 {
     private const SPACING=15.0;
     private const MIN_ANGLE=15.0;
+    private const EXTREMELY_TIGHT_RADIUS_M=40.0;
     public static function analyze(array $points): array
     {
         $clean=[];
@@ -40,10 +41,14 @@ final class RoadNotes
                     $angle>=45=>$side.' bend',
                     default=>'gentle '.$side.' bend'
                 };
+                // Radius comes from smoothed heading change per sample, not total bend angle.
+                $extremelyTight=$angle>=45 && $active['radius']<=self::EXTREMELY_TIGHT_RADIUS_M;
+                if ($extremelyTight) {$description='extremely tight '.$description;}
                 $distance=max($previous,min($length,$active['start']));
                 $notes[]=['distance_m'=>$distance,'distance_since_previous_m'=>$distance-$previous,
                     'end_distance_m'=>min($length,$active['end']),'angle_degrees'=>$angle,
-                    'direction'=>$side,'description'=>ucfirst($description)];
+                    'estimated_radius_m'=>is_finite($active['radius'])?$active['radius']:null,
+                    'extremely_tight'=>$extremelyTight,'direction'=>$side,'description'=>ucfirst($description)];
                 $previous=$distance;
             }
             $active=null;
@@ -56,8 +61,9 @@ final class RoadNotes
             }
             if ($active!==null && (($delta>0)!==($active['angle']>0))) {$finish();}
             if ($active===null) {
-                $active=['start'=>max(0,($i-2)*self::SPACING),'end'=>0.0,'angle'=>0.0,'last'=>$i];
+                $active=['start'=>max(0,($i-2)*self::SPACING),'end'=>0.0,'angle'=>0.0,'radius'=>INF,'last'=>$i];
             }
+            $active['radius']=min($active['radius'],self::SPACING/deg2rad(abs($delta)));
             $active['angle']+=$delta;$active['last']=$i;
             $active['end']=min($length,($i+2)*self::SPACING);
         }

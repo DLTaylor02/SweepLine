@@ -48,14 +48,14 @@ final class Geometry
             $angle = abs(self::turn(self::bearing($sample[$i-1],$sample[$i]),self::bearing($sample[$i],$sample[$i+1])));
             $angleSum += $angle;
             $radius = $angle > 0.1 ? 30 / (2*sin(deg2rad($angle)/2)) : INF;
-            if ($radius >= 40 && $radius <= 600 && $angle < 55) {
+            if ($radius > 0 && $radius <= 600) {
                 $curves++; $run++; $bestRun=max($bestRun,$run);
                 $quality += min(1, 200/$radius);
             } else { $run=0; }
             if ($angle < 3) { $straight++; }
         }
         $n=max(1,count($sample)-2); $miles=max(0.1,$length/1609.344);
-        return ['length_m'=>$length, 'curve_density'=>$curves/$miles,
+        return ['geometry_version'=>2,'length_m'=>$length, 'curve_density'=>$curves/$miles,
             'heading_change_per_mile'=>$angleSum/$miles,
             'curvature'=>min(1, ($quality/$n)*2.8) * min(1,$bestRun/5) * min(1,$length/1609.344),
             'straightness'=>$straight/$n, 'sustained_curve_m'=>$bestRun*30];

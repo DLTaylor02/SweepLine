@@ -79,6 +79,7 @@ final class Api
         foreach (['id','mandatory_stops','uncertain_controls'] as $key) { if (isset($row[$key])) { $row[$key]=(int)$row[$key]; } }
         foreach (['length_m','score','confidence','speed_mph','elevation_gain_m','elevation_loss_m'] as $key) { if (isset($row[$key])) { $row[$key]=(float)$row[$key]; } }
         if(isset($row['metrics']['curve_density'])) {$row['metrics']['curve_density_score']=round(Scorer::densityScore((float)$row['metrics']['curve_density']),1);}
+        if(isset($row['metrics']['curvature'])) {$row['metrics']['curvature_quality_score']=round(Scorer::qualityScore((float)$row['metrics']['curvature']),2);}
         return $row;
     }
 }

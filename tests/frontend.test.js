@@ -23,8 +23,8 @@ async function testFrontend(sources) {
   for(const n of ['username','name','email','password']){get('create-user').fields[n]=new Element();get('create-user')[n]=get('create-user').fields[n];}
   get('road-diagnostic').road=new Element();get('road-diagnostic').road.value='424';
   const search=get('search');
-  for(const n of ['zip','radius','profile','min_length','max_length','max_stops','min_curve_density_score','min_curvature_quality','min_sustained_curve_m','surface_filter','paved'])search[n]=new Element();
-  search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='1';search.min_curve_density_score.value='2.2';search.min_curvature_quality.value='0.12';search.min_sustained_curve_m.value='120';search.surface_filter.value='exclude_unpaved';search.paved.checked=true;
+  for(const n of ['zip','radius','profile','min_length','max_length','max_stops','min_curve_density_score','min_curvature_quality_score','min_sustained_curve_ft','surface_filter','paved'])search[n]=new Element();
+  search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='1';search.min_curve_density_score.value='2.2';search.min_curvature_quality_score.value='2.08';search.min_sustained_curve_ft.value='197';search.surface_filter.value='exclude_unpaved';search.paved.checked=true;
   get('admin-panel').hidden=true;
   const document={getElementById:get,createElement:()=>new Element(),createElementNS:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
@@ -74,7 +74,7 @@ async function testFrontend(sources) {
   await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
   check(payload.min_curve_density_score===2.2,'Curve density uses normalized default in search requests');
-  check(payload.surface_filter==='exclude_unpaved'&&payload.min_curvature_quality===0.12&&payload.min_sustained_curve_m===120,'Advanced filter defaults are submitted');
+  check(payload.surface_filter==='exclude_unpaved'&&payload.min_curvature_quality_score===2.08&&payload.min_sustained_curve_ft===197,'Advanced filter defaults are submitted');
   check(payload.max_stops===1,'New searches submit one mapped stop by default');
   await get('road-diagnostic').onsubmit({preventDefault(){},target:get('road-diagnostic')});await flush();
   check(get('diagnostic-status').textContent.includes('1 continuous candidates'),'Missing-road checker shows candidate count');

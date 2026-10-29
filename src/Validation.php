@@ -35,11 +35,13 @@ final class Validation
         $density=isset($input['min_curve_density_score'])
             ? self::number($input,'min_curve_density_score',2.2,1,10)
             : (isset($input['min_curve_density'])?Scorer::densityScore(self::number($input,'min_curve_density',7,0,Scorer::MAX_CURVE_DENSITY)):2.2);
-        $quality=self::number($input,'min_curvature_quality',0.12,0,1);
-        $sustained=self::number($input,'min_sustained_curve_m',120,0,50000);
+        $quality=isset($input['min_curvature_quality_score'])?self::number($input,'min_curvature_quality_score',2.08,1,10):Scorer::qualityScore(self::number($input,'min_curvature_quality',0.12,0,1));
+        $sustained=isset($input['min_sustained_curve_ft'])?self::number($input,'min_sustained_curve_ft',197,0,164042):
+            (isset($input['min_sustained_curve_m'])?self::number($input,'min_sustained_curve_m',60,0,50000)/0.3048:197);
         return ['zip'=>self::zip($input['zip']??null),'radius_miles'=>$radius,
             'min_length_miles'=>$minimum,'max_length_miles'=>$maximum,
             'min_curve_density_score'=>$density,'min_curve_density'=>Scorer::rawDensity($density),
-            'min_curvature_quality'=>$quality,'min_sustained_curve_m'=>$sustained,'surface_filter'=>$surface,'max_stops'=>(int)$max,'profile'=>$profile,'paved_only'=>$surface==='known_paved'];
+            'min_curvature_quality_score'=>$quality,'min_curvature_quality'=>Scorer::rawQuality($quality),
+            'min_sustained_curve_ft'=>$sustained,'min_sustained_curve_m'=>$sustained*0.3048,'surface_filter'=>$surface,'max_stops'=>(int)$max,'profile'=>$profile,'paved_only'=>$surface==='known_paved'];
     }
 }

@@ -22,6 +22,8 @@ final class RoadDiagnostics
             $value=$road['metrics'][$key]??null;
             if (!is_numeric($value) || (float)$value<$minimum) {
                 if($key==='curve_density') {$out[]='Curve density: '.($value===null?'missing':round(Scorer::densityScore((float)$value),2).'/10').' (requires at least '.round($p['min_curve_density_score'],2).'/10).';}
+                elseif($key==='curvature') {$out[]='Curvature quality: '.($value===null?'missing':round(Scorer::qualityScore((float)$value),2).'/10').' (requires at least '.round($p['min_curvature_quality_score'],2).'/10).';}
+                elseif($key==='sustained_curve_m') {$out[]='Sustained curve length: '.($value===null?'missing':round((float)$value/0.3048,1).' ft').' (requires at least '.round($p['min_sustained_curve_ft'],1).' ft).';}
                 else {$out[]=$key.': '.($value===null?'missing':round((float)$value,3)).' (requires at least '.$minimum.').';}
             }
         }

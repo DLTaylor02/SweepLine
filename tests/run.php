@@ -220,12 +220,39 @@ check(Validation::search(['zip'=>'12345','paved_only'=>true])['surface_filter']=
 check(Scorer::densityScore(0)===1.0 && Scorer::densityScore(Scorer::MAX_CURVE_DENSITY)===10.0,'Density scale endpoints');
 foreach ([0,11,INF] as $badDensity) {check(rejects(fn()=>Validation::search(['zip'=>'12345','min_curve_density_score'=>$badDensity])),'Normalized density validates range');}
 $custom=Validation::search(['zip'=>'12345','min_curve_density_score'=>4,'min_curvature_quality'=>0.3,'min_sustained_curve_m'=>250]);
-check(Scorer::eligibility($custom)['curvature']===0.3 && Scorer::eligibility($custom)['sustained_curve_m']===250.0,'Additional geometry filters are wired');
+check(abs(Scorer::eligibility($custom)['curvature']-0.3)<0.000001 && abs(Scorer::eligibility($custom)['sustained_curve_m']-250)<0.000001,'Additional geometry filters are wired');
 
 
 foreach ([['min_curvature_quality'=>1.1],['min_sustained_curve_m'=>-1],['surface_filter'=>'bogus']] as $badFilter) {
     check(rejects(fn()=>Validation::search(['zip'=>'12345']+$badFilter)),'Invalid advanced filter rejected');
 }
+
+
+check(Scorer::qualityScore(0)===1.0 && Scorer::qualityScore(1)===10.0,'Quality normalized endpoints');
+check(abs(Scorer::rawQuality(2.08)-0.12)<0.000001,'Quality default preserves raw threshold');
+$imperial=Validation::search(['zip'=>'12345']);
+check($imperial['min_sustained_curve_ft']==197 && abs($imperial['min_sustained_curve_m']-60.0456)<0.001,'Sustained default uses feet');
+foreach ([0,10.1] as $invalidQuality) {check(rejects(fn()=>Validation::search(['zip'=>'12345','min_curvature_quality_score'=>$invalidQuality])),'Invalid normalized quality rejected');}
+$tight=[];for($i=0;$i<40;$i++) {$tight[]=[-119+($i%2)*0.00018,39+$i*0.00018];}
+check(Geometry::metrics($tight)['curve_density']>0,'Tight turns contribute to curvature');
+
+
+// Tightness uses local radius: a broad hairpin is different from a tight one.
+$tightArc=[];$wideArc=[];
+for ($i=0;$i<=90;$i++) {
+    $a=M_PI*$i/90;
+    $tightArc[]=$xy(25*cos($a),25*sin($a));
+    $wideArc[]=$xy(250*cos($a),250*sin($a));
+}
+$tightNotes=SweepLine\RoadNotes::analyze($tightArc);
+$wideNotes=SweepLine\RoadNotes::analyze($wideArc);
+check(count($tightNotes['notes'])===1 && $tightNotes['notes'][0]['extremely_tight'],'Small-radius hairpin explicitly flagged');
+check(str_contains($tightNotes['notes'][0]['description'],'Extremely tight'),'Tight corner description is explicit');
+check(count($wideNotes['notes'])===1 && !$wideNotes['notes'][0]['extremely_tight'],'Broad hairpin is not labeled extremely tight');
+$reverseTight=SweepLine\RoadNotes::analyze(array_reverse($tightArc));
+check($reverseTight['notes'][0]['extremely_tight'] && $reverseTight['notes'][0]['direction']!==$tightNotes['notes'][0]['direction'],'Tight callout follows travel direction');
+$tightExport=$export;$tightExport['notes']=$tightNotes['notes'];
+check(str_contains(SweepLine\RoadExport::pdf($tightExport),'Extremely tight'),'PDF includes explicit tight-corner callout');
 
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

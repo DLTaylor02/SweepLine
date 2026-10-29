@@ -5,6 +5,8 @@ namespace SweepLine;
 final class Scorer
 {
     public const MAX_CURVE_DENSITY=1609.344/30;
+    public static function qualityScore(float $raw): float {return 1+9*min(1,max(0,$raw));}
+    public static function rawQuality(float $score): float {return ($score-1)/9;}
     public static function densityScore(float $raw): float {return 1+9*min(self::MAX_CURVE_DENSITY,max(0,$raw))/self::MAX_CURVE_DENSITY;}
     public static function rawDensity(float $score): float {return ($score-1)/9*self::MAX_CURVE_DENSITY;}
     public static function eligibility(array $parameters): array
