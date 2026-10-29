@@ -71,6 +71,7 @@
     try {session=await window.sweeplineRequest('/api/logout',{method:'POST',body:'{}'});paint();}
     catch(e) {el('status').textContent=e.message;}
   };
+  const surfaceLabel=p=>({known_paved:'Confirmed paved only',exclude_unpaved:'Allow unknown; exclude unpaved',any:'All surfaces'}[p.surface_filter??(p.paved_only===true?'known_paved':p.paved_only===false?'any':'exclude_unpaved')]);
   const text=(tag,value)=>{const node=document.createElement(tag);node.textContent=value;return node;};
   function thumbnail(road,id) {
     const image=document.createElement('img');
@@ -89,7 +90,7 @@
         const road=item.road,card=text('article','');card.className='favorite-card';
         const link=text('a','');link.href='/?favorite='+item.id;link.className='favorite-link';
         link.append(thumbnail(road,item.id),text('h3',road.name),text('p',`${road.score}/100 · ${(road.length_m/1609.344).toFixed(1)} mi · ${item.profile==='twisty'?'Twisty Roads':'Open Highways'}`),
-          text('p',`${road.metrics.curve_density.toFixed(1)} curve samples/mi · ${road.mandatory_stops} mapped stops + ${road.uncertain_controls} uncertain`),
+          text('p',`${Math.max(1,Math.min(10,road.metrics.curve_density_score??(1+9*road.metrics.curve_density/53.6448))).toFixed(1)}/10 curve density · ${road.mandatory_stops} mapped stops + ${road.uncertain_controls} uncertain`),
           text('p',`${road.speed_mph==null?'Speed unknown':road.speed_mph.toFixed(0)+' mph minimum posted'} · ${Math.round(road.confidence*100)}% attribute completeness`));
         const remove=text('button','Remove favorite');remove.type='button';
         remove.onclick=async()=>{remove.disabled=true;try{await window.sweeplineRequest('/api/favorites/'+item.id,{method:'DELETE'});await refreshFavorites();}catch(e){el('favorites-status').textContent=e.message;remove.disabled=false;}};
@@ -108,7 +109,7 @@
         const p=item.parameters,row=text('div','');row.className='history-row';
         const title=text('a',p.zip+' · '+p.radius_miles+' miles · '+(p.profile==='twisty'?'Twisty Roads':'Open Highways'));
         row.append(title,text('p',new Date(item.created_at).toLocaleString()),
-          text('p',`Length: ${p.min_length_miles>0?'over '+p.min_length_miles:'no minimum'} to ${p.max_length_miles??'no maximum'} miles · Stops: ${p.max_stops} · ${p.paved_only?'Known paved only':'All surfaces'}`));
+          text('p',(p.profile==='twisty'?'Minimum curve density: '+(p.min_curve_density_score??(p.min_curve_density==null?2.2:1+9*p.min_curve_density/53.6448)).toFixed(1)+'/10 · ':'')+`Length: ${p.min_length_miles>0?'over '+p.min_length_miles:'no minimum'} to ${p.max_length_miles??'no maximum'} miles · Stops: ${p.max_stops} · ${surfaceLabel(p)}`));
         const again=text('a','View results');again.className='page-back';
         again.href='/?open=1&'+new URLSearchParams(Object.entries(p).filter(([,v])=>v!==null)).toString();
         title.href=again.href;

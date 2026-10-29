@@ -140,7 +140,7 @@ final class Importer
         }
         $q=$this->db->prepare("SELECT osm_id,tags FROM osm_nodes WHERE job_id=? AND tags <> '{}'::jsonb"); $q->execute([$id]); $tags=[];
         while ($row=$q->fetch(PDO::FETCH_ASSOC)) { $tags[$row['osm_id']]=json_decode($row['tags'],true); }
-        $insert=$this->db->prepare('INSERT INTO road_candidates(job_id,name,ref,highway,surface_known_paved,length_m,mandatory_stops,uncertain_controls,speed_mph,metrics,geom) VALUES (?,?,?,?,?::boolean,?,?,?,?,?::jsonb,ST_SetSRID(ST_GeomFromGeoJSON(?),4326)::geography) RETURNING id');
+        $insert=$this->db->prepare('INSERT INTO road_candidates(job_id,name,ref,highway,surface_known_paved,surface_status,length_m,mandatory_stops,uncertain_controls,speed_mph,metrics,geom) VALUES (?,?,?,?,?::boolean,?,?,?,?,?,?::jsonb,ST_SetSRID(ST_GeomFromGeoJSON(?),4326)::geography) RETURNING id');
         $score=$this->db->prepare('INSERT INTO road_scores(candidate_id,profile,score,confidence,dimensions) VALUES (?,?,?,?,?::jsonb)');
         $member=$this->db->prepare('INSERT INTO candidate_segments(candidate_id,segment_id,position,reversed) VALUES (?,?,?,?::boolean)');
         $count=0;
@@ -152,15 +152,14 @@ final class Importer
             }
             $metrics=Geometry::metrics($candidate['points']);
             if ($metrics['length_m']<400) { continue; }
-            $first=$candidate['parts'][0]; $paved=true; $knownSpeeds=[]; $speedKnown=true;
+            $first=$candidate['parts'][0]; $surfaceStatus=Surface::classify(array_column($candidate['parts'],'surface'));$paved=$surfaceStatus==='paved'; $knownSpeeds=[]; $speedKnown=true;
             foreach ($candidate['parts'] as $part) {
-                $paved=$paved && in_array($part['surface'],['asphalt','paved','concrete','concrete:plates'],true);
                 if ($part['speed_mph']===null) { $speedKnown=false; } else { $knownSpeeds[]=(float)$part['speed_mph']; }
             }
             $metrics+=Controls::analyze($candidate['nodes'],$tags,$candidate['uses']);
-            $metrics+=['paved'=>$paved,'highway'=>$first['highway'],'speed_mph'=>$speedKnown && $knownSpeeds ? min($knownSpeeds) : null,
+            $metrics+=['paved'=>$paved,'surface_status'=>$surfaceStatus,'highway'=>$first['highway'],'speed_mph'=>$speedKnown && $knownSpeeds ? min($knownSpeeds) : null,
                 'elevation_source'=>null,'stop_inventory_complete'=>false,'endpoint_count'=>2];
-            $insert->execute([$id,$first['name']?:($first['ref']?:'Unnamed road'),$first['ref'],$first['highway'],$paved?'true':'false',$metrics['length_m'],$metrics['mandatory_stops'],$metrics['uncertain_controls'],$metrics['speed_mph'],json_encode($metrics),json_encode(['type'=>'LineString','coordinates'=>$candidate['points']])]);
+            $insert->execute([$id,$first['name']?:($first['ref']?:'Unnamed road'),$first['ref'],$first['highway'],$paved?'true':'false',$surfaceStatus,$metrics['length_m'],$metrics['mandatory_stops'],$metrics['uncertain_controls'],$metrics['speed_mph'],json_encode($metrics),json_encode(['type'=>'LineString','coordinates'=>$candidate['points']])]);
             $cid=(int)$insert->fetchColumn();
             foreach ($candidate['parts'] as $i=>$part) { $member->execute([$cid,$part['id'],$i,$part['reversed']?'true':'false']); }
             foreach ($profiles as $slug=>$_) { $s=Scorer::score($metrics,$slug); $score->execute([$cid,$slug,$s['score'],$s['confidence'],json_encode($s['dimensions'])]); }

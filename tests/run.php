@@ -192,11 +192,40 @@ check(Scorer::score($shortWinding,'twisty')['score']>Scorer::score($longStraight
 $diagnosticParameters=Validation::search(['zip'=>'12345','min_length_miles'=>5,'max_stops'=>1]);
 $excludedRoad=['length_m'=>3000,'mandatory_stops'=>2,'uncertain_controls'=>0,'surface_known_paved'=>false,'metrics'=>['curvature'=>0,'curve_density'=>0,'sustained_curve_m'=>0]];
 $reasons=SweepLine\RoadDiagnostics::reasons($excludedRoad,$diagnosticParameters);
-check(count($reasons)===6,'Missing-road reasons include all failing length, surface, stop and curvature checks');
+check(count($reasons)===5,'Missing-road reasons allow unknown surface by default while reporting other failures');
 $eligibleRoad=['length_m'=>12000,'mandatory_stops'=>0,'uncertain_controls'=>1,'surface_known_paved'=>true,'metrics'=>['curvature'=>0.5,'curve_density'=>20,'sustained_curve_m'=>300]];
 check(SweepLine\RoadDiagnostics::reasons($eligibleRoad,$diagnosticParameters)===[],'Qualifying candidate has no false rejection reasons');
 $unknownMetric=$eligibleRoad;unset($unknownMetric['metrics']['curvature']);
 check(count(SweepLine\RoadDiagnostics::reasons($unknownMetric,$diagnosticParameters))===1,'Missing geometry metric is reported explicitly');
+
+check(Validation::search(['zip'=>'12345'])['min_curve_density_score']===2.2,'Curve density defaults to normalized 2.2');
+foreach ([0,7.5,Scorer::MAX_CURVE_DENSITY] as $density) {
+    check(abs(Validation::search(['zip'=>'12345','min_curve_density'=>$density])['min_curve_density']-(float)$density)<0.000001,'Valid fractional/boundary curve density accepted');
+}
+foreach ([-1,54,INF,[], 'invalid'] as $density) {
+    check(rejects(fn()=>Validation::search(['zip'=>'12345','min_curve_density'=>$density])),'Invalid curve density rejected');
+}
+$chosen=Validation::search(['zip'=>'12345','min_curve_density'=>7.5]);
+check(abs(Scorer::eligibility($chosen)['curve_density']-7.5)<0.000001,'Search-specific density overrides configured gate');
+check(Scorer::eligibility(Validation::search(['zip'=>'12345','profile'=>'open','min_curve_density'=>50]))===[],'Open Highways ignores curve-density filter');
+$strict=$diagnosticParameters;$strict['surface_filter']='known_paved';
+$unknownSurface=$eligibleRoad;$unknownSurface['surface_known_paved']=false;$unknownSurface['surface_status']='unknown';$unknownSurface['surface_values']=[null,'asphalt'];
+check(SweepLine\RoadDiagnostics::reasons($unknownSurface,$diagnosticParameters)===[],'Unknown surface is permitted by default');
+check(count(SweepLine\RoadDiagnostics::reasons($unknownSurface,$strict))>0,'Confirmed paved policy excludes unknown surfaces');
+check(SweepLine\Surface::classify(['asphalt',null])==='unknown','Missing surface is unknown');
+check(SweepLine\Surface::classify(['chipseal','paving_stones'])==='paved','Additional paved finishes recognized');
+check(SweepLine\Surface::classify(['asphalt','gravel',null])==='unpaved','Any known unpaved piece takes precedence');
+check(Validation::search(['zip'=>'12345'])['surface_filter']==='exclude_unpaved','Default surface policy excludes known unpaved only');
+check(Validation::search(['zip'=>'12345','paved_only'=>true])['surface_filter']==='known_paved','Legacy paved-only search remains strict');
+check(Scorer::densityScore(0)===1.0 && Scorer::densityScore(Scorer::MAX_CURVE_DENSITY)===10.0,'Density scale endpoints');
+foreach ([0,11,INF] as $badDensity) {check(rejects(fn()=>Validation::search(['zip'=>'12345','min_curve_density_score'=>$badDensity])),'Normalized density validates range');}
+$custom=Validation::search(['zip'=>'12345','min_curve_density_score'=>4,'min_curvature_quality'=>0.3,'min_sustained_curve_m'=>250]);
+check(Scorer::eligibility($custom)['curvature']===0.3 && Scorer::eligibility($custom)['sustained_curve_m']===250.0,'Additional geometry filters are wired');
+
+
+foreach ([['min_curvature_quality'=>1.1],['min_sustained_curve_m'=>-1],['surface_filter'=>'bogus']] as $badFilter) {
+    check(rejects(fn()=>Validation::search(['zip'=>'12345']+$badFilter)),'Invalid advanced filter rejected');
+}
 
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

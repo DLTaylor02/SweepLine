@@ -23,8 +23,8 @@ async function testFrontend(sources) {
   for(const n of ['username','name','email','password']){get('create-user').fields[n]=new Element();get('create-user')[n]=get('create-user').fields[n];}
   get('road-diagnostic').road=new Element();get('road-diagnostic').road.value='424';
   const search=get('search');
-  for(const n of ['zip','radius','profile','min_length','max_length','max_stops','paved'])search[n]=new Element();
-  search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='1';search.paved.checked=true;
+  for(const n of ['zip','radius','profile','min_length','max_length','max_stops','min_curve_density_score','min_curvature_quality','min_sustained_curve_m','surface_filter','paved'])search[n]=new Element();
+  search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='1';search.min_curve_density_score.value='2.2';search.min_curvature_quality.value='0.12';search.min_sustained_curve_m.value='120';search.surface_filter.value='exclude_unpaved';search.paved.checked=true;
   get('admin-panel').hidden=true;
   const document={getElementById:get,createElement:()=>new Element(),createElementNS:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
@@ -73,6 +73,8 @@ async function testFrontend(sources) {
   check(!get('search-spinner').hidden&&!('value' in get('search-progress')),'Submitting immediately shows indeterminate preparation');
   await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
+  check(payload.min_curve_density_score===2.2,'Curve density uses normalized default in search requests');
+  check(payload.surface_filter==='exclude_unpaved'&&payload.min_curvature_quality===0.12&&payload.min_sustained_curve_m===120,'Advanced filter defaults are submitted');
   check(payload.max_stops===1,'New searches submit one mapped stop by default');
   await get('road-diagnostic').onsubmit({preventDefault(){},target:get('road-diagnostic')});await flush();
   check(get('diagnostic-status').textContent.includes('1 continuous candidates'),'Missing-road checker shows candidate count');
@@ -90,10 +92,12 @@ async function testFrontend(sources) {
   await timer.fn();await flush();check(get('status').textContent.includes('No roads match'),'Ready response ends preparation message');
   check(get('search-spinner').hidden&&get('map-spinner').hidden&&get('search-progress').hidden,'Ready response clears all loading indicators');
   check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).record_history===false,'Background polling does not add search history');
+  search.min_curve_density_score.value='4.5';
   searchResponses=[{results:[{id:1,name:'Test road',score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5}],preparation:{state:'preparing',message:'Analyzing roads',complete:1,total:3}}];
   search.onsubmit({preventDefault(){},target:search});await flush();
   check(get('status').textContent.includes('Showing partial results')&&get('results').children.length===1,'Available roads remain visible and labeled during preparation');
   check(get('search-progress').value===1,'Progress advances with completed areas');
+  check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).min_curve_density_score===4.5,'User-defined fractional density is submitted');
   get('results').children[0].onclick();await flush();
   const exportLinks=get('road-detail').children.find(node=>node.className==='road-exports').children;
   check(exportLinks.length===3&&exportLinks[2].textContent==='Printable PDF','Selected road offers GPX, KMZ and PDF exports');
@@ -166,7 +170,7 @@ async function testFrontend(sources) {
   const beforeReplay=requests.filter(r=>r.path==='/api/search').length;
   const replayWindow={...window,SweepLineAccount:{user:null},location:{pathname:'/',search:'?open=1&zip=12345&radius_miles=5&profile=open&max_stops=2&paved_only=false'}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(replayWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
-  check(search.radius.value==='5'&&search.profile.value==='open'&&search.paved.checked===false,'Replayed search restores saved form values');
+  check(search.radius.value==='5'&&search.profile.value==='open'&&search.surface_filter.value==='any','Replayed search restores saved form values');
   check(requests.filter(r=>r.path==='/api/search').length===beforeReplay,'Saved search waits for authentication');
   await events['sweepline:sessionchange'].at(-1)({detail:{user:{id:1}}});await flush();
   check(requests.filter(r=>r.path==='/api/search').length===beforeReplay+1,'Saved search automatically fetches results after authentication');
@@ -186,7 +190,7 @@ async function testFrontend(sources) {
   await flush();
   check(resumed===1&&get('status').textContent.includes('3/9'),'Returning to discovery restores current preparation progress');
   check(!get('search-spinner').hidden&&get('search-progress').value===3,'Returning search displays spinner and real area progress');
-  check(search.radius.value==='5'&&search.max_stops.value==='1','Returning search upgrades a legacy zero stop limit to one');
+  check(search.radius.value==='5'&&search.max_stops.value==='1'&&search.min_curve_density_score.value==='2.2','Returning search upgrades a legacy zero stop limit to one');
   await resumeEvents['sweepline:sessionchange']({detail:{user:{id:1}}});await flush();
   check(resumed===1,'Repeated session notification does not start duplicate search');
   resumeEvents.pageshow({persisted:true});await flush();

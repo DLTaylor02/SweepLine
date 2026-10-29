@@ -19,8 +19,10 @@ final class Validation
     {
         $profile=$input['profile']??'twisty';
         if (!is_string($profile) || !isset(Scorer::profiles()[$profile])) { throw new \InvalidArgumentException('Unknown driving profile'); }
-        $paved=$input['paved_only']??true;
-        if (!is_bool($paved)) { throw new \InvalidArgumentException('paved_only must be a JSON boolean'); }
+        $paved=$input['paved_only']??null;
+        if ($paved!==null && !is_bool($paved)) { throw new \InvalidArgumentException('paved_only must be a JSON boolean'); }
+        $surface=$input['surface_filter']??($paved===null?'exclude_unpaved':($paved?'known_paved':'any'));
+        if (!is_string($surface) || !in_array($surface,['known_paved','exclude_unpaved','any'],true)) {throw new \InvalidArgumentException('Unknown surface filter');}
         $max=self::number($input,'max_stops',1,1,100);
         if (floor($max)!==$max) { throw new \InvalidArgumentException('max_stops must be an integer'); }
         $minimum=self::number($input,'min_length_miles',0,0,30);
@@ -30,8 +32,14 @@ final class Validation
         }
         $radius=self::number($input,'radius_miles',5,1,50);
         if (floor($radius)!==$radius) { throw new \InvalidArgumentException('radius_miles must be an integer between 1 and 50'); }
+        $density=isset($input['min_curve_density_score'])
+            ? self::number($input,'min_curve_density_score',2.2,1,10)
+            : (isset($input['min_curve_density'])?Scorer::densityScore(self::number($input,'min_curve_density',7,0,Scorer::MAX_CURVE_DENSITY)):2.2);
+        $quality=self::number($input,'min_curvature_quality',0.12,0,1);
+        $sustained=self::number($input,'min_sustained_curve_m',120,0,50000);
         return ['zip'=>self::zip($input['zip']??null),'radius_miles'=>$radius,
             'min_length_miles'=>$minimum,'max_length_miles'=>$maximum,
-            'max_stops'=>(int)$max,'profile'=>$profile,'paved_only'=>$paved];
+            'min_curve_density_score'=>$density,'min_curve_density'=>Scorer::rawDensity($density),
+            'min_curvature_quality'=>$quality,'min_sustained_curve_m'=>$sustained,'surface_filter'=>$surface,'max_stops'=>(int)$max,'profile'=>$profile,'paved_only'=>$surface==='known_paved'];
     }
 }

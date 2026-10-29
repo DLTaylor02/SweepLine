@@ -32,7 +32,7 @@ final class Api
     {
         $p=Validation::search($input); $zip=$this->zip($p['zip']);
         // All geometry and scores are precomputed. Indexed spheroidal distance, not a bbox filter.
-        $q=$this->db->prepare('SELECT * FROM (SELECT DISTINCT ON (c.geometry_key) c.id,c.name,c.ref,c.highway,c.length_m,c.mandatory_stops,c.uncertain_controls,c.speed_mph,c.metrics,c.elevation_gain_m,c.elevation_loss_m,s.score,s.confidence,s.dimensions,
+        $q=$this->db->prepare('SELECT * FROM (SELECT DISTINCT ON (c.geometry_key) c.id,c.name,c.ref,c.highway,c.length_m,c.mandatory_stops,c.uncertain_controls,c.speed_mph,c.surface_status,c.metrics,c.elevation_gain_m,c.elevation_loss_m,s.score,s.confidence,s.dimensions,
             ST_AsGeoJSON(ST_SimplifyPreserveTopology(c.geom::geometry,0.00006),5) AS geometry
             FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id
             JOIN road_scores s ON s.candidate_id=c.id AND s.profile=:profile
@@ -42,11 +42,11 @@ final class Api
             AND c.length_m > :minimum
             AND c.length_m <= :maximum
             AND c.mandatory_stops+c.uncertain_controls <= :stops
-            AND (CAST(:paved AS boolean)=false OR c.surface_known_paved=true)
+            AND (CASE CAST(:surface AS text) WHEN \'any\' THEN true WHEN \'known_paved\' THEN c.surface_status=\'paved\' ELSE c.surface_status<>\'unpaved\' END)
             ORDER BY c.geometry_key,r.imported_at DESC,s.confidence DESC,c.id) ranked
             ORDER BY score DESC,length_m DESC,id LIMIT 101');
-        $q->execute(['eligibility'=>json_encode((object)(Scorer::profiles()[$p['profile']]['eligibility']??[]),JSON_THROW_ON_ERROR),'profile'=>$p['profile'],'lon'=>$zip['lon'],'lat'=>$zip['lat'],'meters'=>$p['radius_miles']*1609.344,
-            'minimum'=>$p['min_length_miles']*1609.344,'maximum'=>$p['max_length_miles']===null ? PHP_FLOAT_MAX : $p['max_length_miles']*1609.344,'stops'=>$p['max_stops'],'paved'=>$p['paved_only']?'true':'false']);
+        $q->execute(['eligibility'=>json_encode((object)Scorer::eligibility($p),JSON_THROW_ON_ERROR),'profile'=>$p['profile'],'lon'=>$zip['lon'],'lat'=>$zip['lat'],'meters'=>$p['radius_miles']*1609.344,
+            'minimum'=>$p['min_length_miles']*1609.344,'maximum'=>$p['max_length_miles']===null ? PHP_FLOAT_MAX : $p['max_length_miles']*1609.344,'stops'=>$p['max_stops'],'surface'=>$p['surface_filter']]);
         $rows=$q->fetchAll(PDO::FETCH_ASSOC); $truncated=count($rows)>100; $rows=array_slice($rows,0,100);
         $results=array_map([$this,'decode'],$rows);
         $coverage=$this->db->prepare('SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry),false) FROM regions WHERE active_job_id IS NOT NULL');
@@ -78,6 +78,7 @@ final class Api
         foreach (['geometry','metrics','dimensions'] as $key) { if (isset($row[$key])) { $row[$key]=json_decode($row[$key],true,512,JSON_THROW_ON_ERROR); } }
         foreach (['id','mandatory_stops','uncertain_controls'] as $key) { if (isset($row[$key])) { $row[$key]=(int)$row[$key]; } }
         foreach (['length_m','score','confidence','speed_mph','elevation_gain_m','elevation_loss_m'] as $key) { if (isset($row[$key])) { $row[$key]=(float)$row[$key]; } }
+        if(isset($row['metrics']['curve_density'])) {$row['metrics']['curve_density_score']=round(Scorer::densityScore((float)$row['metrics']['curve_density']),1);}
         return $row;
     }
 }

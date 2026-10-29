@@ -4,6 +4,21 @@ namespace SweepLine;
 
 final class Scorer
 {
+    public const MAX_CURVE_DENSITY=1609.344/30;
+    public static function densityScore(float $raw): float {return 1+9*min(self::MAX_CURVE_DENSITY,max(0,$raw))/self::MAX_CURVE_DENSITY;}
+    public static function rawDensity(float $score): float {return ($score-1)/9*self::MAX_CURVE_DENSITY;}
+    public static function eligibility(array $parameters): array
+    {
+        $rules=self::profiles()[$parameters['profile']]['eligibility']??[];
+        if ($parameters['profile']==='twisty' && isset($parameters['min_curve_density'])) {
+            $rules['curve_density']=$parameters['min_curve_density'];
+        }
+        if ($parameters['profile']==='twisty') {
+            if (isset($parameters['min_curvature_quality'])) {$rules['curvature']=$parameters['min_curvature_quality'];}
+            if (isset($parameters['min_sustained_curve_m'])) {$rules['sustained_curve_m']=$parameters['min_sustained_curve_m'];}
+        }
+        return $rules;
+    }
     public static function profiles(): array { return require SWEEPLINE_ROOT . '/config/profiles.php'; }
     public static function qualifies(array $metrics,string $profile): bool
     {

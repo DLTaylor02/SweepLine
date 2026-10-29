@@ -1,4 +1,6 @@
 'use strict';
+const normalizedDensity=m=>Math.max(1,Math.min(10,m.curve_density_score??(1+9*m.curve_density/53.6448))).toFixed(1);
+
 const $ = id => document.getElementById(id);
 let map, ready, roads = [], selected = null, request = 0, pollTimer, activeProfile='twisty';
 let pendingHistorySearch=false, activeSearchUser=null, restoredSearchUser=null, explicitSearchParameters=false;
@@ -16,7 +18,10 @@ function fillSearch(p) {
   form.zip.value=p.zip;form.profile.value=p.profile;form.radius.value=String(p.radius_miles);
   form.min_length.value=p.min_length_miles==null?'':String(p.min_length_miles);
   form.max_length.value=p.max_length_miles==null?'':String(p.max_length_miles);
-  form.max_stops.value=String(Math.max(1,p.max_stops));form.paved.checked=p.paved_only;
+  form.min_curve_density_score.value=String(p.min_curve_density_score??(p.min_curve_density==null?2.2:1+9*p.min_curve_density/53.6448));
+  form.min_curvature_quality.value=String(p.min_curvature_quality??0.12);form.min_sustained_curve_m.value=String(p.min_sustained_curve_m??120);
+  form.surface_filter.value=p.surface_filter??(p.paved_only===true?'known_paved':p.paved_only===false?'any':'exclude_unpaved');
+  form.max_stops.value=String(Math.max(1,p.max_stops));
 }
 function restoreSearch(userId) {
   try {
@@ -24,7 +29,7 @@ function restoreSearch(userId) {
     if(!raw)return false;
     const p=JSON.parse(raw);
     if(!p || !/^\d{5}$/.test(p.zip) || !Number.isInteger(p.radius_miles) || p.radius_miles<1 || p.radius_miles>50 ||
-      !['twisty','open'].includes(p.profile) || typeof p.paved_only!=='boolean' || !Number.isInteger(p.max_stops) ||
+      !['twisty','open'].includes(p.profile) || !Number.isInteger(p.max_stops) ||
       p.max_stops<0 || p.max_stops>100)return false;
     fillSearch(p);return true;
   } catch (_) {return false;}
@@ -128,7 +133,7 @@ function render() {
     const b=document.createElement('button'); b.className='road'; b.dataset.id=road.id;
     const top=text('div','', 'road-top');
     top.append(text('span',`${String(index+1).padStart(2,'0')}  ${road.name}`,'road-title'),text('span',road.score.toFixed(0),'score'));
-    b.append(top,text('div',`${(road.length_m/1609.344).toFixed(1)} mi · ${road.metrics.curve_density.toFixed(1)} curve samples/mi · ${road.mandatory_stops} mapped stops + ${road.uncertain_controls} uncertain`,'road-meta'),text('div',`${road.speed_mph === null ? 'Speed unknown' : road.speed_mph.toFixed(0)+' mph minimum posted'} · ${Math.round(road.confidence*100)}% attribute completeness`,'road-meta'),text('div',(activeProfile==='twisty'?'Twisty Roads':'Open Highways')+'  ↗','road-tag'));
+    b.append(top,text('div',`${(road.length_m/1609.344).toFixed(1)} mi · ${normalizedDensity(road.metrics)}/10 curve density · ${road.mandatory_stops} mapped stops + ${road.uncertain_controls} uncertain`,'road-meta'),text('div',`${road.speed_mph === null ? 'Speed unknown' : road.speed_mph.toFixed(0)+' mph minimum posted'} · ${Math.round(road.confidence*100)}% attribute completeness`,'road-meta'),text('div',(activeProfile==='twisty'?'Twisty Roads':'Open Highways')+'  ↗','road-tag'));
     b.onclick=()=>selectRoad(road.id); $('results').append(b);
   });
 }
@@ -206,7 +211,7 @@ function searchParameters(form) {
   return {zip:form.zip.value,radius_miles:Number(form.radius.value),profile:form.profile.value,
     ...(form.min_length.value.trim()===''?{}:{min_length_miles:Number(form.min_length.value)}),
     ...(form.max_length.value.trim()===''?{}:{max_length_miles:Number(form.max_length.value)}),
-    max_stops:Number(form.max_stops.value),paved_only:form.paved.checked};
+    min_curve_density_score:Number(form.min_curve_density_score.value),min_curvature_quality:Number(form.min_curvature_quality.value),min_sustained_curve_m:Number(form.min_sustained_curve_m.value),max_stops:Number(form.max_stops.value),surface_filter:form.surface_filter.value};
 }
 let diagnosticRequest=0;
 $('road-diagnostic').onsubmit=async event=>{
@@ -305,10 +310,11 @@ if(window.location?.pathname==='/') {
     explicitSearchParameters=true;
     const form=$('search');
     for(const key of ['zip','profile'])if(params.has(key))form[key].value=params.get(key);
-    for(const [key,field] of [['radius_miles','radius'],['min_length_miles','min_length'],['max_length_miles','max_length'],['max_stops','max_stops']])
+    for(const [key,field] of [['radius_miles','radius'],['min_length_miles','min_length'],['max_length_miles','max_length'],['max_stops','max_stops'],['min_curve_density_score','min_curve_density_score'],['min_curvature_quality','min_curvature_quality'],['min_sustained_curve_m','min_sustained_curve_m'],['surface_filter','surface_filter']])
       if(params.has(key))form[field].value=params.get(key);
     if(form.max_stops.value==='0')form.max_stops.value='1';
-    if(params.has('paved_only'))form.paved.checked=params.get('paved_only')==='true';
+    if(!params.has('min_curve_density_score')&&params.has('min_curve_density'))form.min_curve_density_score.value=String(1+9*Number(params.get('min_curve_density'))/53.6448);
+    if(!params.has('surface_filter')&&params.has('paved_only'))form.surface_filter.value=params.get('paved_only')==='true'?'known_paved':'any';
     pendingHistorySearch=params.get('open')==='1';
     setStatus(pendingHistorySearch?'Opening previous search…':'Previous search loaded. Select Discover roads to run it again.');
   }

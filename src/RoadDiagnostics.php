@@ -10,11 +10,20 @@ final class RoadDiagnostics
         $out=[];
         if ($road['length_m']<=$p['min_length_miles']*1609.344) {$out[]='Does not exceed the requested minimum length.';}
         if ($p['max_length_miles']!==null && $road['length_m']>$p['max_length_miles']*1609.344) {$out[]='Longer than the requested maximum length.';}
-        if ($p['paved_only'] && !$road['surface_known_paved']) {$out[]='Not every piece is explicitly tagged as paved; surface may be unknown or unpaved.';}
+        $status=$road['surface_status']??Surface::classify($road['surface_values']??[]);
+        if (!Surface::allowed($status,$p['surface_filter'])) {
+            $out[]=$status==='unpaved'?'At least one piece is explicitly tagged as unpaved.':
+                'Some pieces have unknown or unrecognized surface tags; confirmed paved is required.';
+            $values=array_map(static fn($v)=>$v===null || $v===''?'missing':$v,$road['surface_values']??[]);
+            if($values) {$out[]='Surface tags: '.implode(', ',$values).'.';}
+        }
         if ($road['mandatory_stops']+$road['uncertain_controls']>$p['max_stops']) {$out[]='Mapped stops plus uncertain controls exceed the limit.';}
-        foreach (Scorer::profiles()[$p['profile']]['eligibility']??[] as $key=>$minimum) {
+        foreach (Scorer::eligibility($p) as $key=>$minimum) {
             $value=$road['metrics'][$key]??null;
-            if (!is_numeric($value) || (float)$value<$minimum) {$out[]=$key.': '.($value===null?'missing':round((float)$value,3)).' (requires at least '.$minimum.').';}
+            if (!is_numeric($value) || (float)$value<$minimum) {
+                if($key==='curve_density') {$out[]='Curve density: '.($value===null?'missing':round(Scorer::densityScore((float)$value),2).'/10').' (requires at least '.round($p['min_curve_density_score'],2).'/10).';}
+                else {$out[]=$key.': '.($value===null?'missing':round((float)$value,3)).' (requires at least '.$minimum.').';}
+            }
         }
         return $out;
     }
@@ -32,7 +41,8 @@ final class RoadDiagnostics
             WHERE s.geom && a.bounds AND ST_DWithin(s.geom::geography,a.geom,a.meters)
             AND (s.name ILIKE ? OR s.ref ILIKE ?) ORDER BY s.osm_id,r.imported_at DESC LIMIT 101");
         $q->execute([...$base,$pattern,$pattern]);$ways=$q->fetchAll(PDO::FETCH_ASSOC);
-        $q=$this->db->prepare($prefix."SELECT c.id,c.name,c.ref,c.highway,c.length_m,c.mandatory_stops,c.uncertain_controls,c.surface_known_paved,c.metrics
+        $q=$this->db->prepare($prefix."SELECT c.id,c.name,c.ref,c.highway,c.length_m,c.mandatory_stops,c.uncertain_controls,c.surface_known_paved,c.surface_status,c.metrics,
+            (SELECT jsonb_agg(DISTINCT s.surface) FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id WHERE m.candidate_id=c.id) AS surface_values
             FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id CROSS JOIN area a
             WHERE ST_DWithin(c.geom,a.geom,a.meters)
             AND (c.name ILIKE ? OR c.ref ILIKE ? OR EXISTS(
@@ -43,6 +53,7 @@ final class RoadDiagnostics
         $search=$api->search($p);$visible=array_column($search['results'],'id');
         $truncated=count($ways)>100 || count($roads)>100;$ways=array_slice($ways,0,100);$roads=array_slice($roads,0,100);
         foreach ($roads as &$road) {
+            $road['surface_values']=json_decode($road['surface_values']?:'[]',true,512,JSON_THROW_ON_ERROR);
             $road['metrics']=json_decode($road['metrics'],true,512,JSON_THROW_ON_ERROR);
             $road['reasons']=self::reasons($road,$p);$road['returned']=in_array((int)$road['id'],$visible,true);
             if (!$road['reasons'] && !$road['returned']) {$road['reasons'][]='Eligible, but may be hidden by identical-geometry deduplication or the 100-result limit.';}

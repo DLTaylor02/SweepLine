@@ -3,7 +3,7 @@ return [
     'twisty' => [
         'name' => 'Twisty Roads', 'description' => 'Sustained curves and continuous rural roads',
         // Sample counts are 30 m geometry samples, not counts of distinct corners.
-        'eligibility' => ['curvature'=>0.12,'curve_density'=>8,'sustained_curve_m'=>120],
+        'eligibility' => ['curvature'=>0.12,'curve_density'=>7,'sustained_curve_m'=>120],
         'weights' => ['curvature' => 0.70, 'length' => 0.12, 'intersections' => 0.08, 'stops' => 0.06, 'classification' => 0.02, 'surface' => 0.02],
     ],
     'open' => [

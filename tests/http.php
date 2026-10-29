@@ -40,6 +40,8 @@ expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=0'),404,'Map ZIP distan
 expect(callApi($admin,'POST','/api/search-diagnostics',['zip'=>'12345','road'=>'x'],$csrf),422,'Road diagnosis validates query');
 $diagnosis=expect(callApi($admin,'POST','/api/search-diagnostics',['zip'=>'12345','radius_miles'=>25,'road'=>'Synthetic'],$csrf),200,'Road diagnosis includes excluded candidates');
 if(count($diagnosis['candidates'])!==2) {throw new RuntimeException('Road diagnosis hid excluded fixture roads');}
+expect(callApi($admin,'POST','/api/search',['zip'=>'12345','min_curve_density'=>54],$csrf),422,'Curve density upper bound via API');
+expect(callApi($admin,'POST','/api/search',['zip'=>'12345','min_curve_density'=>7.5],$csrf),200,'Fractional curve density via API');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345']),403,'Search requires CSRF');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>51],$csrf),422,'Search validation');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25.5],$csrf),422,'Fractional radius rejected via API');

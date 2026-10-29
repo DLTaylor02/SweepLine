@@ -49,6 +49,11 @@ try {
     $db->exec("UPDATE road_candidates SET highway='motorway',metrics=metrics||'{\"curvature\":0.4,\"curve_density\":20,\"sustained_curve_m\":180}'::jsonb WHERE id=".$mainId);
     $eligible=$api->search(['zip'=>'12345','profile'=>'twisty','max_stops'=>5])['results'];
     check(count($eligible)===1 && $eligible[0]['id']===$mainId,'Qualifying geometry passes regardless of motorway classification');
+    $db->exec("UPDATE road_candidates SET metrics=metrics||'{\"curve_density\":7.5}'::jsonb WHERE id=".$mainId);
+    check(count($api->search(['zip'=>'12345','profile'=>'twisty','max_stops'=>5])['results'])===1,'Default density seven admits qualifying 7.5 sample density');
+    check($api->search(['zip'=>'12345','profile'=>'twisty','max_stops'=>5,'min_curve_density'=>8])['results']===[],'User-selected stricter density is applied in SQL');
+    $densityDiagnosis=(new SweepLine\RoadDiagnostics($db))->run(['zip'=>'12345','max_stops'=>5,'road'=>'Synthetic','min_curve_density'=>8]);
+    check(str_contains(json_encode($densityDiagnosis['candidates']),'requires at least 2.34/10'),'Diagnosis uses the selected density threshold');
     check(count($api->search(['zip'=>'12345','profile'=>'open','max_stops'=>5])['results'])===2,'Twisty qualification does not restrict Open Highway results');
 } finally {
     $restore=$db->prepare('UPDATE road_candidates SET metrics=?::jsonb,highway=? WHERE id=?');
@@ -85,3 +90,14 @@ try {$api->nearestZip(['lon'=>0,'lat'=>0]);check(false,'Distant point has no ZIP
 $diagnostic=(new SweepLine\RoadDiagnostics($db))->run(['zip'=>'12345','radius_miles'=>25,'road'=>'Synthetic']);
 check(count($diagnostic['ways'])>0 && count($diagnostic['candidates'])===2,'Missing-road diagnosis finds imported ways and excluded candidates');
 check($diagnostic['candidates'][0]['reasons']!==[],'Missing-road diagnosis explains candidates failing twisty eligibility');
+
+$surfaceId=(int)$db->query('SELECT min(id) FROM road_candidates')->fetchColumn();
+$oldSurface=$db->query('SELECT surface_status FROM road_candidates WHERE id='.$surfaceId)->fetchColumn();
+try {
+ $db->exec("UPDATE road_candidates SET surface_status='unknown' WHERE id=".$surfaceId);
+ check(count($api->search(['profile'=>'open','zip'=>'12345','max_stops'=>5])['results'])===2,'Default surface policy admits unknown candidate');
+ check(count($api->search(['profile'=>'open','zip'=>'12345','max_stops'=>5,'surface_filter'=>'known_paved'])['results'])===1,'Confirmed paved policy excludes unknown candidate');
+ $db->exec("UPDATE road_candidates SET surface_status='unpaved' WHERE id=".$surfaceId);
+ check(count($api->search(['profile'=>'open','zip'=>'12345','max_stops'=>5])['results'])===1,'Default surface policy excludes known unpaved');
+ check(count($api->search(['profile'=>'open','zip'=>'12345','max_stops'=>5,'surface_filter'=>'any'])['results'])===2,'All-surface policy admits known unpaved');
+} finally {$db->prepare('UPDATE road_candidates SET surface_status=? WHERE id=?')->execute([$oldSurface,$surfaceId]);}
