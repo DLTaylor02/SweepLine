@@ -22,6 +22,7 @@ function expect(array $response,int $code,string $message): array {
 expect(callApi($anonymous,'GET','/api/health'),200,'Public application health');
 expect(callApi($anonymous,'GET','/api/search-history'),401,'Search history requires login');
 expect(callApi($anonymous,'GET','/api/zips/nearest?lon=-119.8&lat=39.52'),401,'Map ZIP lookup requires sign-in');
+expect(callApi($anonymous,'POST','/api/search-diagnostics',['zip'=>'12345','road'=>'Synthetic']),403,'Road diagnosis requires CSRF before authentication');
 expect(callApi($anonymous,'GET','/api/coverage'),401,'Coverage requires login');
 $session=expect(callApi($admin,'GET','/api/session'),200,'Get session and CSRF');
 if (!$session['admin_ready']) { throw new RuntimeException('HTTP tests require terminal-provisioned SuperAdmin fixture'); }
@@ -36,6 +37,9 @@ $picked=expect(callApi($admin,'GET','/api/zips/nearest?lon=-119.8&lat=39.52'),20
 if($picked['zip']!=='12345') {throw new RuntimeException('Nearest ZIP incorrect');}
 expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=91'),422,'Map ZIP coordinate validation');
 expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=0'),404,'Map ZIP distant point rejected');
+expect(callApi($admin,'POST','/api/search-diagnostics',['zip'=>'12345','road'=>'x'],$csrf),422,'Road diagnosis validates query');
+$diagnosis=expect(callApi($admin,'POST','/api/search-diagnostics',['zip'=>'12345','radius_miles'=>25,'road'=>'Synthetic'],$csrf),200,'Road diagnosis includes excluded candidates');
+if(count($diagnosis['candidates'])!==2) {throw new RuntimeException('Road diagnosis hid excluded fixture roads');}
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345']),403,'Search requires CSRF');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>51],$csrf),422,'Search validation');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25.5],$csrf),422,'Fractional radius rejected via API');

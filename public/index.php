@@ -16,7 +16,7 @@ header('X-Content-Type-Options: nosniff');
 try {
     if ($path==='/api/setup') { throw new OutOfBoundsException('Endpoint not found'); }
     $method=$_SERVER['REQUEST_METHOD']??'GET';
-    $postPaths=['/api/search','/api/login','/api/logout','/api/admin/users','/api/favorites'];
+    $postPaths=['/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if ($path==='/api/admin/users' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='PATCH'; }
@@ -78,6 +78,7 @@ try {
                     } else { $result=$api->nearestZip($_GET); }
                 }
                 elseif ($path==='/api/coverage') { $result=$api->coverage(); }
+                elseif ($path==='/api/search-diagnostics') { $result=(new SweepLine\RoadDiagnostics($db))->run($input); }
                 elseif ($path==='/api/search') {
                     if (isset($input['record_history']) && !is_bool($input['record_history'])) { throw new InvalidArgumentException('record_history must be a JSON boolean'); }
                     $p=SweepLine\Validation::search($input); $queue=new SweepLine\DataQueue($db); $preparation=$queue->prepare($p);

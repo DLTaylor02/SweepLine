@@ -202,13 +202,48 @@ async function discover(payload, sequence) {
     if(e.status===503)pollTimer=setTimeout(()=>discover(payload,sequence),10000);
   } finally { if(sequence===request)$('submit').disabled=false; }
 }
-$('search').onsubmit = event => {
-  event.preventDefault();clearTimeout(pollTimer);const sequence=++request,form=event.target;
-  $('submit').disabled=true;setStatus('Preparing your road search…',true);$('road-detail').hidden=true;selected=null;
-  const payload={_recorded:event.fromHistory===true,zip:form.zip.value,radius_miles:Number(form.radius.value),profile:form.profile.value,
+function searchParameters(form) {
+  return {zip:form.zip.value,radius_miles:Number(form.radius.value),profile:form.profile.value,
     ...(form.min_length.value.trim()===''?{}:{min_length_miles:Number(form.min_length.value)}),
     ...(form.max_length.value.trim()===''?{}:{max_length_miles:Number(form.max_length.value)}),
     max_stops:Number(form.max_stops.value),paved_only:form.paved.checked};
+}
+let diagnosticRequest=0;
+$('road-diagnostic').onsubmit=async event=>{
+  event.preventDefault();
+  const search=$('search');if(search.reportValidity && !search.reportValidity())return;
+  const sequence=++diagnosticRequest;
+  $('diagnostic-submit').disabled=true;$('diagnostic-status').textContent='Checking locally imported ways and candidate exclusions…';
+  $('diagnostic-results').replaceChildren();
+  try {
+    const data=await api('/api/search-diagnostics',{method:'POST',body:JSON.stringify({...searchParameters(search),road:event.target.road.value})});
+    if(sequence!==diagnosticRequest)return;
+    $('diagnostic-status').textContent='Checking '+data.road+' near '+data.parameters.zip+' within '+data.parameters.radius_miles+' miles. '+data.ways.length+' matching source ways; '+data.candidates.length+' continuous candidates. '+
+      (data.full_radius_covered?'Search area has imported coverage. ':'Search area is not fully covered yet. ')+(data.truncated?'Showing the first 100 matches. ':'');
+    data.candidates.forEach(road=>{
+      const row=text('div','','diagnostic-road');
+      row.append(text('strong',road.name+(road.ref?' ('+road.ref+')':'')),
+        text('p',(road.length_m/1609.344).toFixed(2)+' mi · '+road.mandatory_stops+' stops + '+road.uncertain_controls+' uncertain · '+road.highway));
+      const reasons=road.reasons.length?road.reasons:['Included in the current search results.'];
+      reasons.forEach(reason=>row.append(text('p',reason)));$('diagnostic-results').append(row);
+    });
+    if(data.ways.length) {
+      $('diagnostic-results').append(text('h3','Imported source tags'));
+      const tags=new Set(data.ways.map(w=>[w.name||'Unnamed',w.ref||'no route reference',w.highway,'surface: '+(w.surface||'unknown')].join(' · ')));
+      [...tags].forEach(tag=>$('diagnostic-results').append(text('p',tag)));
+    }
+    if(!data.candidates.length)$('diagnostic-results').append(text('p',data.ways.length?
+      'Source ways were imported, but no matching continuous candidate was built. Check classification, segmentation, continuity and access restrictions.':
+      'No matching source ways in active local data. The name/reference may differ, the road may be outside the radius, or the import may have excluded it.'));
+    $('diagnostic-results').append(text('p',data.note));
+  } catch(e){if(sequence===diagnosticRequest)$('diagnostic-status').textContent=e.message;}
+  finally{if(sequence===diagnosticRequest)$('diagnostic-submit').disabled=false;}
+};
+
+$('search').onsubmit = event => {
+  event.preventDefault();clearTimeout(pollTimer);const sequence=++request,form=event.target;
+  $('submit').disabled=true;setStatus('Preparing your road search…',true);$('road-detail').hidden=true;selected=null;
+  const payload={...searchParameters(form),_recorded:event.fromHistory===true};
   rememberSearch(payload);discover(payload,sequence);
 };
 async function openFavorite(id) {
@@ -233,6 +268,7 @@ async function handleSession(event) {
   if(window.location?.pathname && window.location.pathname!=='/')return;
   if(!event.detail.user) {
     if(activeSearchUser) {try {window.sessionStorage?.removeItem(searchStorageKey(activeSearchUser));}catch(_) {}}
+    ++diagnosticRequest;$('diagnostic-results').replaceChildren();$('diagnostic-status').textContent='';$('diagnostic-submit').disabled=false;
     ++zipPickRequest;setZipPickMode(false);$('pick-zip').disabled=false;$('zip-pick-status').textContent='';
     activeSearchUser=null;restoredSearchUser=null;currentSearchParameters=null;
     ++request;clearTimeout(pollTimer);roads=[];render();$('road-detail').hidden=true;$('submit').disabled=false;setStatus('Choose a ZIP code to explore roads nearby.');

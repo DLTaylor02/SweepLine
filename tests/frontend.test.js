@@ -21,6 +21,7 @@ async function testFrontend(sources) {
   const get=id=>elements[id]??=new Element(id);
   for(const n of ['username','password']){get('account-form').fields[n]=new Element();get('account-form')[n]=get('account-form').fields[n];}
   for(const n of ['username','name','email','password']){get('create-user').fields[n]=new Element();get('create-user')[n]=get('create-user').fields[n];}
+  get('road-diagnostic').road=new Element();get('road-diagnostic').road.value='424';
   const search=get('search');
   for(const n of ['zip','radius','profile','min_length','max_length','max_stops','paved'])search[n]=new Element();
   search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='1';search.paved.checked=true;
@@ -38,6 +39,7 @@ async function testFrontend(sources) {
     if(path==='/api/session')data=session();
     else if(path==='/api/login'){logged=true;csrf='signed-in';data=session();}
     else if(path==='/api/logout'){logged=false;csrf='signed-out';data=session();}
+    else if(path==='/api/search-diagnostics')data={road:'424',parameters:{zip:'12345',radius_miles:5},ways:[{name:'Test road',ref:'CR 424',highway:'secondary',surface:null}],candidates:[{name:'Test road',ref:'CR 424',highway:'secondary',length_m:10000,mandatory_stops:1,uncertain_controls:0,reasons:['Not every piece is explicitly tagged as paved.']}],full_radius_covered:true,note:'Read-only local diagnosis'};
     else if(path==='/api/search')data=searchResponses.shift()??{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}};
     else if(path==='/api/search-history/1'&&options.method==='DELETE'){historyDeleted=true;data={deleted:true};}
     else if(path==='/api/search-history')data=historyDeleted?[]:[{id:1,created_at:'2026-10-19T12:00:00Z',parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:5,paved_only:true,min_length_miles:0,max_length_miles:null}}];
@@ -72,6 +74,10 @@ async function testFrontend(sources) {
   await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
   check(payload.max_stops===1,'New searches submit one mapped stop by default');
+  await get('road-diagnostic').onsubmit({preventDefault(){},target:get('road-diagnostic')});await flush();
+  check(get('diagnostic-status').textContent.includes('1 continuous candidates'),'Missing-road checker shows candidate count');
+  check(get('diagnostic-results').children[0].children.some(n=>n.textContent.includes('explicitly tagged as paved')),'Missing-road checker shows actual rejection reason');
+  check(JSON.parse(requests.find(r=>r.path==='/api/search-diagnostics').body).road==='424','Missing-road checker submits road query with current filters');
   check(payload.radius_miles===5,'Numeric radius submitted directly');
   check(payload.max_length_miles===12.5&&!('min_length_miles'in payload),'Optional bounds preserved');
   check(payload.record_history===true,'New searches request a history entry');

@@ -81,3 +81,7 @@ $nearest=$api->nearestZip(['lon'=>-119.80,'lat'=>39.52]);
 check($nearest['zip']==='12345' && (float)$nearest['distance_m']<1,'Nearest ZIP uses real geographic distance');
 check(rejects(fn()=>$api->nearestZip(['lon'=>-181,'lat'=>39])),'Nearest ZIP validates coordinates');
 try {$api->nearestZip(['lon'=>0,'lat'=>0]);check(false,'Distant point has no ZIP');} catch (OutOfBoundsException $e) {check(true,'Distant point has no nearby ZIP');}
+
+$diagnostic=(new SweepLine\RoadDiagnostics($db))->run(['zip'=>'12345','radius_miles'=>25,'road'=>'Synthetic']);
+check(count($diagnostic['ways'])>0 && count($diagnostic['candidates'])===2,'Missing-road diagnosis finds imported ways and excluded candidates');
+check($diagnostic['candidates'][0]['reasons']!==[],'Missing-road diagnosis explains candidates failing twisty eligibility');

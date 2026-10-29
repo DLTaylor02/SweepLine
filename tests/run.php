@@ -189,5 +189,14 @@ $longStraight['intersections']=0;$longStraight['mandatory_stops']=0;$longStraigh
 $shortWinding=$m;$shortWinding['curvature']=0.8;$shortWinding['length_m']=4000;
 check(Scorer::score($shortWinding,'twisty')['score']>Scorer::score($longStraight,'twisty')['score'],'Strong curvature outweighs straight-road length and interruption advantages');
 
+$diagnosticParameters=Validation::search(['zip'=>'12345','min_length_miles'=>5,'max_stops'=>1]);
+$excludedRoad=['length_m'=>3000,'mandatory_stops'=>2,'uncertain_controls'=>0,'surface_known_paved'=>false,'metrics'=>['curvature'=>0,'curve_density'=>0,'sustained_curve_m'=>0]];
+$reasons=SweepLine\RoadDiagnostics::reasons($excludedRoad,$diagnosticParameters);
+check(count($reasons)===6,'Missing-road reasons include all failing length, surface, stop and curvature checks');
+$eligibleRoad=['length_m'=>12000,'mandatory_stops'=>0,'uncertain_controls'=>1,'surface_known_paved'=>true,'metrics'=>['curvature'=>0.5,'curve_density'=>20,'sustained_curve_m'=>300]];
+check(SweepLine\RoadDiagnostics::reasons($eligibleRoad,$diagnosticParameters)===[],'Qualifying candidate has no false rejection reasons');
+$unknownMetric=$eligibleRoad;unset($unknownMetric['metrics']['curvature']);
+check(count(SweepLine\RoadDiagnostics::reasons($unknownMetric,$diagnosticParameters))===1,'Missing geometry metric is reported explicitly');
+
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);
