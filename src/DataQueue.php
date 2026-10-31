@@ -44,6 +44,11 @@ final class DataQueue
     private function collect(array $tile,array &$tasks): void
     {
         $task=$this->ensure($tile['key'],'roads',$tile,true);
+        if ($task['status']==='failed' && !($task['cancel_requested']??false) &&
+            CoveragePlanner::canSplit($tile) && CoveragePlanner::oversized($task['error']??'')) {
+            $this->db->prepare("UPDATE data_tasks SET status='queued',attempts=0,error=null,progress='Retrying dense area with smaller downloads',next_attempt_at=now(),updated_at=now() WHERE id=? AND status='failed' AND cancel_requested=false")->execute([$task['id']]);
+            $task=$this->ensure($tile['key'],'roads',$tile);
+        }
         if ($task['status']==='split') {
             foreach (CoveragePlanner::children($tile) as $child) { $this->collect($child,$tasks); }
         } else { $tasks[]=$task; }

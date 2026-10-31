@@ -28,6 +28,18 @@ final class CoveragePlanner
         if (count($out)>512) { throw new \InvalidArgumentException('This search spans too many geographic areas. Use a smaller radius.'); }
         return array_values($out);
     }
+    public static function canSplit(array $tile): bool
+    {
+        return ($tile['bounds'][2]-$tile['bounds'][0])>0.015625;
+    }
+    public static function oversized(string $message): bool
+    {
+        return str_contains($message,'limit exceeded') || str_contains($message,'download limit') || str_contains($message,'error remark');
+    }
+    public static function halo(array $tile): float
+    {
+        return min(0.04,($tile['bounds'][2]-$tile['bounds'][0])*0.32);
+    }
     public static function children(array $tile): array
     {
         [$w,$s,$e,$n]=$tile['bounds']; $mx=($w+$e)/2; $my=($s+$n)/2; $out=[];

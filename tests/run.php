@@ -254,5 +254,14 @@ check($reverseTight['notes'][0]['extremely_tight'] && $reverseTight['notes'][0][
 $tightExport=$export;$tightExport['notes']=$tightNotes['notes'];
 check(str_contains(SweepLine\RoadExport::pdf($tightExport),'Extremely tight'),'PDF includes explicit tight-corner callout');
 
+$denseTile=['key'=>'dense','bounds'=>[-83,39.875,-82.875,40]];
+check(SweepLine\CoveragePlanner::canSplit($denseTile),'Dense cells subdivide beyond former cutoff');
+check(SweepLine\CoveragePlanner::oversized('Road limit exceeded; use a smaller extract (30k ways max)'),'Road count error triggers subdivision');
+check(!SweepLine\CoveragePlanner::oversized('Provider unavailable'),'Ordinary failures retain bounded retries');
+$smallTile=$denseTile;
+while (SweepLine\CoveragePlanner::canSplit($smallTile)) {$smallTile=SweepLine\CoveragePlanner::children($smallTile)[0];}
+check(abs(($smallTile['bounds'][2]-$smallTile['bounds'][0])-0.015625)<0.000001,'Dense subdivision remains bounded');
+check(SweepLine\CoveragePlanner::halo($smallTile)<0.006,'Dense cell overlap shrinks with cell size');
+
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

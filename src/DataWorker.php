@@ -21,7 +21,7 @@ final class DataWorker
         $queue=new DataQueue($this->db);
         foreach ($interrupted as $task) {
             $tile=json_decode($task['payload'],true);
-            if ($task['kind']==='roads' && (int)$task['attempts']>=2 && ($tile['bounds'][2]-$tile['bounds'][0])>0.125) {
+            if ($task['kind']==='roads' && (int)$task['attempts']>=2 && CoveragePlanner::canSplit($tile)) {
                 $this->db->beginTransaction();
                 try {
                     foreach (CoveragePlanner::children($tile) as $child) { $queue->ensure($child['key'],'roads',$child); }
@@ -84,11 +84,7 @@ final class DataWorker
                 $this->db->commit(); (new DataQueue($this->db))->purgeCancelled(); $this->heartbeat(); return true;
             }
             $message=substr($e->getMessage(),0,1500);
-            $size=$payload['bounds'][2]??null;
-            $width=$size!==null ? $payload['bounds'][2]-$payload['bounds'][0] : 0;
-            $oversized=str_contains($message,'limit exceeded') || str_contains($message,'download limit') ||
-                str_contains($message,'error remark');
-            if ($task['kind']==='roads' && $width>0.125 && $oversized) {
+            if ($task['kind']==='roads' && CoveragePlanner::canSplit($payload) && CoveragePlanner::oversized($message)) {
                 $queue=new DataQueue($this->db);
                 try {
                     foreach (CoveragePlanner::children($payload) as $child) { $queue->ensure($child['key'],'roads',$child); }
@@ -130,7 +126,8 @@ final class DataWorker
     {
         [$w,$s,$e,$n]=$tile['bounds'];
         // A small halo improves continuity around cell boundaries; only the core is advertised as covered.
-        $bbox=implode(',', [max(-90,$s-0.04),max(-180,$w-0.04),min(90,$n+0.04),min(180,$e+0.04)]);
+        $halo=CoveragePlanner::halo($tile);
+        $bbox=implode(',', [max(-90,$s-$halo),max(-180,$w-$halo),min(90,$n+$halo),min(180,$e+$halo)]);
         $query='[out:xml][timeout:180][maxsize:134217728];way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service)$"]('.$bbox.');(._;>;);out body;';
         $path=$dir.'/roads-'.$id.'.osm';
         try {
@@ -161,4 +158,3 @@ final class DataWorker
         $this->heartbeat();
     }
 }
-

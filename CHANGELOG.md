@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed dense-city imports stalling at the subdivision cutoff: smaller bounded areas now use proportional overlap, and searches automatically requeue earlier size-limit failures while preserving active data.
+
 - Changed the KMZ path style to #FF00D5 with line width 8.
 
 - Added explicit extremely tight bend/hairpin callouts to rally-note PDFs and other road-note exports, based on local estimated radius rather than turn angle alone.
