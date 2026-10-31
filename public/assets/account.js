@@ -25,7 +25,7 @@
   function paint() {
     const signed=!!session.user;
     el('workspace').hidden=!signed || adminPage || historyPage || favoritesPage;el('account-gate').hidden=signed;
-    el('sign-out').hidden=!signed;el('admin-open').hidden=session.user?.role!=='superadmin';
+    el('sign-out').hidden=!signed;el('admin-open').hidden=!['admin','superadmin'].includes(session.user?.role);
     el('jobs-open').hidden=session.user?.role!=='superadmin';
     el('history-open').hidden=!signed;el('history-panel').hidden=!signed || !historyPage;
     if(historyPage && signed)refreshHistory();
@@ -37,7 +37,8 @@
       el('admin-jobs').hidden=managePage;
       el('admin-page-title').textContent=jobsPage?'Manage':'Users';
       el('admin-panel').className='admin-panel jobs-page';
-      if(session.user.role==='superadmin')refreshAdmin();
+      el('create-role-label').hidden=session.user.role!=='superadmin';
+      if(session.user.role==='superadmin' || (managePage && session.user.role==='admin'))refreshAdmin();
       else {el('admin-jobs').hidden=true;el('admin-users').hidden=true;el('admin-status').textContent='SuperAdmin access required.';}
     }
     el('account-name').textContent=signed?session.user.name:'';
@@ -159,7 +160,7 @@
   }
   async function refreshAdmin() {
     clearTimeout(adminTimer);
-    if(el('admin-panel').hidden || session.user?.role!=='superadmin')return;
+    if(el('admin-panel').hidden || !(session.user?.role==='superadmin' || (managePage && session.user?.role==='admin')))return;
     if(el('user-list').contains(document.activeElement)) { adminTimer=setTimeout(refreshAdmin,15000);return; }
     try {
       const users=managePage?await window.sweeplineRequest('/api/admin/users'):[];
@@ -167,11 +168,20 @@
       el('user-list').replaceChildren();
       users.forEach(user=>{
         const row=text('div','');row.className='user-row';
-        row.append(text('strong',user.name),text('p',user.username+(user.email?' · '+user.email:'')+' · '+user.role+' · '+(user.active?'Active':'Disabled')));
+        row.append(text('strong',user.name),text('p',user.username+(user.email?' · '+user.email:'')+' · '+(user.role==='member'?'User':user.role==='admin'?'Admin':'SuperAdmin')+' · '+(user.active?'Active':'Disabled')));
+        if(session.user.role!=='superadmin' && user.role!=='member') {el('user-list').append(row);return;}
         if(Number(user.id)!==Number(session.user.id)) {
           const toggle=text('button',user.active?'Disable':'Enable');toggle.type='button';
           toggle.onclick=async()=>{try{await updateUser(user.id,{active:!user.active});await refreshAdmin();}catch(e){el('admin-status').textContent=e.message;}};
           row.append(toggle);
+        }
+        if(session.user.role==='superadmin' && user.role!=='superadmin') {
+          const role=document.createElement('select');role.setAttribute('aria-label','Role for '+user.username);
+          for(const [value,label] of [['member','User'],['admin','Admin']]) {const option=text('option',label);option.value=value;role.append(option);}
+          role.value=user.role;
+          const saveRole=text('button','Save role');saveRole.type='button';
+          saveRole.onclick=async()=>{try {await updateUser(user.id,{role:role.value});await refreshAdmin();}catch(e){el('admin-status').textContent=e.message;}};
+          row.append(role,saveRole);
         }
         const password=document.createElement('input');password.type='password';password.autocomplete='new-password';
         password.placeholder='New password (12–72 bytes)';password.setAttribute('aria-label','New password for '+user.username);
@@ -238,7 +248,7 @@
   el('create-user').onsubmit=async event=>{
     event.preventDefault();const form=event.target;
     try {
-      await window.sweeplineRequest('/api/admin/users',{method:'POST',body:JSON.stringify({username:form.username.value,name:form.elements.namedItem('name').value,email:form.email.value,password:form.password.value})});
+      await window.sweeplineRequest('/api/admin/users',{method:'POST',body:JSON.stringify({username:form.username.value,name:form.elements.namedItem('name').value,email:form.email.value,password:form.password.value,role:session.user.role==='superadmin'?(el('create-role').value || 'member'):'member'})});
       form.reset();el('admin-status').textContent='User created.';await refreshAdmin();
     } catch(e) {el('admin-status').textContent=e.message;}
   };

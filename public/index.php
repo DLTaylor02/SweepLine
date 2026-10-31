@@ -51,7 +51,7 @@ try {
             elseif ($path==='/api/login') { $result=$auth->login($input); }
             elseif ($path==='/api/logout') { $result=$auth->logout(); }
             else {
-                $user=$auth->requireUser(str_starts_with($path,'/api/admin/'));
+                $user=$auth->requireUser(preg_match('#^/api/admin/users(?:/|$)#',$path)?'admin':str_starts_with($path,'/api/admin/'));
                 // Release the session lock before spatial queries or polling.
                 session_write_close();
                 if ($path==='/api/favorites') {

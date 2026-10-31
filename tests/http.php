@@ -111,6 +111,28 @@ expect(callApi($member,'GET','/api/admin/users'),403,'Members cannot manage user
 expect(callApi($member,'GET','/api/admin/storage'),403,'Members cannot read storage settings');
 expect(callApi($member,'GET','/api/admin/data'),403,'Members cannot view job management');
 expect(callApi($member,'POST','/api/admin/tasks/1/cancel',[],$memberSession['csrf']),403,'Members cannot cancel jobs');
+
+expect(callApi($admin,'PATCH','/api/admin/users/'.$id,['role'=>'admin'],$csrf),200,'SuperAdmin promotes Admin');
+expect(callApi($member,'GET','/api/admin/users'),401,'Role change invalidates session');
+$memberSession=expect(callApi($member,'GET','/api/session'),200,'Admin session token');
+$memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Promoted Admin login');
+expect(callApi($member,'GET','/api/admin/users'),200,'Admin accesses Users');
+expect(callApi($member,'GET','/api/admin/data'),403,'Admin cannot access Manage jobs');
+expect(callApi($member,'GET','/api/admin/storage'),403,'Admin cannot access Manage settings');
+expect(callApi($member,'POST','/api/admin/tasks/1/cancel',[],$memberSession['csrf']),403,'Admin cannot cancel jobs');
+expect(callApi($member,'PATCH','/api/admin/users/'.$session['user']['id'],['password'=>'changed-password-123'],$memberSession['csrf']),403,'Admin cannot reset SuperAdmin');
+expect(callApi($member,'PATCH','/api/admin/users/'.$id,['role'=>'member'],$memberSession['csrf']),403,'Admin cannot assign roles');
+expect(callApi($member,'POST','/api/admin/users',['username'=>'operator','password'=>'operator-password-123','role'=>'admin'],$memberSession['csrf']),403,'Admin cannot create privileged accounts');
+$ordinary=expect(callApi($member,'POST','/api/admin/users',['username'=>'ordinary','password'=>'ordinary-password-123'],$memberSession['csrf']),200,'Admin creates User');
+expect(callApi($member,'PATCH','/api/admin/users/'.$ordinary['id'],['active'=>false],$memberSession['csrf']),200,'Admin manages User');
+$private=expect(callApi($admin,'POST','/api/favorites',$favoriteBody,$csrf),200,'SuperAdmin saves private road');
+expect(callApi($member,'GET','/api/favorites/'.$private['id']),404,'Admin cannot access another owner favorite');
+expect(callApi($member,'GET','/api/favorites/'.$private['id'].'/thumbnail'),404,'Admin cannot access another owner thumbnail');
+expect(callApi($member,'GET','/api/favorites/'.$private['id'].'/export?format=gpx'),404,'Admin cannot export another owner favorite');
+expect(callApi($admin,'DELETE','/api/favorites/'.$private['id'],null,$csrf),200,'Owner removes private road');
+expect(callApi($admin,'PATCH','/api/admin/users/'.$id,['role'=>'member'],$csrf),200,'SuperAdmin revokes Admin');
+$memberSession=expect(callApi($member,'GET','/api/session'),200,'Demoted User token');
+$memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Demoted User login');
 expect(callApi($admin,'POST','/api/admin/tasks/1/cancel',[]),403,'Job cancellation requires CSRF');
 expect(callApi($admin,'GET','/api/admin/tasks/1/cancel'),405,'Job cancellation requires POST');
 $db=SweepLine\Database::connect();

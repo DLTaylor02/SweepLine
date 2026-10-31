@@ -34,7 +34,7 @@ If a SuperAdmin already exists, the installer skips the password prompt and pres
 
 A first installation requires an interactive terminal to choose a password. Unattended upgrades work when the SuperAdmin already exists.
 
-Sign in using that web account. Use **Users** to create other users, enable/disable them, and reset passwords. Use **Manage** to inspect data preparation, adjust the storage budget, and retry failed jobs. Disabling a user or resetting their password invalidates existing sessions. Public registration is disabled. This implementation distinguishes only SuperAdmin and member; more detailed permission levels remain for later design.
+Sign in using that web account. Use **Users** to create other users, enable/disable them, and reset passwords. Use **Manage** to inspect data preparation, adjust the storage budget, and retry failed jobs. Disabling a user or resetting their password invalidates existing sessions. Public registration is disabled. Roles are SuperAdmin, Admin, and User. Existing member accounts remain Users.
 
 ### Recover a lost SuperAdmin password
 
@@ -271,3 +271,14 @@ Rally-note exports explicitly label extremely tight bends and hairpins when the 
 ### Administration pages and storage budget
 
 **Manage** (`/manage`) contains background jobs, the storage chart, and a SuperAdmin-only database budget setting (512–1,048,576 MiB). **Users** (`/users`) manages web accounts. Old `/jobs` links redirect to Manage. The saved database budget overrides `DATA_DATABASE_BUDGET_MB`; the environment value remains the initial fallback. Saving takes effect on the worker's next task without a restart. Increasing the budget requeues retry/failed tasks blocked specifically by the database budget. Lowering it preserves data and prevents new imports while over budget. Minimum free disk checks still apply. The authenticated, CSRF-protected settings API is `GET/PATCH /api/admin/storage` with integer `database_budget_mb`.
+
+### User roles
+
+| Role | Discovery, History, Favorites | Users | Manage (jobs/storage) |
+|---|---|---|---|
+| SuperAdmin | Yes | Yes, including Admin role assignment | Yes |
+| Admin | Yes | Create, enable/disable and reset User accounts | No |
+| User | Yes | No | No |
+
+Only SuperAdmin can assign/revoke Admin roles or manage privileged accounts. The installer-managed SuperAdmin cannot be disabled or demoted in the web UI. Role changes invalidate the affected account's sessions. Existing `member` records are displayed as Users and retain their accounts and data. Favorites and history remain private to their owner, including thumbnails and exports; neither administrative role bypasses ownership. API authorization enforces the same permissions as the page controls.
+

@@ -28,11 +28,11 @@ final class Auth
         if (!$user || !$user['active'] || (int)$user['session_version']!==($_SESSION['session_version']??0)) { unset($_SESSION['user_id']); return null; }
         $_SESSION['last_seen']=time(); unset($user['session_version']); $user['id']=(int)$user['id']; return $user;
     }
-    public function requireUser(bool $admin=false): array
+    public function requireUser(bool|string $admin=false): array
     {
         $user=$this->user();
         if (!$user) { throw new HttpException(401,'Please sign in to continue.'); }
-        if ($admin && $user['role']!=='superadmin') { throw new HttpException(403,'SuperAdmin access required.'); }
+        if (($admin===true && $user['role']!=='superadmin') || ($admin==='admin' && !in_array($user['role'],['admin','superadmin'],true))) { throw new HttpException(403,'SuperAdmin access required.'); }
         return $user;
     }
     public function status(): array
@@ -93,30 +93,45 @@ final class Auth
     }
     public function users(): array
     {
-        $this->requireUser(true); return $this->db->query('SELECT id,username,email,name,role,active,created_at FROM app_users ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+        $this->requireUser('admin'); return $this->db->query('SELECT id,username,email,name,role,active,created_at FROM app_users ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
     }
     public function create(array $input): array
     {
-        $this->requireUser(true); $c=self::credentials($input);
+        $actor=$this->requireUser('admin'); $c=self::credentials($input);
+        $role=$input['role']??'member';
+        if (!is_string($role) || !in_array($role,['member','admin'],true)) {throw new \InvalidArgumentException('Role must be member or admin.');}
+        if ($actor['role']!=='superadmin' && $role!=='member') {throw new HttpException(403,'Only the SuperAdmin can assign Admin roles.');}
         if ($c['username']==='superadmin') { throw new \InvalidArgumentException('The superadmin username is reserved.'); }
-        $q=$this->db->prepare("INSERT INTO app_users(username,email,name,password_hash,role) VALUES (?,?,?,?,'member') ON CONFLICT DO NOTHING RETURNING id");
-        $q->execute([$c['username'],$c['email'],$c['name'],password_hash($c['password'],PASSWORD_DEFAULT)]); $id=$q->fetchColumn();
+        $q=$this->db->prepare("INSERT INTO app_users(username,email,name,password_hash,role) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING RETURNING id");
+        $q->execute([$c['username'],$c['email'],$c['name'],password_hash($c['password'],PASSWORD_DEFAULT),$role]); $id=$q->fetchColumn();
         if (!$id) { throw new HttpException(409,'Username or email is already in use.'); }
         return ['id'=>(int)$id];
     }
     public function update(int $id,array $input): array
     {
-        $actor=$this->requireUser(true);
-        if (array_diff(array_keys($input),['active','password'])) { throw new \InvalidArgumentException('Supported updates are active and password.'); }
-        $q=$this->db->prepare('SELECT id FROM app_users WHERE id=?'); $q->execute([$id]);
-        if (!$q->fetchColumn()) { throw new HttpException(404,'User not found.'); }
-        $newHash=isset($input['password'])?password_hash(self::validatePassword($input['password']),PASSWORD_DEFAULT):null;
-        if (array_key_exists('active',$input)) {
-            if (!is_bool($input['active'])) { throw new \InvalidArgumentException('active must be a boolean.'); }
-            if ($id===$actor['id'] && !$input['active']) { throw new \InvalidArgumentException('The SuperAdmin cannot disable their own account.'); }
-            $this->db->prepare('UPDATE app_users SET active=?::boolean,session_version=session_version+1 WHERE id=?')->execute([$input['active']?'true':'false',$id]);
+        $actor=$this->requireUser('admin');
+        if (array_diff(array_keys($input),['active','password','role'])) {throw new \InvalidArgumentException('Supported updates are active, password and role.');}
+        $q=$this->db->prepare('SELECT id,role FROM app_users WHERE id=?');$q->execute([$id]);$target=$q->fetch(PDO::FETCH_ASSOC);
+        if (!$target) {throw new HttpException(404,'User not found.');}
+        if ($actor['role']!=='superadmin' && ($target['role']!=='member' || array_key_exists('role',$input))) {
+            throw new HttpException(403,'Only the SuperAdmin can manage privileged accounts or assign roles.');
         }
-        if ($newHash!==null) { $this->db->prepare('UPDATE app_users SET password_hash=?,session_version=session_version+1 WHERE id=?')->execute([$newHash,$id]); }
+        $role=$input['role']??null;
+        if (array_key_exists('role',$input) && (!is_string($role) || !in_array($role,['member','admin'],true) || $target['role']==='superadmin')) {
+            throw new \InvalidArgumentException('Choose User or Admin; the SuperAdmin role is protected.');
+        }
+        $active=$input['active']??null;
+        if (array_key_exists('active',$input)) {
+            if (!is_bool($active)) {throw new \InvalidArgumentException('active must be a boolean.');}
+            if ($target['role']==='superadmin' && !$active) {throw new \InvalidArgumentException('The SuperAdmin cannot be disabled.');}
+        }
+        $newHash=isset($input['password'])?password_hash(self::validatePassword($input['password']),PASSWORD_DEFAULT):null;
+        // Recheck target role in the mutation so an overlapping promotion cannot let an
+        // Admin reset or disable an account that has just become privileged.
+        $q=$this->db->prepare('UPDATE app_users SET active=COALESCE(?::boolean,active),password_hash=COALESCE(?,password_hash),role=COALESCE(?,role),session_version=session_version+1 WHERE id=?'.($actor['role']==='superadmin'?'':" AND role='member'"));
+        $q->execute([$active===null?null:($active?'true':'false'),$newHash,$role,$id]);
+        if (!$q->rowCount()) {throw new HttpException(403,'Account permissions changed; reload the page.');}
         return ['updated'=>true];
     }
 }
+

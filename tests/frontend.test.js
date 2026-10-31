@@ -28,12 +28,13 @@ async function testFrontend(sources) {
   get('admin-panel').hidden=true;
   const document={getElementById:get,createElement:()=>new Element(),createElementNS:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
+  let currentRole='superadmin';
   let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false,historyDeleted=false,favoritesSaved=false;
   const favoriteRoad={id:1,name:'Test road',score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5,dimensions:{curvature:0.7},favorite_id:7,geometry:{type:'LineString',coordinates:[[-120,39],[-119.99,39.01]]}};
   const savedFavorite={id:7,profile:'twisty',created_at:'2026-10-19T12:00:00Z',road:favoriteRoad,search_parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:1,paved_only:true}};
   let storage={available:true,database_bytes:100,other_bytes:500,free_bytes:400,total_bytes:1000,volumes:[{mount:'/'}],message:'Mounted local disks combined.'};
   const requests=[];
-  const session=()=>({user:logged?{id:1,name:'Owner',role:'superadmin'}:null,csrf,admin_ready:adminReady});
+  const session=()=>({user:logged?{id:1,name:'Owner',role:currentRole}:null,csrf,admin_ready:adminReady});
   const fetch=async(path,options={})=>{
     requests.push({path,...options});let status=200,data;
     if(path==='/api/session')data=session();
@@ -163,6 +164,20 @@ async function testFrontend(sources) {
   await flush();
   check(!get('admin-users').hidden&&get('admin-jobs').hidden&&get('workspace').hidden,'Manage page contains user management only');
   check(!requests.slice(beforeManage).some(r=>r.path==='/api/admin/data'),'Manage does not fetch job preparation');
+
+  currentRole='admin';
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(manageWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(!get('admin-users').hidden&&!get('admin-open').hidden&&get('jobs-open').hidden,'Admin can access Users but Manage link is hidden');
+  check(get('create-role-label').hidden,'Admin cannot assign roles');
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(jobsWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(get('admin-jobs').hidden,'Admin denied Manage page');
+  currentRole='member';
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(manageWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(get('admin-users').hidden&&get('admin-open').hidden&&get('jobs-open').hidden,'User has no management access');
+  currentRole='superadmin';
   const historyWindow={...window,location:{pathname:'/history'}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(historyWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
   await flush();
