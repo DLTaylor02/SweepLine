@@ -49,7 +49,8 @@ async function testFrontend(sources) {
     else if(path==='/api/favorites')data=favoritesSaved?[savedFavorite]:[];
     else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',score:70,dimensions:{curvature:0.7}};
     else if(path==='/api/coverage'||path==='/api/admin/users')data=[];
-    else if(path==='/api/admin/data')data={storage,tasks:[{id:42,kind:'roads',task_key:'test-area',status:jobCancelled?'cancelled':'running',progress:'Analyzing roads',cancel_requested:jobCancelled}],worker_heartbeat:null,zip_last_sync:null};
+    else if(path==='/api/admin/storage')data={database_budget_mb:20480,resumed_jobs:2};
+    else if(path==='/api/admin/data')data={settings:{database_budget_mb:5120},storage,tasks:[{id:42,kind:'roads',task_key:'test-area',status:jobCancelled?'cancelled':'running',progress:'Analyzing roads',cancel_requested:jobCancelled}],worker_heartbeat:null,zip_last_sync:null};
     else if(path==='/api/admin/tasks/42/cancel'){jobCancelled=true;data={cancel_requested:true};}
     else {status=401;data={error:'Please sign in'};}
     return {ok:status<400,status,json:async()=>data};
@@ -114,7 +115,7 @@ async function testFrontend(sources) {
   search.onsubmit({preventDefault(){},target:search});await flush();
   check(timers.length===beforeFailure&&get('status').textContent.includes('SuperAdmin'),'Terminal preparation failure stops polling with actionable message');
   check(get('search-spinner').hidden&&get('search-progress').hidden,'Terminal failure clears loading state');
-  const jobWindow={...window,location:{pathname:'/jobs'}};
+  const jobWindow={...window,location:{pathname:'/manage'}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(jobWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
   await flush();check(!get('admin-panel').hidden,'Jobs opens as a dedicated page');
   check(!get('jobs-open').hidden,'SuperAdmin sees dedicated Jobs page link');
@@ -122,6 +123,11 @@ async function testFrontend(sources) {
   check(get('storage-pie').style.background.includes('10%')&&get('storage-pie').style.background.includes('60%'),'Storage pie proportions use database, other used, and free bytes');
   check(get('storage-pie')['aria-label'].includes('Free space: 400 B (40.0%)'),'Pie has equivalent accessible text with sizes and percentages');
   check(get('storage-note').textContent.includes('Volumes: /'),'Storage scope identifies measured volumes');
+  check(get('database-budget').value==='5120','Manage displays database storage limit');
+  get('database-budget').value='20480';
+  await get('storage-settings').onsubmit({preventDefault(){}});await flush();
+  check(requests.some(r=>r.path==='/api/admin/storage'&&r.method==='PATCH'&&r.headers['X-CSRF-Token']==='signed-in'&&JSON.parse(r.body).database_budget_mb===20480),'Storage limit save sends authenticated CSRF request');
+  check(get('storage-settings-status').textContent.includes('2 blocked jobs'),'Storage limit save reports resumed work');
   const previousStorage=storage;storage={available:false,database_bytes:100,message:'Remote database; combined chart unavailable.'};
   await get('admin-refresh').onclick();await flush();
   check(get('storage-pie').hidden&&get('storage-legend').children.length===1,'Unavailable disk totals hide pie and retain database size');
@@ -147,12 +153,12 @@ async function testFrontend(sources) {
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(lateWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
   await flush();check(lateCoverage===1,'Late-loading app hydrates an already authenticated session');
   logged=true;adminReady=true;
-  const jobsWindow={...window,location:{pathname:'/jobs'}};
+  const jobsWindow={...window,location:{pathname:'/manage'}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(jobsWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
   await flush();
   check(!get('admin-panel').hidden&&get('workspace').hidden&&get('admin-users').hidden,'Dedicated Jobs page opens management without search or user forms');
   const beforeManage=requests.length;
-  const manageWindow={...window,location:{pathname:'/manage'}};
+  const manageWindow={...window,location:{pathname:'/users'}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(manageWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
   await flush();
   check(!get('admin-users').hidden&&get('admin-jobs').hidden&&get('workspace').hidden,'Manage page contains user management only');

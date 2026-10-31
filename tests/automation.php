@@ -113,3 +113,12 @@ check((int)$db->query("SELECT count(*) FROM data_tasks WHERE task_key='auto-lega
 check($queue->ensure('auto-legacy-cancelled','roads',['key'=>'auto-legacy-cancelled','bounds'=>[-120,39.5,-119.5,40]])['status']==='queued','Previously cancelled area can be queued again');
 $db->exec("UPDATE data_tasks SET status='complete' WHERE task_key='auto-legacy-cancelled'");
 check((int)$db->query('SELECT count(*) FROM import_jobs WHERE id='.(int)$cancelImport['id'])->fetchColumn()===0,'Cancelled inactive manual imports are removed');
+$settings=new SweepLine\StorageSettings($db);
+$oldBudget=$settings->read()['database_budget_mb'];
+$db->exec("UPDATE data_tasks SET status='failed',error='Application data storage limit reached. SuperAdmin: review data storage settings.' WHERE task_key='auto-city-limit'");
+$result=$settings->save(['database_budget_mb'=>min(1048576,$oldBudget+1024)]);
+check($settings->read()['database_budget_mb']===$result['database_budget_mb'],'Storage budget persists in database');
+check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-city-limit'")->fetchColumn()==='queued','Increasing budget resumes storage-blocked work');
+foreach ([0,511,1048577,512.5,'invalid'] as $invalid) {check(rejects(fn()=>$settings->save(['database_budget_mb'=>$invalid])),'Invalid budget rejected');}
+$settings->save(['database_budget_mb'=>$oldBudget]);
+

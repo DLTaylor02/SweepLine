@@ -3,8 +3,8 @@
   const el=id=>document.getElementById(id);
   let session={user:null,csrf:null,admin_ready:false};
   let adminTimer;
-  const jobsPage=window.location?.pathname==='/jobs';
-  const managePage=window.location?.pathname==='/manage';
+  const jobsPage=window.location?.pathname==='/manage';
+  const managePage=window.location?.pathname==='/users';
   const historyPage=window.location?.pathname==='/history';
   const favoritesPage=window.location?.pathname==='/favorites';
   const adminPage=jobsPage || managePage;
@@ -35,7 +35,7 @@
     if(adminPage && signed) {
       el('admin-panel').hidden=false;el('admin-users').hidden=jobsPage;
       el('admin-jobs').hidden=managePage;
-      el('admin-page-title').textContent=jobsPage?'Background jobs':'Manage users';
+      el('admin-page-title').textContent=jobsPage?'Manage':'Users';
       el('admin-panel').className='admin-panel jobs-page';
       if(session.user.role==='superadmin')refreshAdmin();
       else {el('admin-jobs').hidden=true;el('admin-users').hidden=true;el('admin-status').textContent='SuperAdmin access required.';}
@@ -187,6 +187,10 @@
       });
       if(data) {
       renderStorage(data.storage);
+      if(data.settings && !el('database-budget').dataset.loaded) {
+        el('database-budget').value=String(data.settings.database_budget_mb);
+        el('database-budget').dataset.loaded='true';
+      }
       el('worker-status').textContent='Worker last seen: '+(data.worker_heartbeat || 'waiting for startup')+
         '. ZIP coordinates updated: '+(data.zip_last_sync || 'preparing automatically')+'.';
       el('task-list').replaceChildren();
@@ -220,6 +224,16 @@
     } catch(e) {el('admin-status').textContent=e.message;}
     if(!el('admin-panel').hidden)adminTimer=setTimeout(refreshAdmin,15000);
   }
+  el('storage-settings').onsubmit=async event=>{
+    event.preventDefault();el('storage-save').disabled=true;
+    try {
+      const result=await window.sweeplineRequest('/api/admin/storage',{method:'PATCH',body:JSON.stringify({database_budget_mb:Number(el('database-budget').value)})});
+      el('database-budget').value=String(result.database_budget_mb);
+      el('storage-settings-status').textContent='Storage limit saved. '+result.resumed_jobs+' blocked jobs queued.';
+      await refreshAdmin();
+    } catch(e) {el('storage-settings-status').textContent=e.message;}
+    finally {el('storage-save').disabled=false;}
+  };
   el('admin-refresh').onclick=refreshAdmin;
   el('create-user').onsubmit=async event=>{
     event.preventDefault();const form=event.target;

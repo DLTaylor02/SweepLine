@@ -69,7 +69,7 @@ final class DataQueue
     public function overview(): array
     {
         $this->purgeCancelled();
-        return ['storage'=>StorageUsage::read($this->db),'tasks'=>$this->db->query("SELECT id,task_key,kind,status,attempts,progress,error,cancel_requested,next_attempt_at,updated_at FROM data_tasks WHERE cancel_requested=false AND status<>'cancelled' ORDER BY CASE WHEN status IN ('running','queued','retry') THEN 0 ELSE 1 END,updated_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
+        return ['settings'=>(new StorageSettings($this->db))->read(),'storage'=>StorageUsage::read($this->db),'tasks'=>$this->db->query("SELECT id,task_key,kind,status,attempts,progress,error,cancel_requested,next_attempt_at,updated_at FROM data_tasks WHERE cancel_requested=false AND status<>'cancelled' ORDER BY CASE WHEN status IN ('running','queued','retry') THEN 0 ELSE 1 END,updated_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
             'imports'=>$this->db->query("SELECT j.id,r.name,j.status,j.progress,j.error,j.cancel_requested,j.created_at FROM import_jobs j JOIN regions r ON r.id=j.region_id WHERE j.cancel_requested=false AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id) ORDER BY CASE WHEN j.status IN ('queued','running') THEN 0 ELSE 1 END,j.id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
             'counts'=>$this->db->query('SELECT status,count(*) AS count FROM data_tasks WHERE cancel_requested=false GROUP BY status')->fetchAll(PDO::FETCH_ASSOC),
             'worker_heartbeat'=>$this->db->query("SELECT value FROM app_settings WHERE key='worker_heartbeat'")->fetchColumn()?:null,

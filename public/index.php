@@ -5,7 +5,8 @@ if (!is_string($path)) { http_response_code(400); exit('Invalid request'); }
 // PHP built-in development server may serve public assets; production uses NGINX.
 if (PHP_SAPI==='cli-server' && preg_match('#^/assets/[a-zA-Z0-9_.-]+$#',$path) && is_file(__DIR__.$path)) { return false; }
 if (!str_starts_with($path,'/api/')) {
-    if (!in_array($path,['/','/jobs','/manage','/history','/favorites'],true)) { http_response_code(404); exit('Not found'); }
+    if ($path==='/jobs') {header('Location: /manage',true,302);exit;}
+    if (!in_array($path,['/','/users','/manage','/history','/favorites'],true)) { http_response_code(404); exit('Not found'); }
     header('Cache-Control: no-store');
     require __DIR__.'/home.php'; exit;
 }
@@ -18,6 +19,7 @@ try {
     $method=$_SERVER['REQUEST_METHOD']??'GET';
     $postPaths=['/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
+    if ($path==='/api/admin/storage' && $method==='PATCH') {$expected='PATCH';}
     if ($path==='/api/admin/users' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='PATCH'; }
     if (preg_match('#^/api/admin/tasks/[1-9]\\d{0,17}/(?:retry|cancel)$#',$path)) { $expected='POST'; }
@@ -108,6 +110,7 @@ try {
                 } elseif ($path==='/api/admin/users') {
                     $result=$method==='GET'?$auth->users():$auth->create($input);
                 } elseif (preg_match('#^/api/admin/users/([1-9]\\d{0,17})$#',$path,$m)) { $result=$auth->update((int)$m[1],$input); }
+                elseif ($path==='/api/admin/storage') { $settings=new SweepLine\StorageSettings($db);$result=$method==='PATCH'?$settings->save($input):$settings->read(); }
                 elseif ($path==='/api/admin/data') { $result=(new SweepLine\DataQueue($db))->overview(); }
                 elseif (preg_match('#^/api/admin/tasks/([1-9]\\d{0,17})/(retry|cancel)$#',$path,$m)) {
                     $queue=new SweepLine\DataQueue($db);

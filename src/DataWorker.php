@@ -68,9 +68,9 @@ final class DataWorker
             if (!is_dir($dir)) { mkdir($dir,0750,true); }
             $free=disk_free_space($dir);
             if ($free!==false && $free<536870912) { throw new \RuntimeException('Data preparation paused: less than 512 MB of free disk space.'); }
-            $budget=(int)(getenv('DATA_DATABASE_BUDGET_MB')?:5120)*1048576;
+            $budget=(new StorageSettings($this->db))->read()['database_budget_mb']*1048576;
             if ((int)$this->db->query('SELECT pg_database_size(current_database())')->fetchColumn()>$budget) {
-                throw new \RuntimeException('Application data storage limit reached. SuperAdmin: review data storage settings.');
+                throw new \RuntimeException('Application data storage limit reached. SuperAdmin: increase the database budget on Manage.');
             }
             if ($task['kind']==='zips') { $this->zips($id,$dir); }
             else { $this->roads($id,$dir,$payload); }

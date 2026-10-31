@@ -60,6 +60,9 @@ expect(callApi($admin,'GET','/api/roads/'.$exportId.'/export?format=exe'),422,'E
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'profile'=>'open','max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
 $jobs=expect(callApi($admin,'GET','/api/admin/data'),200,'SuperAdmin sees preparation status');
 if (!isset($jobs['storage']['database_bytes']) || !array_key_exists('available',$jobs['storage'])) { throw new RuntimeException('Storage report missing from Jobs API'); }
+$budget=expect(callApi($admin,'GET','/api/admin/storage'),200,'SuperAdmin reads budget');
+expect(callApi($admin,'PATCH','/api/admin/storage',['database_budget_mb'=>0],$csrf),422,'Invalid budget rejected');
+expect(callApi($admin,'PATCH','/api/admin/storage',['database_budget_mb'=>10240]),403,'Storage update requires CSRF');
 $created=expect(callApi($admin,'POST','/api/admin/users',['username'=>'member','name'=>'Member','password'=>'member-password-123'],$csrf),200,'SuperAdmin creates user without email');
 $id=(int)$created['id'];
 $memberSession=expect(callApi($member,'GET','/api/session'),200,'Member pre-login session');
@@ -105,6 +108,7 @@ try {
 expect(callApi($admin,'DELETE','/api/favorites/'.$saved['id'],null,$csrf),200,'Owner removes favorite');
 expect(callApi($admin,'GET','/api/favorites/'.$saved['id']),404,'Removed favorite is gone');
 expect(callApi($member,'GET','/api/admin/users'),403,'Members cannot manage users');
+expect(callApi($member,'GET','/api/admin/storage'),403,'Members cannot read storage settings');
 expect(callApi($member,'GET','/api/admin/data'),403,'Members cannot view job management');
 expect(callApi($member,'POST','/api/admin/tasks/1/cancel',[],$memberSession['csrf']),403,'Members cannot cancel jobs');
 expect(callApi($admin,'POST','/api/admin/tasks/1/cancel',[]),403,'Job cancellation requires CSRF');
