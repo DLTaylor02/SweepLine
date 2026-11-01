@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added regression coverage for the single installer-created SuperAdmin: duplicate database records and API creation/promotion/demotion are rejected.
+
 - Added Admin/User permissions with role management for SuperAdmin, server-enforced separation of Users versus Manage, protected privileged accounts, and owner-only Favorites for all roles.
 
 - Renamed Jobs to Manage and account management to Users. Added a SuperAdmin database storage budget control with immediate worker adoption and automatic requeue of budget-blocked tasks.

@@ -65,6 +65,10 @@ expect(callApi($admin,'PATCH','/api/admin/storage',['database_budget_mb'=>0],$cs
 expect(callApi($admin,'PATCH','/api/admin/storage',['database_budget_mb'=>10240]),403,'Storage update requires CSRF');
 $created=expect(callApi($admin,'POST','/api/admin/users',['username'=>'member','name'=>'Member','password'=>'member-password-123'],$csrf),200,'SuperAdmin creates user without email');
 $id=(int)$created['id'];
+expect(callApi($admin,'POST','/api/admin/users',['username'=>'another-root','password'=>'test-password-123','role'=>'superadmin'],$csrf),422,'Cannot create another SuperAdmin through API');
+expect(callApi($admin,'PATCH','/api/admin/users/'.$id,['role'=>'superadmin'],$csrf),422,'Cannot promote another account to SuperAdmin');
+expect(callApi($admin,'PATCH','/api/admin/users/'.$session['user']['id'],['role'=>'admin'],$csrf),422,'Installer SuperAdmin cannot be demoted');
+
 $memberSession=expect(callApi($member,'GET','/api/session'),200,'Member pre-login session');
 $memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Member login');
 $history=expect(callApi($admin,'GET','/api/search-history'),200,'SuperAdmin views own history');

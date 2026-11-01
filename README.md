@@ -282,3 +282,6 @@ Rally-note exports explicitly label extremely tight bends and hairpins when the 
 
 Only SuperAdmin can assign/revoke Admin roles or manage privileged accounts. The installer-managed SuperAdmin cannot be disabled or demoted in the web UI. Role changes invalidate the affected account's sessions. Existing `member` records are displayed as Users and retain their accounts and data. Favorites and history remain private to their owner, including thumbnails and exports; neither administrative role bypasses ownership. API authorization enforces the same permissions as the page controls.
 
+
+
+There is exactly one SuperAdmin account, provisioned by the installer. No web account can be created or promoted to SuperAdmin. A database unique index prevents duplicates; installer reruns and credential recovery preserve the same account.

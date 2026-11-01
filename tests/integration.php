@@ -68,6 +68,15 @@ $administrator=$db->query("SELECT * FROM app_users WHERE role='superadmin'")->fe
 check($administrator['username']==='superadmin' && $administrator['email']===null,'SuperAdmin needs no email');
 check(password_verify('test-password-123',$administrator['password_hash']),'SuperAdmin password stored as a hash');
 check(!SweepLine\SuperAdmin::ensure($db,'different-password-123'),'Repeated provisioning preserves existing administrator');
+try {
+    $duplicate=$db->prepare("INSERT INTO app_users(username,name,password_hash,role) VALUES ('another-root','Another root',?,'superadmin')");
+    $duplicate->execute([$administrator['password_hash']]);
+    check(false,'Database rejects a second SuperAdmin');
+} catch (PDOException $e) {
+    check($e->getCode()==='23505','Database unique constraint rejects second SuperAdmin');
+}
+check((int)$db->query("SELECT count(*) FROM app_users WHERE role='superadmin'")->fetchColumn()===1,'Exactly one installer SuperAdmin remains');
+
 check($db->query("SELECT password_hash FROM app_users WHERE role='superadmin'")->fetchColumn()===$administrator['password_hash'],'Existing password is not reset');
 
 $db->exec("UPDATE app_users SET active=false WHERE role='superadmin'");
