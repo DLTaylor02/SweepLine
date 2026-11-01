@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added coalesced map resize/repaint recovery when returning from PDF preview tabs, regaining visibility/focus, or restoring the WebGL context, retaining current results, selection and camera without a new search.
+
 - Opened road and Favorite PDF exports inline in a new tab, preserving road-based Save filenames. PDFs are generated in memory without server-side file retention; GPX/KMZ remain downloads.
 
 - Named GPX, KMZ and PDF downloads after the exported road followed by the sweepline tag, including Favorites exports.

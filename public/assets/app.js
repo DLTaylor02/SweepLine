@@ -96,10 +96,26 @@ function syncMapTheme() {
   map.setPaintProperty('radius-fill', 'fill-color', dark ? '#8bbcff' : '#2563a6');
 }
 window.addEventListener('sweepline:themechange', syncMapTheme);
+let mapRefreshPending=false;
+function refreshVisibleMap() {
+  if(!map || document.visibilityState==='hidden' || $('workspace').hidden || mapRefreshPending)return;
+  const currentMap=map;mapRefreshPending=true;
+  const nextFrame=window.requestAnimationFrame?.bind(window) || (callback=>setTimeout(callback,0));
+  nextFrame(()=>{
+    mapRefreshPending=false;
+    if(map!==currentMap || document.visibilityState==='hidden' || $('workspace').hidden)return;
+    // Let the browser restore layout first, then ask MapLibre for a fresh frame.
+    // Existing sources, selection and camera stay intact; no search/import request.
+    currentMap.resize();currentMap.triggerRepaint();
+  });
+}
+window.addEventListener('focus',refreshVisibleMap);
+document.addEventListener?.('visibilitychange',refreshVisibleMap);
 function initMap() {
   if (!window.maplibregl) { setStatus('Map library unavailable. Check your connection; road search remains available.'); return; }
   map = new maplibregl.Map({container:'map', bounds:[[-180,-70],[180,80]],fitBoundsOptions:{padding:20},style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}},layers:[{id:'basemap',type:'raster',source:'osm',paint:{'raster-saturation':-0.65,'raster-opacity':0.88}}]}});
   map.addControl(new maplibregl.NavigationControl(),'top-right');
+  map.on('webglcontextrestored',refreshVisibleMap);
   ready = new Promise(resolve => map.on('load', () => {
     map.addSource('radius',{type:'geojson',data:empty()});
     map.addLayer({id:'radius-fill',type:'fill',source:'radius',paint:{'fill-color':'#2563a6','fill-opacity':0.035}});
@@ -329,6 +345,7 @@ window.addEventListener('sweepline:sessionchange',handleSession);
 if(window.SweepLineAccount?.user)handleSession({detail:window.SweepLineAccount});
 
 window.addEventListener('pageshow',event=>{
+  refreshVisibleMap();
   if(event.persisted && window.SweepLineAccount?.user) {
     restoredSearchUser=null;explicitSearchParameters=false;
     const favorite=new URLSearchParams(window.location.search).get('favorite');

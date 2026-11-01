@@ -255,6 +255,26 @@ async function testFrontend(sources) {
   check(get('results').children.length===1&&get('road-detail').children.some(node=>node.textContent==='Test road · 70/100'),'Opening a favorite restores saved road result and details');
   check(get('road-detail').children.find(node=>node.className==='road-exports').children[0].href==='/api/favorites/7/export?format=gpx','Saved road exports do not require active candidate ID');
   check(get('road-detail').children.find(node=>node.className==='road-exports').children[2].target==='_blank','Favorite PDFs also open a preview tab');
+
+  const mapReturnEvents={},documentReturnEvents={},frames=[];
+  const returnDocument={...document,visibilityState:'visible',addEventListener:(name,handler)=>documentReturnEvents[name]=handler};
+  const returnWindow={location:{pathname:'/',search:''},requestAnimationFrame:callback=>frames.push(callback),addEventListener:(name,handler)=>mapReturnEvents[name]=handler};
+  const mapReturn=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {setMap:value=>map=value};')(returnWindow,returnDocument,fetch,function(){},setTimer,clearTimer,SearchParams);
+  let mapResizes=0,mapRepaints=0;
+  const activeMap={resize:()=>mapResizes++,triggerRepaint:()=>mapRepaints++};
+  mapReturn.setMap(activeMap);get('workspace').hidden=false;
+  const requestsBeforeReturn=requests.length;
+  mapReturnEvents.focus();documentReturnEvents.visibilitychange();
+  check(frames.length===1,'Tab-return events coalesce into one map recovery frame');
+  frames.shift()();
+  check(mapResizes===1&&mapRepaints===1,'Returning from PDF refreshes layout and repaints existing map');
+  check(requests.length===requestsBeforeReturn,'Map recovery does not rerun searches or reload results');
+  returnDocument.visibilityState='hidden';mapReturnEvents.focus();
+  check(frames.length===0,'Hidden tab does not repaint');
+  returnDocument.visibilityState='visible';documentReturnEvents.visibilitychange();get('workspace').hidden=true;frames.shift()();
+  check(mapResizes===1,'Pending recovery skips hidden discovery workspace');
+  get('workspace').hidden=false;mapReturnEvents.pageshow({persisted:false});frames.shift()();
+  check(mapResizes===2&&mapRepaints===2,'Visible page-show restores map without a search');
   let pickerReply={zip:'01234',place:'Test place',state:'ZZ',distance_m:1609.344},pickerError=false;
   const pickerWindow={addEventListener(){},SweepLineAccount:{user:null},sweeplineRequest:async path=>{
     check(path.startsWith('/api/zips/nearest?lon='),'Map selection uses local coordinate lookup endpoint');
