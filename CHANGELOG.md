@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reorganized History into aligned rows/columns with the ZIP locality and state as the primary search label, local-data enrichment for existing entries, and preserved map-opening/delete actions.
+
 - Reorganized Users into an accessible five-column account table, with aligned role/access/password controls, retained password meters, a responsive creation form and horizontal scrolling on small screens.
 
 - Fixed malformed dollar quoting in the password-policy migration that prevented installer upgrades; added a migration delimiter regression check.

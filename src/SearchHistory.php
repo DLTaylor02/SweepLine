@@ -30,7 +30,9 @@ final class SearchHistory
     }
     public function recent(int $userId): array
     {
-        $q=$this->db->prepare('SELECT id,parameters,created_at FROM search_history WHERE user_id=? ORDER BY id DESC LIMIT 100');
+        $q=$this->db->prepare("SELECT h.id,h.parameters,h.created_at,z.place AS city,z.state
+            FROM search_history h LEFT JOIN zip_codes z ON z.zip=h.parameters->>'zip'
+            WHERE h.user_id=? ORDER BY h.id DESC LIMIT 100");
         $q->execute([$userId]);$rows=$q->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as &$row) { $row['parameters']=json_decode($row['parameters'],true,512,JSON_THROW_ON_ERROR); }
         return $rows;

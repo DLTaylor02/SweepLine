@@ -74,6 +74,7 @@ $memberSession=expect(callApi($member,'GET','/api/session'),200,'Member pre-logi
 $memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Member login');
 $history=expect(callApi($admin,'GET','/api/search-history'),200,'SuperAdmin views own history');
 if (count($history)!==1 || $history[0]['parameters']['radius_miles']!=25) { throw new RuntimeException('Search history missing or polluted by polling'); }
+if($history[0]['city']!=='Synthetic place' || $history[0]['state']!=='ZZ')throw new RuntimeException('ZIP city missing from History');
 $historyId=(int)$history[0]['id'];
 expect(callApi($member,'DELETE','/api/search-history/'.$historyId,null,$memberSession['csrf']),404,'History deletion cannot access another user');
 expect(callApi($admin,'DELETE','/api/search-history/'.$historyId),403,'History deletion requires CSRF');

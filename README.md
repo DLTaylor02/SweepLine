@@ -316,3 +316,5 @@ Password-related API actions use authenticated, CSRF-protected **POST**:
 
 Run `php tests/run.php`, `node tests/frontend.test.js`, and `node tests/passwords.test.js`. Disposable PostGIS integration/HTTP tests cover persisted policies, exemptions, private-account authorization, required-change restrictions and password session rotation. Unit breach checks inject synthetic range responses and never send test passwords to HIBP.
 
+History displays one search per row with Location, Searched, Search, Filters, and Actions columns. The main location label uses the ZIP dataset's city/place and state, with the numeric ZIP beneath it. This is the locality associated with the searched ZIP, not a separate live nearest-city lookup. Existing history is enriched from local ZIP data without downloading maps or rewriting search records. A missing ZIP locality falls back to the numeric ZIP. Rows retain automatic map opening and owner-only deletion; the table scrolls horizontally on narrow screens.
+

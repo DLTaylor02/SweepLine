@@ -44,7 +44,7 @@ async function testFrontend(sources) {
     else if(path==='/api/search-diagnostics')data={road:'424',parameters:{zip:'12345',radius_miles:5},ways:[{name:'Test road',ref:'CR 424',highway:'secondary',surface:null}],candidates:[{name:'Test road',ref:'CR 424',highway:'secondary',length_m:10000,mandatory_stops:1,uncertain_controls:0,reasons:['Not every piece is explicitly tagged as paved.']}],full_radius_covered:true,note:'Read-only local diagnosis'};
     else if(path==='/api/search')data=searchResponses.shift()??{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}};
     else if(path==='/api/search-history/1'&&options.method==='DELETE'){historyDeleted=true;data={deleted:true};}
-    else if(path==='/api/search-history')data=historyDeleted?[]:[{id:1,created_at:'2026-10-19T12:00:00Z',parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:5,paved_only:true,min_length_miles:0,max_length_miles:null}}];
+    else if(path==='/api/search-history')data=historyDeleted?[]:[{id:1,city:'Test City',state:'NV',created_at:'2026-10-19T12:00:00Z',parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:5,paved_only:true,min_length_miles:0,max_length_miles:null}}];
     else if(path==='/api/favorites'&&options.method==='POST'){favoritesSaved=true;data={id:7,saved:true};}
     else if(path==='/api/favorites/7'&&options.method==='DELETE'){favoritesSaved=false;data={deleted:true};}
     else if(path==='/api/favorites/7')data=savedFavorite;
@@ -188,10 +188,12 @@ async function testFrontend(sources) {
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(historyWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
   await flush();
   check(!get('history-panel').hidden&&get('history-list').children.length===1,'Previous searches render on their own page');
-  check(get('history-list').children[0].children.find(n=>n.textContent==='View results').href.includes('radius_miles=5'),'Run again link preserves search filters');
-  const title=get('history-list').children[0].children[0];
+  check(get('history-list').children[0].children[4].children.find(n=>n.textContent==='View results').href.includes('radius_miles=5'),'Run again link preserves search filters');
+  const title=get('history-list').children[0].children[0].children[0];
+  check(title.textContent==='Test City, NV','ZIP city is primary History label');
+  check(get('history-list').children[0].children.length===5,'History entries have five aligned columns');
   check(title.href.includes('open=1'),'History title opens results automatically');
-  await get('history-list').children[0].children.at(-1).onclick();await flush();
+  await get('history-list').children[0].children[4].children.at(-1).onclick();await flush();
   check(get('history-list').children.length===0&&get('history-status').textContent.includes('No previous searches'),'Deleted history entry disappears');
   check(requests.some(r=>r.path==='/api/search-history/1'&&r.method==='DELETE'&&!!r.headers['X-CSRF-Token']),'History deletion sends CSRF-protected request');
   const beforeReplay=requests.filter(r=>r.path==='/api/search').length;

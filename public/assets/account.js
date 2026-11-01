@@ -127,10 +127,19 @@
       el('history-list').replaceChildren();
       el('history-status').textContent=searches.length?'':'No previous searches yet. Searches you run from now on will appear here.';
       searches.forEach(item=>{
-        const p=item.parameters,row=text('div','');row.className='history-row';
-        const title=text('a',p.zip+' · '+p.radius_miles+' miles · '+(p.profile==='twisty'?'Twisty Roads':'Open Highways'));
-        row.append(title,text('p',new Date(item.created_at).toLocaleString()),
-          text('p',(p.profile==='twisty'?'Minimum curve density: '+(p.min_curve_density_score??(p.min_curve_density==null?2.2:1+9*p.min_curve_density/53.6448)).toFixed(1)+'/10 · ':'')+`Length: ${p.min_length_miles>0?'over '+p.min_length_miles:'no minimum'} to ${p.max_length_miles??'no maximum'} miles · Stops: ${p.max_stops} · ${surfaceLabel(p)}`));
+        const p=item.parameters,row=text('tr','');row.className='history-row';
+        const [locationCell,dateCell,searchCell,filtersCell,actionsCell]=['Location','Searched','Search','Filters','Actions'].map(label=>{
+          const cell=text('td','');cell.dataset.label=label;row.append(cell);return cell;
+        });
+        const title=text('a',item.city?item.city+(item.state?', '+item.state:''):'ZIP '+p.zip);
+        title.className='history-location';
+        locationCell.append(title,text('p','ZIP '+p.zip));
+        dateCell.append(text('span',new Date(item.created_at).toLocaleString()));
+        searchCell.append(text('strong',p.radius_miles+' miles'),text('p',p.profile==='twisty'?'Twisty Roads':'Open Highways'));
+        filtersCell.append(
+          text('p',`Length: ${p.min_length_miles>0?'over '+p.min_length_miles:'no minimum'} to ${p.max_length_miles??'no maximum'} miles`),
+          text('p','Stops: '+p.max_stops+' · '+surfaceLabel(p)));
+        if(p.profile==='twisty')filtersCell.append(text('p','Minimum curve density: '+(p.min_curve_density_score??(p.min_curve_density==null?2.2:1+9*p.min_curve_density/53.6448)).toFixed(1)+'/10'));
         const again=text('a','View results');again.className='page-back';
         again.href='/?open=1&'+new URLSearchParams(Object.entries(p).filter(([,v])=>v!==null)).toString();
         title.href=again.href;
@@ -142,7 +151,7 @@
             await refreshHistory();
           } catch(e) {el('history-status').textContent=e.message;remove.disabled=false;}
         };
-        row.append(again,remove);el('history-list').append(row);
+        actionsCell.append(again,remove);el('history-list').append(row);
       });
     } catch(e) {el('history-status').textContent=e.message;}
   }
