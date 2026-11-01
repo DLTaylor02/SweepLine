@@ -87,7 +87,7 @@ check($recovered['id']===$administrator['id'] && $recovered['active'],'Recovery 
 check((int)$recovered['session_version']===$beforeReset+1,'Recovery invalidates old web sessions');
 check(password_verify('recovered-password-123',$recovered['password_hash']) && !password_verify('test-password-123',$recovered['password_hash']),'New password replaces the lost credential');
 check(!SweepLine\SuperAdmin::ensure($db,'unused-installer-password'),'Installer still preserves explicitly reset password');
-check(rejects(fn()=>SweepLine\SuperAdmin::reset($db,'short')),'Invalid recovery password rejected');
+check(rejects(fn()=>SweepLine\SuperAdmin::reset($db,'')),'Invalid recovery password rejected');
 // Restore the explicit fixture password expected by the separate HTTP suite.
 SweepLine\SuperAdmin::reset($db,'test-password-123');
 
@@ -110,3 +110,11 @@ try {
  check(count($api->search(['profile'=>'open','zip'=>'12345','max_stops'=>5])['results'])===1,'Default surface policy excludes known unpaved');
  check(count($api->search(['profile'=>'open','zip'=>'12345','max_stops'=>5,'surface_filter'=>'any'])['results'])===2,'All-surface policy admits known unpaved');
 } finally {$db->prepare('UPDATE road_candidates SET surface_status=? WHERE id=?')->execute([$oldSurface,$surfaceId]);}
+$policies=new SweepLine\PasswordPolicy($db,new SweepLine\PwnedPasswords(static function(){throw new RuntimeException('offline');}));
+$originalPolicy=$policies->read();$policies->save(SweepLine\PasswordPolicy::DEFAULTS);
+check($policies->validate('Offline-test1!','member')===SweepLine\PasswordPolicy::WARNING,'Breach failure accepts valid password with warning');
+$breached=new SweepLine\PasswordPolicy($db,new SweepLine\PwnedPasswords(static fn($prefix)=>substr(strtoupper(sha1('Offline-test1!')),5).":5"));
+check(rejects(fn()=>$breached->validate('Offline-test1!','member')),'Policy rejects breached password');
+check($breached->validate('x','superadmin')===null,'SuperAdmin skips screening and configured requirements');
+$policies->save($originalPolicy);
+

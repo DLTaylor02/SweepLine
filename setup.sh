@@ -77,7 +77,7 @@ project_provision_superadmin() {
     # Do not allow diagnostic shell tracing to reveal the password.
     if [[ $- == *x* ]]; then trace_enabled=1; set +x; fi
     while true; do
-        IFS= read -r -s -p "SuperAdmin password (12-72 bytes): " superadmin_password || die "Password entry cancelled."
+        IFS= read -r -s -p "SuperAdmin password (1-72 UTF-8 bytes): " superadmin_password || die "Password entry cancelled."
         printf '\n'
         IFS= read -r -s -p "Confirm SuperAdmin password: " superadmin_confirm || die "Password confirmation cancelled."
         printf '\n'

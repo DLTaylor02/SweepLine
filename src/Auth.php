@@ -23,7 +23,7 @@ final class Auth
     {
         if (!isset($_SESSION['user_id'])) { return null; }
         if (time()-($_SESSION['last_seen']??0)>3600 || time()-($_SESSION['login_at']??0)>43200) { unset($_SESSION['user_id']); return null; }
-        $q=$this->db->prepare('SELECT id,username,email,name,role,active,session_version FROM app_users WHERE id=?');
+        $q=$this->db->prepare('SELECT id,username,email,name,role,active,must_change_password,session_version FROM app_users WHERE id=?');
         $q->execute([$_SESSION['user_id']]); $user=$q->fetch(PDO::FETCH_ASSOC);
         if (!$user || !$user['active'] || (int)$user['session_version']!==($_SESSION['session_version']??0)) { unset($_SESSION['user_id']); return null; }
         $_SESSION['last_seen']=time(); unset($user['session_version']); $user['id']=(int)$user['id']; return $user;
@@ -32,19 +32,21 @@ final class Auth
     {
         $user=$this->user();
         if (!$user) { throw new HttpException(401,'Please sign in to continue.'); }
+        $path=parse_url($_SERVER['REQUEST_URI']??'',PHP_URL_PATH);
+        if ($user['must_change_password'] && !in_array($path,['/api/password/change','/api/password-policy'],true)) {
+            throw new HttpException(403,'Password change required.');
+        }
         if (($admin===true && $user['role']!=='superadmin') || ($admin==='admin' && !in_array($user['role'],['admin','superadmin'],true))) { throw new HttpException(403,'SuperAdmin access required.'); }
         return $user;
     }
     public function status(): array
     {
-        return ['user'=>$this->user(),'csrf'=>$_SESSION['csrf'],'admin_ready'=>SuperAdmin::exists($this->db)];
+        $notice=$_SESSION['notice']??null;unset($_SESSION['notice']);
+        return ['user'=>$this->user(),'csrf'=>$_SESSION['csrf'],'admin_ready'=>SuperAdmin::exists($this->db),'password_policy'=>(new PasswordPolicy($this->db))->read(),'notice'=>$notice];
     }
     public static function validatePassword(mixed $password): string
     {
-        if (!is_string($password) || strlen($password)<12 || strlen($password)>72 || str_contains($password,"\0")) {
-            throw new \InvalidArgumentException('Passwords must contain 12 to 72 bytes and no null characters.');
-        }
-        return $password;
+        return PasswordPolicy::format($password);
     }
     public static function credentials(array $input): array
     {
@@ -93,7 +95,7 @@ final class Auth
     }
     public function users(): array
     {
-        $this->requireUser('admin'); return $this->db->query('SELECT id,username,email,name,role,active,created_at FROM app_users ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+        $this->requireUser('admin'); return $this->db->query('SELECT id,username,email,name,role,active,must_change_password,created_at FROM app_users ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
     }
     public function create(array $input): array
     {
@@ -102,15 +104,18 @@ final class Auth
         if (!is_string($role) || !in_array($role,['member','admin'],true)) {throw new \InvalidArgumentException('Role must be member or admin.');}
         if ($actor['role']!=='superadmin' && $role!=='member') {throw new HttpException(403,'Only the SuperAdmin can assign Admin roles.');}
         if ($c['username']==='superadmin') { throw new \InvalidArgumentException('The superadmin username is reserved.'); }
-        $q=$this->db->prepare("INSERT INTO app_users(username,email,name,password_hash,role) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING RETURNING id");
-        $q->execute([$c['username'],$c['email'],$c['name'],password_hash($c['password'],PASSWORD_DEFAULT),$role]); $id=$q->fetchColumn();
+        $warning=(new PasswordPolicy($this->db))->validate($c['password'],$role);
+        $must=$input['must_change_password']??false;
+        if (!is_bool($must)) {throw new \InvalidArgumentException('must_change_password must be a boolean.');}
+        $q=$this->db->prepare("INSERT INTO app_users(username,email,name,password_hash,role,must_change_password) VALUES (?,?,?,?,?,?::boolean) ON CONFLICT DO NOTHING RETURNING id");
+        $q->execute([$c['username'],$c['email'],$c['name'],password_hash($c['password'],PASSWORD_DEFAULT),$role,$must?'true':'false']); $id=$q->fetchColumn();
         if (!$id) { throw new HttpException(409,'Username or email is already in use.'); }
-        return ['id'=>(int)$id];
+        return ['id'=>(int)$id,'warning'=>$warning];
     }
     public function update(int $id,array $input): array
     {
         $actor=$this->requireUser('admin');
-        if (array_diff(array_keys($input),['active','password','role'])) {throw new \InvalidArgumentException('Supported updates are active, password and role.');}
+        if (array_diff(array_keys($input),['active','password','role','must_change_password'])) {throw new \InvalidArgumentException('Supported updates are active, password, role and must_change_password.');}
         $q=$this->db->prepare('SELECT id,role FROM app_users WHERE id=?');$q->execute([$id]);$target=$q->fetch(PDO::FETCH_ASSOC);
         if (!$target) {throw new HttpException(404,'User not found.');}
         if ($actor['role']!=='superadmin' && ($target['role']!=='member' || array_key_exists('role',$input))) {
@@ -125,13 +130,38 @@ final class Auth
             if (!is_bool($active)) {throw new \InvalidArgumentException('active must be a boolean.');}
             if ($target['role']==='superadmin' && !$active) {throw new \InvalidArgumentException('The SuperAdmin cannot be disabled.');}
         }
-        $newHash=isset($input['password'])?password_hash(self::validatePassword($input['password']),PASSWORD_DEFAULT):null;
+        $must=$input['must_change_password']??null;
+        if (array_key_exists('must_change_password',$input) && (!is_bool($must) || $target['role']==='superadmin')) {throw new \InvalidArgumentException('Only regular users and Admins can require a password change.');}
+        $warning=null;$newHash=null;
+        if (array_key_exists('password',$input)) {
+            $warning=(new PasswordPolicy($this->db))->validate($input['password'],$target['role']);
+            $newHash=password_hash($input['password'],PASSWORD_DEFAULT);
+        }
+        $invalidate=$newHash!==null || array_key_exists('active',$input) || array_key_exists('role',$input);
         // Recheck target role in the mutation so an overlapping promotion cannot let an
         // Admin reset or disable an account that has just become privileged.
-        $q=$this->db->prepare('UPDATE app_users SET active=COALESCE(?::boolean,active),password_hash=COALESCE(?,password_hash),role=COALESCE(?,role),session_version=session_version+1 WHERE id=?'.($actor['role']==='superadmin'?'':" AND role='member'"));
-        $q->execute([$active===null?null:($active?'true':'false'),$newHash,$role,$id]);
+        $q=$this->db->prepare('UPDATE app_users SET active=COALESCE(?::boolean,active),password_hash=COALESCE(?,password_hash),role=COALESCE(?,role),must_change_password=COALESCE(?::boolean,must_change_password),session_version=session_version+? WHERE id=?'.($actor['role']==='superadmin'?'':" AND role='member'"));
+        $q->execute([$active===null?null:($active?'true':'false'),$newHash,$role,$must===null?null:($must?'true':'false'),$invalidate?1:0,$id]);
         if (!$q->rowCount()) {throw new HttpException(403,'Account permissions changed; reload the page.');}
-        return ['updated'=>true];
+        return ['updated'=>true,'warning'=>$warning];
     }
-}
+    public function changePassword(array $input): array
+    {
+        $user=$this->requireUser();
+        $this->throttle();
+        $current=$input['current_password']??null;$new=$input['new_password']??null;
+        $q=$this->db->prepare('SELECT password_hash,session_version FROM app_users WHERE id=?');$q->execute([$user['id']]);$stored=$q->fetch(PDO::FETCH_ASSOC);
+        if (!is_string($current) || strlen($current)>72 || str_contains($current,"\0") || !$stored || !password_verify($current,$stored['password_hash'])) {throw new HttpException(422,'Current password is incorrect.');}
+        if (!is_string($new) || $new!==($input['confirmation']??null)) {throw new \InvalidArgumentException('New password and confirmation must match.');}
+        if (password_verify(PasswordPolicy::format($new),$stored['password_hash'])) {throw new \InvalidArgumentException('Choose a password different from the current password.');}
+        $warning=(new PasswordPolicy($this->db))->validate($new,$user['role']);
+        $q=$this->db->prepare('UPDATE app_users SET password_hash=?,must_change_password=false,session_version=session_version+1 WHERE id=? AND session_version=? RETURNING session_version');
+        $q->execute([password_hash($new,PASSWORD_DEFAULT),$user['id'],$stored['session_version']]);$version=$q->fetchColumn();
+        if ($version===false) {throw new HttpException(409,'Account changed. Reload and try again.');}
+        session_regenerate_id(true);$_SESSION['session_version']=(int)$version;
+        $_SESSION['csrf']=bin2hex(random_bytes(32));$_SESSION['last_seen']=$_SESSION['login_at']=time();
+        $_SESSION['notice']=$warning??'Password changed successfully.';
+        return ['changed'=>true,'redirect'=>'/'];
+    }
 
+}

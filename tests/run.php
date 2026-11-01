@@ -73,7 +73,7 @@ foreach ([-1,0,151,INF,[], 'invalid'] as $invalidMaximum) {
 }
 
 check(rejects(fn()=>SweepLine\Auth::credentials(['username'=>'bad user','password'=>'long-password-123'])),'Invalid username rejected');
-check(rejects(fn()=>SweepLine\Auth::credentials(['username'=>'member','password'=>'short'])),'Short account password rejected');
+check(rejects(fn()=>SweepLine\PasswordPolicy::requirements('short',SweepLine\PasswordPolicy::DEFAULTS)),'Short account password rejected by policy');
 check(SweepLine\Auth::credentials(['username'=>'MEMBER','email'=>'TEST@example.test','password'=>'long-password-123'])['email']==='test@example.test','Account email normalized');
 $tiles=SweepLine\CoveragePlanner::tiles(-119.8,39.52,25);
 check(count($tiles)>0 && count($tiles)<100,'Coverage planning bounded and nonempty');
@@ -262,6 +262,45 @@ $smallTile=$denseTile;
 while (SweepLine\CoveragePlanner::canSplit($smallTile)) {$smallTile=SweepLine\CoveragePlanner::children($smallTile)[0];}
 check(abs(($smallTile['bounds'][2]-$smallTile['bounds'][0])-0.015625)<0.000001,'Dense subdivision remains bounded');
 check(SweepLine\CoveragePlanner::halo($smallTile)<0.006,'Dense cell overlap shrinks with cell size');
+
+
+$basic=['minimum_length'=>12,'strength'=>'basic','screen_compromised'=>false];
+$standard=$basic;$standard['strength']='standard';$strong=$basic;$strong['strength']='strong';
+check(SweepLine\PasswordPolicy::requirements('abcdefghijkl',$basic)==='abcdefghijkl','Basic uses length only');
+check(rejects(fn()=>SweepLine\PasswordPolicy::requirements('abcdefghijk',$basic)),'Minimum length enforced');
+foreach (['Abcdefghijk1','abcdefghij1!','ABCDEFGHIJ1!','Abcdefghijk!'] as $value) {check(SweepLine\PasswordPolicy::requirements($value,$standard)===$value,'Standard accepts any three character types');}
+foreach (['abcdefghijkl','Abcdefghijkl','1234567890!!'] as $value) {check(rejects(fn()=>SweepLine\PasswordPolicy::requirements($value,$standard)),'Standard rejects fewer than three types');}
+check(SweepLine\PasswordPolicy::requirements('Abcdefghij1!',$strong)==='Abcdefghij1!','Strong accepts all four types');
+foreach (['abcdefghij1!','ABCDEFGHIJ1!','Abcdefghijk!','Abcdefghijk1'] as $value) {check(rejects(fn()=>SweepLine\PasswordPolicy::requirements($value,$strong)),'Strong rejects each missing character type');}
+check(SweepLine\PasswordPolicy::requirements('x',$strong,true)==='x','SuperAdmin exemption');
+check(rejects(fn()=>SweepLine\PasswordPolicy::requirements(str_repeat('a',73),$basic)),'Safe byte limit retained');
+$prefixSeen=null;$secret='Offline-test1!';
+$screen=new SweepLine\PwnedPasswords(static function($prefix) use (&$prefixSeen,$secret) {$prefixSeen=$prefix;return substr(strtoupper(sha1($secret)),5).":42\r\n";});
+check($screen->compromised($secret)===true,'Compromised suffix detected locally');
+check($prefixSeen===substr(strtoupper(sha1($secret)),0,5) && strlen($prefixSeen)===5,'Only five hash characters leave checker');
+$screen=new SweepLine\PwnedPasswords(static fn()=>substr(strtoupper(sha1($secret)),5).":0");
+check($screen->compromised($secret)===false,'Zero-count padding is not a breach');
+check((new SweepLine\PwnedPasswords(static fn()=>str_repeat('A',35).":1"))->compromised($secret)===false,'Nonmatching suffix accepted');
+check((new SweepLine\PwnedPasswords(static function(){throw new RuntimeException('offline');}))->compromised($secret)===null,'Service failure returns unknown');
+check((new SweepLine\PwnedPasswords(static fn()=>'malformed'))->compromised($secret)===null,'Malformed response treated as unavailable');
+
+
+final class PolicyTestStatement extends PDOStatement {
+    public function __construct(private string $value) {}
+    public function fetchColumn(int $column=0): mixed {return $this->value;}
+}
+final class PolicyTestDatabase extends PDO {
+    public function __construct() {}
+    public function query(string $query,?int $fetchMode=null,mixed ...$fetchModeArgs): PDOStatement|false {
+        return new PolicyTestStatement(json_encode(SweepLine\PasswordPolicy::DEFAULTS));
+    }
+}
+$policyDb=new PolicyTestDatabase();
+$policyOffline=new SweepLine\PasswordPolicy($policyDb,new SweepLine\PwnedPasswords(static function(){throw new RuntimeException('offline');}));
+check($policyOffline->validate('Offline-test1!','member')===SweepLine\PasswordPolicy::WARNING,'Unavailable screening accepts valid password with informational warning');
+$policyBreached=new SweepLine\PasswordPolicy($policyDb,new SweepLine\PwnedPasswords(static fn()=>substr(strtoupper(sha1('Offline-test1!')),5).":5"));
+check(rejects(fn()=>$policyBreached->validate('Offline-test1!','member')),'Shared policy rejects compromised password');
+check($policyBreached->validate('x','superadmin')===null,'Shared policy exempts SuperAdmin from breach screening');
 
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

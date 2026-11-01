@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added persistent SuperAdmin password policies, shared server-side enforcement, padded HIBP range screening with informational fail-open warnings, themed requirements meters, and self-service password changes with session rotation.
+- Added explicit required-password-change badges/controls and page/API restrictions without logging flagged users out. Preserved the single exempt SuperAdmin and CLI recovery. Password/account mutations now use CSRF-protected POST.
+
 - Added regression coverage for the single installer-created SuperAdmin: duplicate database records and API creation/promotion/demotion are rejected.
 
 - Added Admin/User permissions with role management for SuperAdmin, server-enforced separation of Users versus Manage, protected privileged accounts, and owner-only Favorites for all roles.

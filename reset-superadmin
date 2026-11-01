@@ -22,7 +22,7 @@ fi
 trace_enabled=0
 if [[ $- == *x* ]]; then trace_enabled=1; set +x; fi
 while true; do
-    IFS= read -r -s -p 'New SuperAdmin password (12-72 bytes): ' recovery_password || exit 1
+    IFS= read -r -s -p 'New SuperAdmin password (1-72 UTF-8 bytes): ' recovery_password || exit 1
     printf '\n'
     IFS= read -r -s -p 'Confirm new SuperAdmin password: ' recovery_confirm || exit 1
     printf '\n'

@@ -7,7 +7,10 @@
   const managePage=window.location?.pathname==='/users';
   const historyPage=window.location?.pathname==='/history';
   const favoritesPage=window.location?.pathname==='/favorites';
+  const passwordPage=window.location?.pathname==='/password';
   const adminPage=jobsPage || managePage;
+  const policy=()=>session.password_policy || {minimum_length:12,strength:'standard',screen_compromised:true};
+  const meter=(input,exempt=false)=>window.SweepLinePasswords?.attach(input,policy(),exempt);
   window.SweepLineAccount=session;
   window.sweeplineRequest=async (path,options={}) => {
     const method=options.method || 'GET';
@@ -17,6 +20,7 @@
     let data;
     try { data=await response.json(); } catch (_) { throw new Error('Server response unavailable. Please try again.'); }
     if(!response.ok) {
+      if(data.redirect==='/password')window.location?.assign?.('/password');
       if(response.status===401 && path!=='/api/login') { session.user=null;paint(); }
       const error=new Error(data.error || 'Request failed');error.status=response.status;throw error;
     }
@@ -24,7 +28,22 @@
   };
   function paint() {
     const signed=!!session.user;
-    el('workspace').hidden=!signed || adminPage || historyPage || favoritesPage;el('account-gate').hidden=signed;
+    const required=!!session.user?.must_change_password;
+    el('password-open').hidden=!signed;
+    el('password-panel').hidden=!signed || !passwordPage;
+    el('password-back').hidden=required;
+    el('account-notice').hidden=!session.notice;el('account-notice').textContent=session.notice || '';
+    if(required && !passwordPage) {window.location?.replace?.('/password');el('workspace').hidden=true;return;}
+    if(passwordPage && signed) {
+      el('password-required').textContent=required?'You must change your password before continuing.':'Choose a new password for your account.';
+      meter(el('change-password').new_password,session.user.role==='superadmin');
+    }
+    meter(el('create-user').password);
+    if(jobsPage && session.user?.role==='superadmin' && !el('policy-minimum').dataset.loaded) {
+      el('policy-minimum').value=String(policy().minimum_length);el('policy-minimum').dataset.loaded='true';
+      el('policy-strength').value=policy().strength;el('policy-screen').checked=policy().screen_compromised;
+    }
+    el('workspace').hidden=!signed || adminPage || historyPage || favoritesPage || passwordPage;el('account-gate').hidden=signed;
     el('sign-out').hidden=!signed;el('admin-open').hidden=!['admin','superadmin'].includes(session.user?.role);
     el('jobs-open').hidden=session.user?.role!=='superadmin';
     el('history-open').hidden=!signed;el('history-panel').hidden=!signed || !historyPage;
@@ -50,6 +69,7 @@
       'Sign in with your username and password. Your web account is separate from the Linux service account.':
       'The SuperAdmin account has not been initialized. Complete installation in the server terminal.';
     el('account-retry').hidden=session.admin_ready || signed;
+    if(required) {for(const id of ['admin-open','jobs-open','history-open','favorites-open'])el(id).hidden=true;}
     window.SweepLineAccount=session;
     window.dispatchEvent(new CustomEvent('sweepline:sessionchange',{detail:session}));
   }
@@ -127,7 +147,7 @@
     } catch(e) {el('history-status').textContent=e.message;}
   }
   async function updateUser(id,payload) {
-    await window.sweeplineRequest('/api/admin/users/'+id,{method:'PATCH',body:JSON.stringify(payload)});
+    return await window.sweeplineRequest('/api/admin/users/'+id,{method:'POST',body:JSON.stringify(payload)});
   }
   function renderStorage(storage) {
     const pie=el('storage-pie'),legend=el('storage-legend');
@@ -163,12 +183,15 @@
     if(el('admin-panel').hidden || !(session.user?.role==='superadmin' || (managePage && session.user?.role==='admin')))return;
     if(el('user-list').contains(document.activeElement)) { adminTimer=setTimeout(refreshAdmin,15000);return; }
     try {
+      session.password_policy=await window.sweeplineRequest('/api/password-policy');
+      meter(el('create-user').password);
       const users=managePage?await window.sweeplineRequest('/api/admin/users'):[];
       const data=jobsPage?await window.sweeplineRequest('/api/admin/data'):null;
       el('user-list').replaceChildren();
       users.forEach(user=>{
         const row=text('div','');row.className='user-row';
         row.append(text('strong',user.name),text('p',user.username+(user.email?' · '+user.email:'')+' · '+(user.role==='member'?'User':user.role==='admin'?'Admin':'SuperAdmin')+' · '+(user.active?'Active':'Disabled')));
+        if(user.must_change_password) {const badge=text('span','Password change required');badge.className='password-badge';row.append(badge);}
         if(session.user.role!=='superadmin' && user.role!=='member') {el('user-list').append(row);return;}
         if(Number(user.id)!==Number(session.user.id)) {
           const toggle=text('button',user.active?'Disable':'Enable');toggle.type='button';
@@ -183,17 +206,23 @@
           saveRole.onclick=async()=>{try {await updateUser(user.id,{role:role.value});await refreshAdmin();}catch(e){el('admin-status').textContent=e.message;}};
           row.append(role,saveRole);
         }
+        if(user.role!=='superadmin') {
+          const required=text('button',user.must_change_password?'Clear required change':'Require password change');required.type='button';
+          required.onclick=async()=>{try {await updateUser(user.id,{must_change_password:!user.must_change_password});await refreshAdmin();}catch(e){el('admin-status').textContent=e.message;}};
+          row.append(required);
+        }
         const password=document.createElement('input');password.type='password';password.autocomplete='new-password';
-        password.placeholder='New password (12–72 bytes)';password.setAttribute('aria-label','New password for '+user.username);
+        password.placeholder='New password';password.setAttribute('aria-label','New password for '+user.username);
         const reset=text('button','Reset password');reset.type='button';
         reset.onclick=async()=>{
           try {
-            await updateUser(user.id,{password:password.value});password.value='';
-            el('admin-status').textContent='Password updated. Existing sessions have been invalidated.';
+            if(password.reportValidity && !password.reportValidity())return;
+            const result=await updateUser(user.id,{password:password.value});password.value='';password.oninput?.();
+            el('admin-status').textContent=result.warning || 'Password updated. Existing sessions have been invalidated.';
             if(Number(user.id)===Number(session.user.id))await initialize();
           } catch(e) {el('admin-status').textContent=e.message;}
         };
-        row.append(password,reset);el('user-list').append(row);
+        row.append(password,reset);el('user-list').append(row);meter(password,user.role==='superadmin');
       });
       if(data) {
       renderStorage(data.storage);
@@ -248,9 +277,30 @@
   el('create-user').onsubmit=async event=>{
     event.preventDefault();const form=event.target;
     try {
-      await window.sweeplineRequest('/api/admin/users',{method:'POST',body:JSON.stringify({username:form.username.value,name:form.elements.namedItem('name').value,email:form.email.value,password:form.password.value,role:session.user.role==='superadmin'?(el('create-role').value || 'member'):'member'})});
-      form.reset();el('admin-status').textContent='User created.';await refreshAdmin();
+      const result=await window.sweeplineRequest('/api/admin/users',{method:'POST',body:JSON.stringify({username:form.username.value,name:form.elements.namedItem('name').value,email:form.email.value,password:form.password.value,role:session.user.role==='superadmin'?(el('create-role').value || 'member'):'member',must_change_password:!!form.must_change_password?.checked})});
+      form.reset();form.password.oninput?.();el('admin-status').textContent=result.warning || 'User created.';await refreshAdmin();
     } catch(e) {el('admin-status').textContent=e.message;}
+  };
+  el('password-policy-form').onsubmit=async event=>{
+    event.preventDefault();el('policy-save').disabled=true;
+    try {
+      session.password_policy=await window.sweeplineRequest('/api/admin/password-policy',{method:'POST',body:JSON.stringify({
+        minimum_length:Number(el('policy-minimum').value),strength:el('policy-strength').value,screen_compromised:el('policy-screen').checked
+      })});
+      el('policy-status').textContent='Password policy saved. Existing passwords remain valid.';await refreshAdmin();
+    } catch(e) {el('policy-status').textContent=e.message;}
+    finally {el('policy-save').disabled=false;}
+  };
+  el('change-password').onsubmit=async event=>{
+    event.preventDefault();const form=event.target;el('password-submit').disabled=true;
+    try {
+      if(form.new_password.value!==form.confirmation.value)throw new Error('New password and confirmation must match.');
+      const result=await window.sweeplineRequest('/api/password/change',{method:'POST',body:JSON.stringify({
+        current_password:form.current_password.value,new_password:form.new_password.value,confirmation:form.confirmation.value
+      })});
+      form.reset();window.location?.assign?.(result.redirect);
+    } catch(e) {el('password-status').textContent=e.message;}
+    finally {el('password-submit').disabled=false;}
   };
   initialize();
 })();

@@ -26,7 +26,7 @@ Installation reuses existing services, installs only missing dependencies, deplo
 
 ### SuperAdmin setup in the terminal
 
-If no SuperAdmin exists, the installer prompts for its password and confirmation. Input is hidden. No email address is requested or required. Passwords must contain 12–72 bytes.
+If no SuperAdmin exists, the installer prompts for its password and confirmation. Input is hidden. No email address is requested or required. The SuperAdmin is exempt from configurable policy; passwords retain a 1–72 UTF-8 byte input limit.
 
 After installation, sign in to the web UI with username **superadmin** and the password you chose. There is no browser-based account claiming, setup code, or default password.
 
@@ -130,7 +130,7 @@ JSON, same-origin sessions, no permissive CORS. Call `GET /api/session` to obtai
 | `GET /api/coverage` | Authenticated active coverage |
 | `GET /api/roads/123?profile=twisty` | Authenticated road details and score dimensions |
 | `GET/POST /api/admin/users` | SuperAdmin user listing/creation |
-| `PATCH /api/admin/users/123` | SuperAdmin enable/disable/password reset |
+| `POST /api/admin/users/123` | SuperAdmin enable/disable/password reset |
 | `GET /api/admin/data` | SuperAdmin worker/ZIP/task status |
 | `POST /api/admin/tasks/123/retry` | SuperAdmin retry of a failed preparation task |
 
@@ -142,7 +142,7 @@ Search request template (replace `<US_ZIP>` with your chosen five-digit US ZIP c
 {"zip":"<US_ZIP>","radius_miles":50,"profile":"twisty","min_length_miles":2,"max_length_miles":20,"max_stops":1,"paved_only":true}
 ```
 
-200 means local data is ready. 202 includes `preparation` state/progress and any currently available results; poll the same search (the UI does this automatically). A terminal preparation failure is represented by `preparation.state="failed"` with a visible explanation; retry it through SuperAdmin management. Invalid inputs return 422; authentication 401; CSRF/authorization 403; absent resources 404; incorrect methods 405; account conflicts 409; request/queue throttles 429; unavailable infrastructure 503. Passwords require 12–72 bytes. Terminal provisioning locks against concurrent account creation and never resets an existing administrator. There is no email delivery, self-registration, forgotten-password email flow, or fine-grained role model yet.
+200 means local data is ready. 202 includes `preparation` state/progress and any currently available results; poll the same search (the UI does this automatically). A terminal preparation failure is represented by `preparation.state="failed"` with a visible explanation; retry it through SuperAdmin management. Invalid inputs return 422; authentication 401; CSRF/authorization 403; absent resources 404; incorrect methods 405; account conflicts 409; request/queue throttles 429; unavailable infrastructure 503. New or changed User/Admin passwords follow the configurable policy. Terminal provisioning locks against concurrent account creation and never resets an existing administrator. There is no email delivery, self-registration, forgotten-password email flow, yet.
 
 ## Operations and updates
 
@@ -285,3 +285,34 @@ Only SuperAdmin can assign/revoke Admin roles or manage privileged accounts. The
 
 
 There is exactly one SuperAdmin account, provisioned by the installer. No web account can be created or promoted to SuperAdmin. A database unique index prevents duplicates; installer reruns and credential recovery preserve the same account.
+### Password policy and account password changes
+
+SuperAdmin controls **Manage → Password policy**, persisted in `app_settings.password_policy`. Defaults are **12 characters**, **Standard**, and compromised-password screening **enabled**. Minimum length is configurable from 1–72 characters; all inputs also have a 72 UTF-8 byte maximum to avoid bcrypt truncation. Unicode characters count as characters, while composition uses uppercase A–Z, lowercase a–z, digits 0–9, and symbols (including whitespace and other Unicode characters).
+
+- **Basic:** minimum length only.
+- **Standard:** length plus any three of the four character types.
+- **Strong:** length plus all four types.
+
+Policy changes affect newly created/changed passwords only. Existing hashes continue to authenticate and are rehashed with PHP's `PASSWORD_DEFAULT` when needed. Password creation and changes use `password_hash`/`password_verify`, never reversible storage.
+
+**SuperAdmin exemption:** the single installer-created account bypasses configured length, composition, and breach screening in both self-service and administrative resets. It retains only safe input formatting (nonempty valid UTF-8, no null bytes, at most 72 bytes), current-password verification for self-service, and confirmation. Installer provisioning and `sudo ./reset-superadmin` continue to operate locally without an external service.
+
+**Change password** (`/password`) is available to all signed-in roles. Enter the current password, a different new password, and matching confirmation. Successful changes clear any required-change flag, rotate the session ID and CSRF token, invalidate other sessions, and return to Discovery with a one-time success/informational message.
+
+Users displays a **Password change required** badge and explicit require/clear controls. SuperAdmin can mark Users or Admins; Admins can mark the regular Users they are authorized to manage. SuperAdmin cannot be flagged (also enforced in PostgreSQL). Administrative resets do not automatically mark an account. A flag-only update keeps the user signed in. Flagged users can access only password change/sign-out plus the session and policy metadata needed for that page. Other page requests redirect to `/password`; other authenticated APIs return 403 with `redirect: "/password"`. Background jobs continue independently.
+
+All new-password fields show themed live requirements and a strength bar. The meter is a UX aid; the shared server-side `PasswordPolicy` service enforces the actual current settings.
+
+**Compromised passwords:** the backend checks [Have I Been Pwned Pwned Passwords](https://haveibeenpwned.com/API/v3#PwnedPasswords) only on password submission. SHA-1 is used solely for the range lookup, not storage: only the first five hex characters leave the server, and suffixes are compared locally. Requests use HTTPS verification, response padding, a 2-second connection timeout, 5-second total timeout and 1 MiB response bound. No API key is required. Nonzero breach matches are rejected. Outages, timeouts, malformed responses, or unavailable cURL fail open with: “Password saved. Compromised-password screening was temporarily unavailable, so this password could not be checked.” An unchecked password is not described as unsafe. Passwords and complete hashes are never sent, persisted in caches, or logged.
+
+Migration `011_password_policy.sql` preserves existing accounts, adds `must_change_password=false`, protects SuperAdmin, and seeds settings without overwriting configured values. Run `sudo ./setup.sh` to upgrade. No new persistent runtime or PHP dependency is required: PHP sessions, password APIs, JSON, PCRE and the existing cURL extension are used. Outbound HTTPS to `api.pwnedpasswords.com:443` enables screening; blocked egress produces the documented warning rather than locking out user management.
+
+Password-related API actions use authenticated, CSRF-protected **POST**:
+- `POST /api/password/change`: `current_password`, `new_password`, `confirmation`.
+- `POST /api/admin/password-policy` (SuperAdmin only): `minimum_length`, `strength`, `screen_compromised`.
+- `POST /api/admin/users`: existing creation fields plus optional `must_change_password`.
+- `POST /api/admin/users/{id}`: authorized password/role/active/required-change updates. This replaces PATCH for account updates.
+- `GET /api/password-policy`: authenticated policy metadata, also included in `/api/session`.
+
+Run `php tests/run.php`, `node tests/frontend.test.js`, and `node tests/passwords.test.js`. Disposable PostGIS integration/HTTP tests cover persisted policies, exemptions, private-account authorization, required-change restrictions and password session rotation. Unit breach checks inject synthetic range responses and never send test passwords to HIBP.
+

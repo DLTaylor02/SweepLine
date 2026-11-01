@@ -21,5 +21,5 @@ try {
 } catch (InvalidArgumentException $e) {
     fwrite(STDERR,$e->getMessage()."\n"); exit(1);
 } catch (Throwable $e) {
-    error_log((string)$e); fwrite(STDERR,"SuperAdmin provisioning failed; inspect the error above.\n"); exit(2);
+    error_log('SuperAdmin provisioning failed: '.get_class($e)); fwrite(STDERR,"SuperAdmin provisioning failed; inspect the error above.\n"); exit(2);
 }

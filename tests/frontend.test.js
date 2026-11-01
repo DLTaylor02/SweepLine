@@ -21,6 +21,7 @@ async function testFrontend(sources) {
   const get=id=>elements[id]??=new Element(id);
   for(const n of ['username','password']){get('account-form').fields[n]=new Element();get('account-form')[n]=get('account-form').fields[n];}
   for(const n of ['username','name','email','password']){get('create-user').fields[n]=new Element();get('create-user')[n]=get('create-user').fields[n];}
+  for(const n of ['current_password','new_password','confirmation'])get('change-password')[n]=new Element();
   get('road-diagnostic').road=new Element();get('road-diagnostic').road.value='424';
   const search=get('search');
   for(const n of ['zip','radius','profile','min_length','max_length','max_stops','min_curve_density_score','min_curvature_quality_score','min_sustained_curve_ft','surface_filter','paved'])search[n]=new Element();
@@ -28,13 +29,13 @@ async function testFrontend(sources) {
   get('admin-panel').hidden=true;
   const document={getElementById:get,createElement:()=>new Element(),createElementNS:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
-  let currentRole='superadmin';
+  let currentRole='superadmin',mustChange=false,redirectTarget=null;
   let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false,historyDeleted=false,favoritesSaved=false;
   const favoriteRoad={id:1,name:'Test road',score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5,dimensions:{curvature:0.7},favorite_id:7,geometry:{type:'LineString',coordinates:[[-120,39],[-119.99,39.01]]}};
   const savedFavorite={id:7,profile:'twisty',created_at:'2026-10-19T12:00:00Z',road:favoriteRoad,search_parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:1,paved_only:true}};
   let storage={available:true,database_bytes:100,other_bytes:500,free_bytes:400,total_bytes:1000,volumes:[{mount:'/'}],message:'Mounted local disks combined.'};
   const requests=[];
-  const session=()=>({user:logged?{id:1,name:'Owner',role:currentRole}:null,csrf,admin_ready:adminReady});
+  const session=()=>({user:logged?{id:1,name:'Owner',role:currentRole,must_change_password:mustChange}:null,csrf,admin_ready:adminReady});
   const fetch=async(path,options={})=>{
     requests.push({path,...options});let status=200,data;
     if(path==='/api/session')data=session();
@@ -50,6 +51,9 @@ async function testFrontend(sources) {
     else if(path==='/api/favorites')data=favoritesSaved?[savedFavorite]:[];
     else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',score:70,dimensions:{curvature:0.7}};
     else if(path==='/api/coverage'||path==='/api/admin/users')data=[];
+    else if(path==='/api/password-policy')data={minimum_length:12,strength:'standard',screen_compromised:true};
+    else if(path==='/api/password/change')data={changed:true,redirect:'/'};
+    else if(path==='/api/admin/password-policy')data=JSON.parse(options.body);
     else if(path==='/api/admin/storage')data={database_budget_mb:20480,resumed_jobs:2};
     else if(path==='/api/admin/data')data={settings:{database_budget_mb:5120},storage,tasks:[{id:42,kind:'roads',task_key:'test-area',status:jobCancelled?'cancelled':'running',progress:'Analyzing roads',cancel_requested:jobCancelled}],worker_heartbeat:null,zip_last_sync:null};
     else if(path==='/api/admin/tasks/42/cancel'){jobCancelled=true;data={cancel_requested:true};}
@@ -254,6 +258,23 @@ async function testFrontend(sources) {
   check(search.zip.value==='01234'&&get('zip-pick-status').textContent.includes('No nearby'),'Missing ZIP leaves existing input intact with explanation');
   get('pick-zip').onclick();get('pick-zip').onclick();
   check(get('map-pick-note').hidden,'Map picking can be cancelled');
+
+  logged=true;mustChange=true;
+  const forcedWindow={...window,location:{pathname:'/',replace:p=>redirectTarget=p}};
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(forcedWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(redirectTarget==='/password'&&get('workspace').hidden,'Flagged session redirected without discovery');
+  const passwordWindow={...window,location:{pathname:'/password',assign:p=>redirectTarget=p}};
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(passwordWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(!get('password-panel').hidden&&get('password-back').hidden&&get('admin-open').hidden&&get('history-open').hidden,'Forced password page hides unrelated actions');
+  const change=get('change-password');change.current_password.value='old';change.new_password.value='New-pass123!';change.confirmation.value='wrong';
+  await change.onsubmit({preventDefault(){},target:change});await flush();
+  check(get('password-status').textContent.includes('match'),'Confirmation mismatch shown');
+  change.confirmation.value='New-pass123!';
+  await change.onsubmit({preventDefault(){},target:change});await flush();
+  check(requests.some(r=>r.path==='/api/password/change'&&r.method==='POST'&&!!r.headers['X-CSRF-Token']),'Password change uses CSRF POST');
+  check(redirectTarget==='/','Password success returns to authenticated discovery');
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){
