@@ -109,6 +109,8 @@ async function testFrontend(sources) {
   get('results').children[0].onclick();await flush();
   const exportLinks=get('road-detail').children.find(node=>node.className==='road-exports').children;
   check(exportLinks.length===3&&exportLinks[2].textContent==='Printable PDF','Selected road offers GPX, KMZ and PDF exports');
+  check(exportLinks[2].target==='_blank'&&exportLinks[2].rel==='noopener'&&!('download' in exportLinks[2]),'PDF opens a new preview tab without a forced download');
+  check('download' in exportLinks[0]&&'download' in exportLinks[1],'GPX and KMZ remain downloads');
   check(exportLinks[0].href==='/api/roads/1/export?format=gpx&profile=twisty','Export targets selected road and active profile');
   const heart=get('road-detail').children.find(node=>node.className==='favorite-heart');
   await heart.onclick();await flush();
@@ -252,6 +254,7 @@ async function testFrontend(sources) {
   await flush();
   check(get('results').children.length===1&&get('road-detail').children.some(node=>node.textContent==='Test road · 70/100'),'Opening a favorite restores saved road result and details');
   check(get('road-detail').children.find(node=>node.className==='road-exports').children[0].href==='/api/favorites/7/export?format=gpx','Saved road exports do not require active candidate ID');
+  check(get('road-detail').children.find(node=>node.className==='road-exports').children[2].target==='_blank','Favorite PDFs also open a preview tab');
   let pickerReply={zip:'01234',place:'Test place',state:'ZZ',distance_m:1609.344},pickerError=false;
   const pickerWindow={addEventListener(){},SweepLineAccount:{user:null},sweeplineRequest:async path=>{
     check(path.startsWith('/api/zips/nearest?lon='),'Map selection uses local coordinate lookup endpoint');

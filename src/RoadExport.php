@@ -99,7 +99,7 @@ final class RoadExport
         $body=match($format) {'gpx'=>self::gpx($road),'kmz'=>self::kmz($road),'pdf'=>self::pdf($road)};
         $mime=match($format) {'gpx'=>'application/gpx+xml','kmz'=>'application/vnd.google-earth.kmz','pdf'=>'application/pdf'};
         header('Content-Type: '.$mime);
-        header('Content-Disposition: attachment; filename="'.self::filename($road['name'],$format).'"');
+        header('Content-Disposition: '.($format==='pdf'?'inline':'attachment').'; filename="'.self::filename($road['name'],$format).'"');
         header('Content-Length: '.strlen($body));echo $body;exit;
     }
 }

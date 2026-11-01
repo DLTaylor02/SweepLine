@@ -326,3 +326,6 @@ Changes apply to existing sessions on their next authenticated request: shorteni
 
 Run `sudo ./setup.sh` after upgrading: SweepLine's isolated PHP-FPM pool must retain session files for the supported 30-day maximum (2,592,000 seconds), preventing the former 12-hour garbage-collection limit from deleting otherwise valid sessions. This changes only the application pool, not global PHP or other applications. Existing browser-session cookies become persistent on the next valid authenticated request; sessions already deleted or expired require one fresh sign-in.
 
+
+
+PDF exports open in a new tab using the browser PDF viewer, where users can preview, print, or save the road-named PDF. Browsers configured to always download PDFs may honor that local preference. PDFs are generated in memory per request and are not stored as server files, so no retention cleanup job is needed. GPX and KMZ exports remain direct downloads.

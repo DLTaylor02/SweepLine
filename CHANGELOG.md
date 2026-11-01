@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Opened road and Favorite PDF exports inline in a new tab, preserving road-based Save filenames. PDFs are generated in memory without server-side file retention; GPX/KMZ remain downloads.
+
 - Named GPX, KMZ and PDF downloads after the exported road followed by the sweepline tag, including Favorites exports.
 
 - Replaced one-hour idle/twelve-hour absolute logouts with a seven-day session lifetime configurable by SuperAdmin in Manage (1–30 days), persistent cookies with fixed sign-in deadlines, and application-specific session storage retention.

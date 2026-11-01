@@ -170,7 +170,10 @@ async function selectRoad(id) {
     const exports=text('div','','road-exports');
     for(const [format,label] of [['gpx','GPX'],['kmz','KMZ'],['pdf','Printable PDF']]) {
       const link=text('a',label);link.href=road._snapshot?`/api/favorites/${data.favorite_id}/export?format=${format}`:`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}`;
-      link.setAttribute('download','');exports.append(link);
+      if(format==='pdf') {
+        link.target='_blank';link.rel='noopener';link.setAttribute('aria-label','Preview PDF in a new tab');
+      } else {link.setAttribute('download','');}
+      exports.append(link);
     }
     detail.append(exports,text('p','Export this road track or a PDF with a road sketch and section directions. No navigation to the start is included.'));
     Object.entries(data.dimensions).forEach(([key,value])=>{const row=text('div','','dimension');row.append(text('span',key),text('strong',`${Math.round(value*100)}/100`));detail.append(row);});
