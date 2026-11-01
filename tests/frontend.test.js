@@ -50,7 +50,8 @@ async function testFrontend(sources) {
     else if(path==='/api/favorites/7')data=savedFavorite;
     else if(path==='/api/favorites')data=favoritesSaved?[savedFavorite]:[];
     else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',score:70,dimensions:{curvature:0.7}};
-    else if(path==='/api/coverage'||path==='/api/admin/users')data=[];
+    else if(path==='/api/coverage')data=[];
+    else if(path==='/api/admin/users')data=[{id:2,name:'Test member',username:'member',email:null,role:'member',active:true,must_change_password:true}];
     else if(path==='/api/password-policy')data={minimum_length:12,strength:'standard',screen_compromised:true};
     else if(path==='/api/password/change')data={changed:true,redirect:'/'};
     else if(path==='/api/admin/password-policy')data=JSON.parse(options.body);
@@ -167,6 +168,7 @@ async function testFrontend(sources) {
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(manageWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
   await flush();
   check(!get('admin-users').hidden&&get('admin-jobs').hidden&&get('workspace').hidden,'Manage page contains user management only');
+  check(get('user-list').children[0].children.length===5&&get('user-list').children[0].children[4].dataset.label==='Reset password','Each user renders in five aligned account-management columns');
   check(!requests.slice(beforeManage).some(r=>r.path==='/api/admin/data'),'Manage does not fetch job preparation');
 
   currentRole='admin';

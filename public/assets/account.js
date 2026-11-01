@@ -55,7 +55,7 @@
       el('admin-panel').hidden=false;el('admin-users').hidden=jobsPage;
       el('admin-jobs').hidden=managePage;
       el('admin-page-title').textContent=jobsPage?'Manage':'Users';
-      el('admin-panel').className='admin-panel jobs-page';
+      el('admin-panel').className='admin-panel '+(managePage?'users-page':'jobs-page');
       el('create-role-label').hidden=session.user.role!=='superadmin';
       if(session.user.role==='superadmin' || (managePage && session.user.role==='admin'))refreshAdmin();
       else {el('admin-jobs').hidden=true;el('admin-users').hidden=true;el('admin-status').textContent='SuperAdmin access required.';}
@@ -189,14 +189,24 @@
       const data=jobsPage?await window.sweeplineRequest('/api/admin/data'):null;
       el('user-list').replaceChildren();
       users.forEach(user=>{
-        const row=text('div','');row.className='user-row';
-        row.append(text('strong',user.name),text('p',user.username+(user.email?' · '+user.email:'')+' · '+(user.role==='member'?'User':user.role==='admin'?'Admin':'SuperAdmin')+' · '+(user.active?'Active':'Disabled')));
-        if(user.must_change_password) {const badge=text('span','Password change required');badge.className='password-badge';row.append(badge);}
-        if(session.user.role!=='superadmin' && user.role!=='member') {el('user-list').append(row);return;}
+        const row=text('tr','');row.className='user-row';
+        const cells=['Account','Role','Access','Password requirement','Reset password'].map(label=>{
+          const cell=text('td','');cell.dataset.label=label;row.append(cell);return cell;
+        });
+        const [accountCell,roleCell,accessCell,requirementCell,passwordCell]=cells;
+        accountCell.append(text('strong',user.name),text('p',user.username));
+        if(user.email)accountCell.append(text('p',user.email));
+        roleCell.append(text('span',user.role==='member'?'User':user.role==='admin'?'Admin':'SuperAdmin'));
+        accessCell.append(text('span',user.active?'Active':'Disabled'));
+        if(user.must_change_password) {const badge=text('span','Password change required');badge.className='password-badge';requirementCell.append(badge);}
+        else requirementCell.append(text('span',user.role==='superadmin'?'Exempt':'Not required'));
+        if(session.user.role!=='superadmin' && user.role!=='member') {
+          passwordCell.append(text('span','Protected account'));el('user-list').append(row);return;
+        }
         if(Number(user.id)!==Number(session.user.id)) {
           const toggle=text('button',user.active?'Disable':'Enable');toggle.type='button';
           toggle.onclick=async()=>{try{await updateUser(user.id,{active:!user.active});await refreshAdmin();}catch(e){el('admin-status').textContent=e.message;}};
-          row.append(toggle);
+          accessCell.append(toggle);
         }
         if(session.user.role==='superadmin' && user.role!=='superadmin') {
           const role=document.createElement('select');role.setAttribute('aria-label','Role for '+user.username);
@@ -204,12 +214,12 @@
           role.value=user.role;
           const saveRole=text('button','Save role');saveRole.type='button';
           saveRole.onclick=async()=>{try {await updateUser(user.id,{role:role.value});await refreshAdmin();}catch(e){el('admin-status').textContent=e.message;}};
-          row.append(role,saveRole);
+          roleCell.append(role,saveRole);
         }
         if(user.role!=='superadmin') {
           const required=text('button',user.must_change_password?'Clear required change':'Require password change');required.type='button';
           required.onclick=async()=>{try {await updateUser(user.id,{must_change_password:!user.must_change_password});await refreshAdmin();}catch(e){el('admin-status').textContent=e.message;}};
-          row.append(required);
+          requirementCell.append(required);
         }
         const password=document.createElement('input');password.type='password';password.autocomplete='new-password';
         password.placeholder='New password';password.setAttribute('aria-label','New password for '+user.username);
@@ -222,7 +232,7 @@
             if(Number(user.id)===Number(session.user.id))await initialize();
           } catch(e) {el('admin-status').textContent=e.message;}
         };
-        row.append(password,reset);el('user-list').append(row);meter(password,user.role==='superadmin');
+        passwordCell.append(password,reset);el('user-list').append(row);meter(password,user.role==='superadmin');
       });
       if(data) {
       renderStorage(data.storage);

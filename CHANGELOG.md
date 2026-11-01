@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reorganized Users into an accessible five-column account table, with aligned role/access/password controls, retained password meters, a responsive creation form and horizontal scrolling on small screens.
+
 - Fixed malformed dollar quoting in the password-policy migration that prevented installer upgrades; added a migration delimiter regression check.
 
 - Added persistent SuperAdmin password policies, shared server-side enforcement, padded HIBP range screening with informational fail-open warnings, themed requirements meters, and self-service password changes with session rotation.
