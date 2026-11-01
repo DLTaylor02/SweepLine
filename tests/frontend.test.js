@@ -275,6 +275,33 @@ async function testFrontend(sources) {
   check(mapResizes===1,'Pending recovery skips hidden discovery workspace');
   get('workspace').hidden=false;mapReturnEvents.pageshow({persisted:false});frames.shift()();
   check(mapResizes===2&&mapRepaints===2,'Visible page-show restores map without a search');
+
+  const rebuiltMaps=[],pdfFrames=[],pdfEvents={};
+  class RestoredMap {
+    constructor(options){this.options=options;this.handlers={};rebuiltMaps.push(this);}
+    on(name,layer,handler){if(typeof layer==='function')this.handlers[name]=layer;}
+    addControl(){} setPadding(padding){this.padding=padding;}
+    getLayer(id){return this.options.style.layers.find(layer=>layer.id===id);}
+    setPaintProperty(){} resize(){} triggerRepaint(){}
+  }
+  const lib={Map:RestoredMap,NavigationControl:class {}};
+  const pdfDocument={...document,visibilityState:'visible',addEventListener:()=>{}};
+  const pdfWindow={maplibregl:lib,location:{pathname:'/',search:''},requestAnimationFrame:callback=>pdfFrames.push(callback),addEventListener:(name,handler)=>pdfEvents[name]=handler};
+  const pdfMap=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams','maplibregl',sources['app.js']+'\nreturn {setMap:value=>map=value,markPdfPreview};')(pdfWindow,pdfDocument,fetch,function(){},setTimer,clearTimer,SearchParams,lib);
+  const preservedStyle={version:8,sources:{roads:{type:'geojson',data:{type:'FeatureCollection',features:[{id:7}]}},radius:{type:'geojson',data:{type:'Feature',geometry:{type:'Polygon',coordinates:[]}}}},layers:[{id:'basemap'},{id:'selected',filter:['==',['get','id'],7]}]};
+  let removedOldMap=false;
+  pdfMap.setMap({getLayer:()=>true,getStyle:()=>preservedStyle,getCenter:()=>({lng:-119.8,lat:39.5}),getZoom:()=>12,getBearing:()=>25,getPitch:()=>20,getPadding:()=>({top:65,right:65,bottom:65,left:65}),remove:()=>removedOldMap=true});
+  get('workspace').hidden=false;
+  const requestsBeforePdf=requests.length;
+  pdfMap.markPdfPreview();pdfEvents.blur();pdfEvents.focus();pdfFrames.shift()();
+  check(removedOldMap&&rebuiltMaps.length===1,'Returning from PDF replaces stale canvas with a fresh map');
+  const rebuilt=rebuiltMaps[0];
+  check(rebuilt.options.center.lng===-119.8&&rebuilt.options.zoom===12&&rebuilt.options.bearing===25&&rebuilt.options.pitch===20&&rebuilt.padding.top===65,'PDF recovery retains viewport and padding');
+  check(rebuilt.options.style.sources.roads.data.features[0].id===7&&rebuilt.options.style.sources.radius.data.type==='Feature'&&rebuilt.options.style.layers[1].filter[2]===7,'PDF recovery retains road data, radius and selection');
+  rebuilt.handlers.load();await flush();pdfFrames.shift()();
+  pdfEvents.focus();pdfFrames.shift()();
+  check(rebuiltMaps.length===1,'PDF return replaces canvas only once');
+  check(requests.length===requestsBeforePdf,'PDF canvas recovery does not query roads or import data');
   let pickerReply={zip:'01234',place:'Test place',state:'ZZ',distance_m:1609.344},pickerError=false;
   const pickerWindow={addEventListener(){},SweepLineAccount:{user:null},sweeplineRequest:async path=>{
     check(path.startsWith('/api/zips/nearest?lon='),'Map selection uses local coordinate lookup endpoint');

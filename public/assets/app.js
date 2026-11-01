@@ -96,9 +96,23 @@ function syncMapTheme() {
   map.setPaintProperty('radius-fill', 'fill-color', dark ? '#8bbcff' : '#2563a6');
 }
 window.addEventListener('sweepline:themechange', syncMapTheme);
-let mapRefreshPending=false;
+let mapRefreshPending=false,pdfPreviewPending=false,pdfPreviewAway=false;
+function markPdfPreview() {pdfPreviewPending=true;pdfPreviewAway=false;}
+window.addEventListener('blur',()=>{if(pdfPreviewPending)pdfPreviewAway=true;});
+function rebuildMapAfterPdf() {
+  if(!pdfPreviewPending || !pdfPreviewAway || !map || !map.getLayer('selected'))return false;
+  const oldMap=map;
+  const snapshot={style:oldMap.getStyle(),center:oldMap.getCenter(),zoom:oldMap.getZoom(),
+    bearing:oldMap.getBearing(),pitch:oldMap.getPitch(),padding:oldMap.getPadding()};
+  pdfPreviewPending=false;pdfPreviewAway=false;
+  oldMap.remove();map=null;
+  initMap(snapshot);
+  ready.then(refreshVisibleMap);
+  return true;
+}
 function refreshVisibleMap() {
-  if(!map || document.visibilityState==='hidden' || $('workspace').hidden || mapRefreshPending)return;
+  if(document.visibilityState==='hidden') {if(pdfPreviewPending)pdfPreviewAway=true;return;}
+  if(!map || $('workspace').hidden || mapRefreshPending)return;
   const currentMap=map;mapRefreshPending=true;
   const nextFrame=window.requestAnimationFrame?.bind(window) || (callback=>setTimeout(callback,0));
   nextFrame(()=>{
@@ -106,24 +120,29 @@ function refreshVisibleMap() {
     if(map!==currentMap || document.visibilityState==='hidden' || $('workspace').hidden)return;
     // Let the browser restore layout first, then ask MapLibre for a fresh frame.
     // Existing sources, selection and camera stay intact; no search/import request.
+    if(rebuildMapAfterPdf())return;
     currentMap.resize();currentMap.triggerRepaint();
   });
 }
 window.addEventListener('focus',refreshVisibleMap);
 document.addEventListener?.('visibilitychange',refreshVisibleMap);
-function initMap() {
+function initMap(snapshot=null) {
   if (!window.maplibregl) { setStatus('Map library unavailable. Check your connection; road search remains available.'); return; }
-  map = new maplibregl.Map({container:'map', bounds:[[-180,-70],[180,80]],fitBoundsOptions:{padding:20},style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}},layers:[{id:'basemap',type:'raster',source:'osm',paint:{'raster-saturation':-0.65,'raster-opacity':0.88}}]}});
+  const view=snapshot?{center:snapshot.center,zoom:snapshot.zoom,bearing:snapshot.bearing,pitch:snapshot.pitch}:{bounds:[[-180,-70],[180,80]],fitBoundsOptions:{padding:20}};
+  map = new maplibregl.Map({container:'map',...view,style:snapshot?snapshot.style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}},layers:[{id:'basemap',type:'raster',source:'osm',paint:{'raster-saturation':-0.65,'raster-opacity':0.88}}]}});
+  if(snapshot)map.setPadding(snapshot.padding);
   map.addControl(new maplibregl.NavigationControl(),'top-right');
   map.on('webglcontextrestored',refreshVisibleMap);
   ready = new Promise(resolve => map.on('load', () => {
-    map.addSource('radius',{type:'geojson',data:empty()});
-    map.addLayer({id:'radius-fill',type:'fill',source:'radius',paint:{'fill-color':'#2563a6','fill-opacity':0.035}});
-    map.addLayer({id:'radius-line',type:'line',source:'radius',paint:{'line-color':'#2563a6','line-width':1.5,'line-dasharray':[3,3]}});
-    map.addSource('roads',{type:'geojson',data:empty()});
-    map.addLayer({id:'roads-outline',type:'line',source:'roads',paint:{'line-color':'#fff','line-width':7}});
-    map.addLayer({id:'roads',type:'line',source:'roads',paint:{'line-color':color,'line-width':4}});
-    map.addLayer({id:'selected',type:'line',source:'roads',filter:['==',['get','id'],-1],paint:{'line-color':'#f08a38','line-width':6}});
+    if(!snapshot) {
+      map.addSource('radius',{type:'geojson',data:empty()});
+      map.addLayer({id:'radius-fill',type:'fill',source:'radius',paint:{'fill-color':'#2563a6','fill-opacity':0.035}});
+      map.addLayer({id:'radius-line',type:'line',source:'radius',paint:{'line-color':'#2563a6','line-width':1.5,'line-dasharray':[3,3]}});
+      map.addSource('roads',{type:'geojson',data:empty()});
+      map.addLayer({id:'roads-outline',type:'line',source:'roads',paint:{'line-color':'#fff','line-width':7}});
+      map.addLayer({id:'roads',type:'line',source:'roads',paint:{'line-color':color,'line-width':4}});
+      map.addLayer({id:'selected',type:'line',source:'roads',filter:['==',['get','id'],-1],paint:{'line-color':'#f08a38','line-width':6}});
+      }
     map.on('click','roads', e => {if(!pickingZip)selectRoad(Number(e.features[0].properties.id));});
     map.on('mouseenter','roads',()=>map.getCanvas().style.cursor=pickingZip?'crosshair':'pointer');
     map.on('mouseleave','roads',()=>map.getCanvas().style.cursor=pickingZip?'crosshair':'');
@@ -188,6 +207,7 @@ async function selectRoad(id) {
       const link=text('a',label);link.href=road._snapshot?`/api/favorites/${data.favorite_id}/export?format=${format}`:`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}`;
       if(format==='pdf') {
         link.target='_blank';link.rel='noopener';link.setAttribute('aria-label','Preview PDF in a new tab');
+        link.onclick=markPdfPreview;
       } else {link.setAttribute('download','');}
       exports.append(link);
     }
