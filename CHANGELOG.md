@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Named GPX, KMZ and PDF downloads after the exported road followed by the sweepline tag, including Favorites exports.
+
 - Replaced one-hour idle/twelve-hour absolute logouts with a seven-day session lifetime configurable by SuperAdmin in Manage (1–30 days), persistent cookies with fixed sign-in deadlines, and application-specific session storage retention.
 
 - Reorganized History into aligned rows/columns with the ZIP locality and state as the primary search label, local-data enrichment for existing entries, and preserved map-opening/delete actions.

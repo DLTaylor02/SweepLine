@@ -85,6 +85,13 @@ final class RoadExport
     {
         return RoadPdf::render($road);
     }
+    public static function filename(string $name,string $format): string
+    {
+        if (!in_array($format,['gpx','kmz','pdf'],true)) {throw new \InvalidArgumentException('Unknown export format');}
+        if (function_exists('iconv')) {$name=iconv('UTF-8','ASCII//TRANSLIT//IGNORE',$name)?:$name;}
+        $name=trim(substr(preg_replace('/[^A-Za-z0-9]+/','-',$name),0,120),'-');
+        return ($name!==''?$name:'Road').'-sweepline.'.$format;
+    }
     public static function download(array $road,string $format): never
     {
         if (!in_array($format,['gpx','kmz','pdf'],true)) {throw new \InvalidArgumentException('Unknown export format');}
@@ -92,7 +99,7 @@ final class RoadExport
         $body=match($format) {'gpx'=>self::gpx($road),'kmz'=>self::kmz($road),'pdf'=>self::pdf($road)};
         $mime=match($format) {'gpx'=>'application/gpx+xml','kmz'=>'application/vnd.google-earth.kmz','pdf'=>'application/pdf'};
         header('Content-Type: '.$mime);
-        header('Content-Disposition: attachment; filename="sweepline-road-'.(int)$road['id'].'.'.$format.'"');
+        header('Content-Disposition: attachment; filename="'.self::filename($road['name'],$format).'"');
         header('Content-Length: '.strlen($body));echo $body;exit;
     }
 }
