@@ -40,6 +40,9 @@
     }
     meter(el('create-user').password);
     if(jobsPage && session.user?.role==='superadmin' && !el('policy-minimum').dataset.loaded) {
+      if(!el('session-days').dataset.loaded) {
+        el('session-days').value=String(session.session_settings?.session_timeout_days??7);el('session-days').dataset.loaded='true';
+      }
       el('policy-minimum').value=String(policy().minimum_length);el('policy-minimum').dataset.loaded='true';
       el('policy-strength').value=policy().strength;el('policy-screen').checked=policy().screen_compromised;
     }
@@ -299,6 +302,15 @@
       const result=await window.sweeplineRequest('/api/admin/users',{method:'POST',body:JSON.stringify({username:form.username.value,name:form.elements.namedItem('name').value,email:form.email.value,password:form.password.value,role:session.user.role==='superadmin'?(el('create-role').value || 'member'):'member',must_change_password:!!form.must_change_password?.checked})});
       form.reset();form.password.oninput?.();el('admin-status').textContent=result.warning || 'User created.';await refreshAdmin();
     } catch(e) {el('admin-status').textContent=e.message;}
+  };
+  el('session-settings').onsubmit=async event=>{
+    event.preventDefault();el('session-save').disabled=true;
+    try {
+      session.session_settings=await window.sweeplineRequest('/api/admin/session-settings',{method:'POST',body:JSON.stringify({session_timeout_days:Number(el('session-days').value)})});
+      el('session-days').value=String(session.session_settings.session_timeout_days);
+      el('session-settings-status').textContent='Session lifetime saved. Applies on the next authenticated request.';
+    } catch(e) {el('session-settings-status').textContent=e.message;}
+    finally {el('session-save').disabled=false;}
   };
   el('password-policy-form').onsubmit=async event=>{
     event.preventDefault();el('policy-save').disabled=true;

@@ -318,3 +318,11 @@ Run `php tests/run.php`, `node tests/frontend.test.js`, and `node tests/password
 
 History displays one search per row with Location, Searched, Search, Filters, and Actions columns. The main location label uses the ZIP dataset's city/place and state, with the numeric ZIP beneath it. This is the locality associated with the searched ZIP, not a separate live nearest-city lookup. Existing history is enriched from local ZIP data without downloading maps or rewriting search records. A missing ZIP locality falls back to the numeric ZIP. Rows retain automatic map opening and owner-only deletion; the table scrolls horizontally on narrow screens.
 
+### Session lifetime
+
+SuperAdmin controls **Manage → Session lifetime**, from 1–30 whole days, default **7 days**. The database setting `session_timeout_days` is seeded without overwriting existing configuration by migration `012_session_lifetime.sql`. Sessions use a persistent HttpOnly/SameSite cookie, retaining the existing Secure behavior under HTTPS. The deadline is measured from sign-in (or a successful own-password change), not from the last mouse click or background poll. There is no separate one-hour idle logout.
+
+Changes apply to existing sessions on their next authenticated request: shortening may expire them; increasing updates the browser cookie deadline while the session is still valid. An already expired session cannot be restored by increasing the setting. Disabling accounts, role changes, password resets and explicit logout still invalidate access earlier. Raising the setting is SuperAdmin-only via authenticated, CSRF-protected `POST /api/admin/session-settings`; `GET` returns its current value.
+
+Run `sudo ./setup.sh` after upgrading: SweepLine's isolated PHP-FPM pool must retain session files for the supported 30-day maximum (2,592,000 seconds), preventing the former 12-hour garbage-collection limit from deleting otherwise valid sessions. This changes only the application pool, not global PHP or other applications. Existing browser-session cookies become persistent on the next valid authenticated request; sessions already deleted or expired require one fresh sign-in.
+

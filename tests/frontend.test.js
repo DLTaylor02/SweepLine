@@ -53,6 +53,7 @@ async function testFrontend(sources) {
     else if(path==='/api/coverage')data=[];
     else if(path==='/api/admin/users')data=[{id:2,name:'Test member',username:'member',email:null,role:'member',active:true,must_change_password:true}];
     else if(path==='/api/password-policy')data={minimum_length:12,strength:'standard',screen_compromised:true};
+    else if(path==='/api/admin/session-settings')data=JSON.parse(options.body);
     else if(path==='/api/password/change')data={changed:true,redirect:'/'};
     else if(path==='/api/admin/password-policy')data=JSON.parse(options.body);
     else if(path==='/api/admin/storage')data={database_budget_mb:20480,resumed_jobs:2};
@@ -134,6 +135,11 @@ async function testFrontend(sources) {
   await get('storage-settings').onsubmit({preventDefault(){}});await flush();
   check(requests.some(r=>r.path==='/api/admin/storage'&&r.method==='PATCH'&&r.headers['X-CSRF-Token']==='signed-in'&&JSON.parse(r.body).database_budget_mb===20480),'Storage limit save sends authenticated CSRF request');
   check(get('storage-settings-status').textContent.includes('2 blocked jobs'),'Storage limit save reports resumed work');
+  check(get('session-days').value==='7','Manage displays seven-day session default');
+  get('session-days').value='14';
+  await get('session-settings').onsubmit({preventDefault(){}});await flush();
+  check(requests.some(r=>r.path==='/api/admin/session-settings'&&r.method==='POST'&&r.headers['X-CSRF-Token']&&JSON.parse(r.body).session_timeout_days===14),'Session setting saves with authenticated CSRF POST');
+  check(get('session-settings-status').textContent.includes('saved'),'Session setting save is confirmed');
   const previousStorage=storage;storage={available:false,database_bytes:100,message:'Remote database; combined chart unavailable.'};
   await get('admin-refresh').onclick();await flush();
   check(get('storage-pie').hidden&&get('storage-legend').children.length===1,'Unavailable disk totals hide pie and retain database size');

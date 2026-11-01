@@ -6,8 +6,8 @@ if (!is_string($path)) { http_response_code(400); exit('Invalid request'); }
 if (PHP_SAPI==='cli-server' && preg_match('#^/assets/[a-zA-Z0-9_.-]+$#',$path) && is_file(__DIR__.$path)) { return false; }
 if (!str_starts_with($path,'/api/')) {
     require dirname(__DIR__).'/src/bootstrap.php';
-    SweepLine\Auth::start();
-    $pageUser=(new SweepLine\Auth(SweepLine\Database::connect()))->user();
+    $pageDb=SweepLine\Database::connect();SweepLine\Auth::start($pageDb);
+    $pageUser=(new SweepLine\Auth($pageDb))->user();
     if (($pageUser['must_change_password']??false) && $path!=='/password') {header('Location: /password',true,303);exit;}
     session_write_close();
     if ($path==='/jobs') {header('Location: /manage',true,302);exit;}
@@ -22,9 +22,10 @@ header('X-Content-Type-Options: nosniff');
 try {
     if ($path==='/api/setup') { throw new OutOfBoundsException('Endpoint not found'); }
     $method=$_SERVER['REQUEST_METHOD']??'GET';
-    $postPaths=['/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy'];
+    $postPaths=['/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if ($path==='/api/admin/storage' && $method==='PATCH') {$expected='PATCH';}
+    if ($path==='/api/admin/session-settings' && $method==='GET') {$expected='GET';}
     if ($path==='/api/admin/users' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='POST'; }
     if (preg_match('#^/api/admin/tasks/[1-9]\\d{0,17}/(?:retry|cancel)$#',$path)) { $expected='POST'; }
@@ -48,7 +49,7 @@ try {
         if ($schema!==$expectedSchema) { throw new RuntimeException('Pending database migrations'); }
         $result=['status'=>'ok','database'=>true,'postgis'=>$db->query('SELECT postgis_lib_version()')->fetchColumn(),'schema'=>$schema];
     } else {
-        SweepLine\Auth::start(); $auth=new SweepLine\Auth($db);
+        SweepLine\Auth::start($db); $auth=new SweepLine\Auth($db);
         if (in_array($method,['POST','PATCH','DELETE'],true)) { SweepLine\Auth::csrf($_SERVER['HTTP_X_CSRF_TOKEN']??null); }
         if ($path==='/api/session') { $result=$auth->status(); }
         elseif ($path==='/api/login') {
@@ -62,6 +63,7 @@ try {
             if ($path!=='/api/password/change') {session_write_close();}
             if ($path==='/api/profiles') {$result=SweepLine\Scorer::profiles();}
             elseif ($path==='/api/password-policy') {$result=(new SweepLine\PasswordPolicy($db))->read();}
+            elseif ($path==='/api/admin/session-settings') {$settings=new SweepLine\SessionSettings($db);$result=$method==='GET'?$settings->read():$settings->save($input);}
             elseif ($path==='/api/admin/password-policy') {$result=(new SweepLine\PasswordPolicy($db))->save($input);}
             elseif ($path==='/api/password/change') {$result=$auth->changePassword($input);}
             elseif ($path==='/api/favorites') {

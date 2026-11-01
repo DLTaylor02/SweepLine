@@ -6,12 +6,14 @@ use PDO;
 final class Auth
 {
     public function __construct(private PDO $db) {}
-    public static function start(): void
+    public static function start(?PDO $db=null): void
     {
         if (session_status()===PHP_SESSION_ACTIVE) { return; }
+        $days=(new SessionSettings($db??Database::connect()))->read()['session_timeout_days'];
+        ini_set('session.gc_maxlifetime',(string)SessionSettings::MAX_SECONDS);
         ini_set('session.use_strict_mode','1'); ini_set('session.use_only_cookies','1');
         if (session_name()!=='SweepLineSession') { session_name('SweepLineSession'); }
-        session_set_cookie_params(['httponly'=>true,'samesite'=>'Lax','path'=>'/',
+        session_set_cookie_params(['lifetime'=>$days*86400,'httponly'=>true,'samesite'=>'Lax','path'=>'/',
             'secure'=>(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || getenv('APP_COOKIE_SECURE')==='1']);
         session_start(); $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
     }
@@ -22,10 +24,17 @@ final class Auth
     public function user(): ?array
     {
         if (!isset($_SESSION['user_id'])) { return null; }
-        if (time()-($_SESSION['last_seen']??0)>3600 || time()-($_SESSION['login_at']??0)>43200) { unset($_SESSION['user_id']); return null; }
+        $days=(new SessionSettings($this->db))->read()['session_timeout_days'];
+        if (!SessionSettings::valid((int)($_SESSION['login_at']??0),time(),$days)) {unset($_SESSION['user_id']);return null;}
         $q=$this->db->prepare('SELECT id,username,email,name,role,active,must_change_password,session_version FROM app_users WHERE id=?');
         $q->execute([$_SESSION['user_id']]); $user=$q->fetch(PDO::FETCH_ASSOC);
         if (!$user || !$user['active'] || (int)$user['session_version']!==($_SESSION['session_version']??0)) { unset($_SESSION['user_id']); return null; }
+        // Reissue with the absolute deadline so setting changes update existing cookies,
+        // without turning polling into a sliding session lifetime.
+        if (!headers_sent() && session_id()!=='') {
+            $cookie=session_get_cookie_params();unset($cookie['lifetime']);
+            setcookie(session_name(),session_id(),['expires'=>(int)$_SESSION['login_at']+$days*86400]+$cookie);
+        }
         $_SESSION['last_seen']=time(); unset($user['session_version']); $user['id']=(int)$user['id']; return $user;
     }
     public function requireUser(bool|string $admin=false): array
@@ -42,7 +51,7 @@ final class Auth
     public function status(): array
     {
         $notice=$_SESSION['notice']??null;unset($_SESSION['notice']);
-        return ['user'=>$this->user(),'csrf'=>$_SESSION['csrf'],'admin_ready'=>SuperAdmin::exists($this->db),'password_policy'=>(new PasswordPolicy($this->db))->read(),'notice'=>$notice];
+        return ['user'=>$this->user(),'csrf'=>$_SESSION['csrf'],'admin_ready'=>SuperAdmin::exists($this->db),'password_policy'=>(new PasswordPolicy($this->db))->read(),'notice'=>$notice,'session_settings'=>(new SessionSettings($this->db))->read()];
     }
     public static function validatePassword(mixed $password): string
     {

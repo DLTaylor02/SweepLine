@@ -27,6 +27,15 @@ expect(callApi($anonymous,'GET','/api/coverage'),401,'Coverage requires login');
 $session=expect(callApi($admin,'GET','/api/session'),200,'Get session and CSRF');
 if (!$session['admin_ready']) { throw new RuntimeException('HTTP tests require terminal-provisioned SuperAdmin fixture'); }
 $csrf=$session['csrf'];
+$sessionCookieExpiry=0;
+foreach(curl_getinfo($admin,CURLINFO_COOKIELIST) as $cookieLine) {
+    $fields=explode("\t",$cookieLine);
+    if(count($fields)===7 && $fields[5]==='SweepLineSession') {$sessionCookieExpiry=(int)$fields[4];}
+}
+if($sessionCookieExpiry<time()+6*86400 || $sessionCookieExpiry>time()+7*86400+60) {
+    throw new RuntimeException('Sign-in did not issue a persistent seven-day cookie');
+}
+
 expect(callApi($admin,'POST','/api/admin/password-policy',['minimum_length'=>12,'strength'=>'basic','screen_compromised'=>false],$csrf),200,'Configure offline test password policy');
 expect(callApi($admin,'POST','/api/setup',[],$csrf),404,'Browser account claiming removed');
 expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'test-password-123']),403,'Login requires CSRF');
@@ -61,6 +70,11 @@ expect(callApi($admin,'GET','/api/roads/'.$exportId.'/export?format=exe'),422,'E
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'profile'=>'open','max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
 $jobs=expect(callApi($admin,'GET','/api/admin/data'),200,'SuperAdmin sees preparation status');
 if (!isset($jobs['storage']['database_bytes']) || !array_key_exists('available',$jobs['storage'])) { throw new RuntimeException('Storage report missing from Jobs API'); }
+expect(callApi($admin,'GET','/api/admin/session-settings'),200,'SuperAdmin reads session lifetime');
+expect(callApi($admin,'POST','/api/admin/session-settings',['session_timeout_days'=>14],$csrf),200,'SuperAdmin changes session lifetime');
+expect(callApi($admin,'POST','/api/admin/session-settings',['session_timeout_days'=>0],$csrf),422,'Invalid lifetime rejected');
+expect(callApi($admin,'POST','/api/admin/session-settings',['session_timeout_days'=>7]),403,'Session setting requires CSRF');
+expect(callApi($admin,'POST','/api/admin/session-settings',['session_timeout_days'=>7],$csrf),200,'Restore default lifetime');
 $budget=expect(callApi($admin,'GET','/api/admin/storage'),200,'SuperAdmin reads budget');
 expect(callApi($admin,'PATCH','/api/admin/storage',['database_budget_mb'=>0],$csrf),422,'Invalid budget rejected');
 expect(callApi($admin,'PATCH','/api/admin/storage',['database_budget_mb'=>10240]),403,'Storage update requires CSRF');
@@ -115,6 +129,7 @@ expect(callApi($admin,'DELETE','/api/favorites/'.$saved['id'],null,$csrf),200,'O
 expect(callApi($admin,'GET','/api/favorites/'.$saved['id']),404,'Removed favorite is gone');
 expect(callApi($member,'GET','/api/admin/users'),403,'Members cannot manage users');
 expect(callApi($member,'GET','/api/admin/storage'),403,'Members cannot read storage settings');
+expect(callApi($member,'POST','/api/admin/session-settings',['session_timeout_days'=>14],$memberSession['csrf']),403,'User cannot alter session lifetime');
 expect(callApi($member,'GET','/api/admin/data'),403,'Members cannot view job management');
 expect(callApi($member,'POST','/api/admin/tasks/1/cancel',[],$memberSession['csrf']),403,'Members cannot cancel jobs');
 
@@ -125,6 +140,7 @@ $memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member',
 expect(callApi($member,'GET','/api/admin/users'),200,'Admin accesses Users');
 expect(callApi($member,'GET','/api/admin/data'),403,'Admin cannot access Manage jobs');
 expect(callApi($member,'GET','/api/admin/storage'),403,'Admin cannot access Manage settings');
+expect(callApi($member,'POST','/api/admin/session-settings',['session_timeout_days'=>14],$memberSession['csrf']),403,'Admin cannot alter session lifetime');
 expect(callApi($member,'POST','/api/admin/tasks/1/cancel',[],$memberSession['csrf']),403,'Admin cannot cancel jobs');
 expect(callApi($member,'POST','/api/admin/users/'.$session['user']['id'],['password'=>'changed-password-123'],$memberSession['csrf']),403,'Admin cannot reset SuperAdmin');
 expect(callApi($member,'POST','/api/admin/users/'.$id,['role'=>'member'],$memberSession['csrf']),403,'Admin cannot assign roles');

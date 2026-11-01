@@ -117,4 +117,10 @@ $breached=new SweepLine\PasswordPolicy($db,new SweepLine\PwnedPasswords(static f
 check(rejects(fn()=>$breached->validate('Offline-test1!','member')),'Policy rejects breached password');
 check($breached->validate('x','superadmin')===null,'SuperAdmin skips screening and configured requirements');
 $policies->save($originalPolicy);
+$sessionSettings=new SweepLine\SessionSettings($db);
+check($sessionSettings->read()['session_timeout_days']===7,'Migration seeds seven-day lifetime');
+$sessionSettings->save(['session_timeout_days'=>14]);
+check($sessionSettings->read()['session_timeout_days']===14,'Session lifetime setting persists');
+foreach ([0,31,1.5,'invalid'] as $value) {check(rejects(fn()=>$sessionSettings->save(['session_timeout_days'=>$value])),'Session lifetime bounds enforced');}
+$sessionSettings->save(['session_timeout_days'=>7]);
 

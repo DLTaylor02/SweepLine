@@ -305,6 +305,13 @@ check($policyBreached->validate('x','superadmin')===null,'Shared policy exempts 
 $policyMigration=file_get_contents(SWEEPLINE_ROOT.'/database/migrations/011_password_policy.sql');
 check((bool)preg_match('/DO (\\$[A-Za-z_][A-Za-z0-9_]*\\$|\\$\\$)\\s+BEGIN[\\s\\S]*END;\\s*\\1;/',$policyMigration),'Password migration retains matching PostgreSQL dollar quotes and block terminator');
 
+check(SweepLine\SessionSettings::DEFAULT_DAYS===7,'Session defaults to seven days');
+$loginTime=1700000000;
+check(SweepLine\SessionSettings::valid($loginTime,$loginTime+6*86400,7),'Six inactive days retain valid session');
+check(!SweepLine\SessionSettings::valid($loginTime,$loginTime+7*86400,7),'Seven-day deadline requires reauthentication');
+check(!SweepLine\SessionSettings::valid($loginTime,$loginTime+6*86400,1),'Shorter setting expires existing session');
+check(SweepLine\SessionSettings::valid($loginTime,$loginTime+8*86400,14),'Longer setting extends existing live session');
+check(!SweepLine\SessionSettings::valid(0,$loginTime,7),'Missing login time rejected');
+check(!SweepLine\SessionSettings::valid($loginTime+1,$loginTime,7),'Future login time rejected');
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);
-
