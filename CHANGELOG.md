@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed malformed dollar quoting in the password-policy migration that prevented installer upgrades; added a migration delimiter regression check.
+
 - Added persistent SuperAdmin password policies, shared server-side enforcement, padded HIBP range screening with informational fail-open warnings, themed requirements meters, and self-service password changes with session rotation.
 - Added explicit required-password-change badges/controls and page/API restrictions without logging flagged users out. Preserved the single exempt SuperAdmin and CLI recovery. Password/account mutations now use CSRF-protected POST.
 

@@ -302,5 +302,9 @@ $policyBreached=new SweepLine\PasswordPolicy($policyDb,new SweepLine\PwnedPasswo
 check(rejects(fn()=>$policyBreached->validate('Offline-test1!','member')),'Shared policy rejects compromised password');
 check($policyBreached->validate('x','superadmin')===null,'Shared policy exempts SuperAdmin from breach screening');
 
+$policyMigration=file_get_contents(SWEEPLINE_ROOT.'/database/migrations/011_password_policy.sql');
+check((bool)preg_match('/DO (\\$[A-Za-z_][A-Za-z0-9_]*\\$|\\$\\$)\\s+BEGIN[\\s\\S]*END;\\s*\\1;/',$policyMigration),'Password migration retains matching PostgreSQL dollar quotes and block terminator');
+
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);
+
