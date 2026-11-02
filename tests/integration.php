@@ -17,6 +17,26 @@ $data=$api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345','radius_mile
 check(count($data['results'])===2,'Import, score and search real database');
 check($data['results'][0]['mandatory_stops']===1,'Merged road counts all-way stop once');
 check($api->detail($data['results'][0]['id'],'twisty')['name']==='Synthetic Main','Road detail endpoint service');
+
+$sourceId=$data['results'][0]['id'];
+$clone=$db->prepare("INSERT INTO road_candidates(job_id,name,ref,highway,surface_known_paved,length_m,mandatory_stops,uncertain_controls,speed_mph,metrics,geom,geometry_key,surface_status,alternate_names)
+    SELECT job_id,'Synthetic Alternate Road',ref,highway,surface_known_paved,length_m,mandatory_stops,uncertain_controls,speed_mph,metrics,geom,geometry_key,surface_status,'[]'::jsonb FROM road_candidates WHERE id=? RETURNING id");
+$clone->execute([$sourceId]);$cloneId=(int)$clone->fetchColumn();
+$db->prepare('INSERT INTO road_scores SELECT ?,profile,score,confidence,dimensions FROM road_scores WHERE candidate_id=?')->execute([$cloneId,$sourceId]);
+$db->prepare('INSERT INTO candidate_segments SELECT ?,segment_id,position,reversed FROM candidate_segments WHERE candidate_id=?')->execute([$cloneId,$sourceId]);
+try {
+    $overlapResults=$api->search(['profile'=>'open','zip'=>'12345','max_stops'=>5])['results'];
+    check(count($overlapResults)===2,'Duplicate named geometry becomes one API result');
+    $combined=array_values(array_filter($overlapResults,static fn($r)=>count($r['member_ids']??[])>1))[0];
+    check(in_array('Synthetic Alternate Road',$combined['alternate_names'],true),'Combined API result exposes alternate name');
+    $detail=$api->detail($combined['id'],'open',$combined['member_ids']);
+    check(abs($detail['length_m']-$data['results'][0]['length_m'])<1,'Combined detail retains one physical road length');
+    check($detail['mandatory_stops']===1,'Combined mapped stops are deduplicated by physical node');
+    check($detail['geometry_key']===$api->detail($sourceId,'open')['geometry_key'],'Contained grouping preserves stable favorite geometry identity');
+    $exported=$api->exportRoad($combined['id'],'open',false,$combined['member_ids']);
+    check(str_contains(SweepLine\RoadExport::gpx(SweepLine\RoadExport::prepare($exported)),'Synthetic Alternate Road'),'Combined API export retains aliases');
+} finally {$db->prepare('DELETE FROM road_candidates WHERE id=?')->execute([$cloneId]);}
+
 foreach ($api->search(['profile'=>'open','zip'=>'12345','max_stops'=>1])['results'] as $road) { check($road['mandatory_stops']+$road['uncertain_controls']<=1,'Stop limit includes uncertain controls'); }
 $q->execute([$region,__DIR__.'/fixture.osm']); $badJob=$q->fetch(PDO::FETCH_ASSOC); $badJob['source_path']=__DIR__.'/missing.osm';
 try { (new SweepLine\Importer($db))->run($badJob); } catch (Throwable $e) { /* expected */ }
@@ -123,4 +143,3 @@ $sessionSettings->save(['session_timeout_days'=>14]);
 check($sessionSettings->read()['session_timeout_days']===14,'Session lifetime setting persists');
 foreach ([0,31,1.5,'invalid'] as $value) {check(rejects(fn()=>$sessionSettings->save(['session_timeout_days'=>$value])),'Session lifetime bounds enforced');}
 $sessionSettings->save(['session_timeout_days'=>7]);
-

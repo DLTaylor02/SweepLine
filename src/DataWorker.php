@@ -151,6 +151,7 @@ final class DataWorker
         $this->db->exec("DELETE FROM import_jobs j USING regions r WHERE j.region_id=r.id AND r.slug LIKE 'auto-%'
             AND j.id IS DISTINCT FROM r.active_job_id AND j.created_at<now()-interval '7 days' AND j.status IN ('complete','failed')");
         $this->db->exec("DELETE FROM auth_attempts WHERE window_start<now()-interval '1 day'");
+        $this->db->exec("DELETE FROM road_combination_cache WHERE created_at<now()-interval '7 days'");
         foreach (glob(SWEEPLINE_ROOT.'/var/downloads/*') as $file) {
             if (is_file($file) && !is_link($file) && preg_match('/^(roads-[0-9]+\\.osm|us-zips\\.zip|US\\.txt)(\\.part)?$/',basename($file))
                 && filemtime($file)<time()-86400) { unlink($file); }

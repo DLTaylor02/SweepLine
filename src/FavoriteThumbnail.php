@@ -21,7 +21,7 @@ final class FavoriteThumbnail
             return implode(' ',$out);
         };
         $out='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 532 280" role="img" aria-labelledby="title">'.
-            '<title id="title">'.$escape($road['name']).' on a local OpenStreetMap street basemap</title>'.
+            '<title id="title">'.$escape($road['name'].(RoadNames::description($road)!==''?' — '.RoadNames::description($road):'')).' on a local OpenStreetMap street basemap</title>'.
             '<rect width="532" height="280" fill="#eef3f8"/><g fill="none" stroke-linejoin="round" stroke-linecap="round">';
         $roads=array_slice($road['basemap']['roads']??[],-300);
         foreach ($roads as $r) {

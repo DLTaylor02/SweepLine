@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Consolidated physically overlapping, unbranched candidate stretches with legal direction checks, unique-edge geometry, recalculated metrics/filtering and a bounded local analysis cache.
+- Added alternate_names from contributing roads and OSM aliases across discovery, details, Favorites/thumbnails and GPX/KMZ/PDF exports, with migration backfill for existing data and validated composite export/save identities.
+
 - Recreated the MapLibre canvas after returning from PDF preview to recover Firefox blank-map rendering, preserving serialized map sources/layers, selected-road filter, camera and padding. Normal tab switches retain lightweight repaint recovery.
 
 - Added coalesced map resize/repaint recovery when returning from PDF preview tabs, regaining visibility/focus, or restoring the WebGL context, retaining current results, selection and camera without a new search.

@@ -16,6 +16,7 @@ final class RoadExport
     /** Orient a one-way chain legally, and use the same ordering in all formats. */
     public static function prepare(array $road): array
     {
+        $road['alternate_names']=RoadNames::collect(array_merge([$road],$road['parts']??[]),$road['name']);
         $parts=$road['parts']??[];$positive=0;$negative=0;
         foreach ($parts as $part) {
             $d=(int)$part['direction']*($part['reversed']?-1:1);
@@ -46,7 +47,7 @@ final class RoadExport
         foreach ([['Start',$p[0]],['End',$p[count($p)-1]]] as [$label,$point]) {
             $out.=sprintf('<wpt lat="%.9f" lon="%.9f"><name>%s</name></wpt>',$point[1],$point[0],$label);
         }
-        $out.='<trk><name>'.$name.'</name><desc>'.self::xml("Approximate road-shape notes. Mileage from start; (+mi) since previous note.\n".implode("\n",$road['instructions'])).'</desc><trkseg>';
+        $out.='<trk><name>'.$name.'</name><desc>'.self::xml(RoadNames::description($road)."\nApproximate road-shape notes. Mileage from start; (+mi) since previous note.\n".implode("\n",$road['instructions'])).'</desc><trkseg>';
         foreach ($p as $point) {$out.=sprintf('<trkpt lat="%.9f" lon="%.9f"/>',$point[1],$point[0]);}
         return $out.'</trkseg></trk></gpx>';
     }
@@ -57,7 +58,7 @@ final class RoadExport
         $out='<?xml version="1.0" encoding="UTF-8"?>'."\n".
             '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>'.$name.'</name>'.
             '<description>Road data © OpenStreetMap contributors. Verify access and conditions.</description>'.
-            '<Placemark><name>'.$name.'</name><description>'.self::xml("Approximate road-shape notes. Mileage from start; (+mi) since previous note.\n".implode("\n",$road['instructions'])).'</description>'.
+            '<Placemark><name>'.$name.'</name><description>'.self::xml(RoadNames::description($road)."\nApproximate road-shape notes. Mileage from start; (+mi) since previous note.\n".implode("\n",$road['instructions'])).'</description>'.
             '<Style><LineStyle><color>ffd500ff</color><width>8</width></LineStyle></Style>'.
             '<LineString><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode><coordinates>'.
             implode(' ',$coordinates).'</coordinates></LineString></Placemark>';

@@ -128,7 +128,18 @@ final class RoadPdf
             self::text('Miles are cumulative from the start. +mi is distance since the previous note.',40,137,10).
             self::text('Notes describe mapped road shape, not surveyed pace notes or junction turns.',40,110,9,'F3').
             self::text('Verify access, closures and conditions; obey posted signs.',40,94,9,'F3');
+        $aliases=RoadNames::description($road);$aliasLines=$aliases===''?[]:explode("\n",wordwrap($aliases,98,"\n",true));
+        if(count($aliasLines)<=2) {
+            foreach($aliasLines as $i=>$line)$cover.=self::text($line,40,72-$i*11,8);
+        } else {$cover.=self::text('Alternate road names listed on the following page.',40,72,9);}
         $pages=[$cover];
+        if(count($aliasLines)>2) {
+            foreach(array_chunk($aliasLines,38) as $chunk) {
+                $aliasPage=self::header($road['name'],'ALTERNATE NAMES');
+                foreach($chunk as $i=>$line)$aliasPage.=self::text($line,40,655-$i*15,10);
+                $pages[]=$aliasPage;
+            }
+        }
         $notes=$road['notes']??[];$rows=[['mile'=>0,'gap'=>null,'kind'=>'start','title'=>'START','detail'=>self::coord($points[0])]];
         foreach ($notes as $note) {
             $rows[]=['mile'=>$note['distance_m']/1609.344,'gap'=>$note['distance_since_previous_m']/1609.344,

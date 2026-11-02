@@ -31,7 +31,7 @@ async function testFrontend(sources) {
   const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
   let currentRole='superadmin',mustChange=false,redirectTarget=null;
   let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false,historyDeleted=false,favoritesSaved=false;
-  const favoriteRoad={id:1,name:'Test road',score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5,dimensions:{curvature:0.7},favorite_id:7,geometry:{type:'LineString',coordinates:[[-120,39],[-119.99,39.01]]}};
+  const favoriteRoad={id:1,name:'Test road',alternate_names:['Other Road Name'],score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5,dimensions:{curvature:0.7},favorite_id:7,geometry:{type:'LineString',coordinates:[[-120,39],[-119.99,39.01]]}};
   const savedFavorite={id:7,profile:'twisty',created_at:'2026-10-19T12:00:00Z',road:favoriteRoad,search_parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:1,paved_only:true}};
   let storage={available:true,database_bytes:100,other_bytes:500,free_bytes:400,total_bytes:1000,volumes:[{mount:'/'}],message:'Mounted local disks combined.'};
   const requests=[];
@@ -49,7 +49,7 @@ async function testFrontend(sources) {
     else if(path==='/api/favorites/7'&&options.method==='DELETE'){favoritesSaved=false;data={deleted:true};}
     else if(path==='/api/favorites/7')data=savedFavorite;
     else if(path==='/api/favorites')data=favoritesSaved?[savedFavorite]:[];
-    else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',score:70,dimensions:{curvature:0.7}};
+    else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',alternate_names:['Other Road Name'],score:70,dimensions:{curvature:0.7}};
     else if(path==='/api/coverage')data=[];
     else if(path==='/api/admin/users')data=[{id:2,name:'Test member',username:'member',email:null,role:'member',active:true,must_change_password:true}];
     else if(path==='/api/password-policy')data={minimum_length:12,strength:'standard',screen_compromised:true};
@@ -107,6 +107,7 @@ async function testFrontend(sources) {
   check(get('search-progress').value===1,'Progress advances with completed areas');
   check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).min_curve_density_score===4.5,'User-defined fractional density is submitted');
   get('results').children[0].onclick();await flush();
+  check(get('road-detail').children.some(n=>n.textContent==='Also known as: Other Road Name'),'Road details display alternate names');
   const exportLinks=get('road-detail').children.find(node=>node.className==='road-exports').children;
   check(exportLinks.length===3&&exportLinks[2].textContent==='Printable PDF','Selected road offers GPX, KMZ and PDF exports');
   check(exportLinks[2].target==='_blank'&&exportLinks[2].rel==='noopener'&&!('download' in exportLinks[2]),'PDF opens a new preview tab without a forced download');
@@ -246,6 +247,7 @@ async function testFrontend(sources) {
   check(!get('favorites-panel').hidden&&get('workspace').hidden,'Favorites has a dedicated page');
   const card=get('favorites-list').children[0];
   check(card.children[0].href==='/?favorite=7'&&card.children[0].children[0].src==='/api/favorites/7/thumbnail','Favorite card has geographic thumbnail and direct map link');
+  check(card.children[0].children.some(n=>n.textContent==='Also known as: Other Road Name'),'Favorite cards display alternate names');
   check(card.children[0].children[0].loading==='lazy'&&card.children[0].children[0].alt.includes('basemap'),'Geographic thumbnails load lazily with accessible descriptions');
   await card.children[1].onclick();await flush();
   check(get('favorites-list').children.length===0,'Favorites page can remove a road');
@@ -319,6 +321,21 @@ async function testFrontend(sources) {
   get('pick-zip').onclick();get('pick-zip').onclick();
   check(get('map-pick-note').hidden,'Map picking can be cancelled');
 
+
+  let compositeSaved=null,compositeRequested=null;
+  const compositeRoad={...favoriteRoad,id:11,favorite_id:null,name:'Combined Highway',member_ids:[11,12],alternate_names:['Alternate Highway']};
+  const compositeWindow={location:{pathname:'/',search:''},addEventListener(){},sweeplineRequest:async(path,options={})=>{
+    if(path.startsWith('/api/roads/11?')) {compositeRequested=path;return compositeRoad;}
+    if(path==='/api/favorites') {compositeSaved=JSON.parse(options.body);return {id:99};}
+    return [];
+  }};
+  const compositeUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {selectRoad,render,setRoads:value=>roads=value};')(compositeWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  compositeUI.setRoads([compositeRoad]);compositeUI.render();await compositeUI.selectRoad(11);
+  check(compositeRequested.includes('members=11%2C12'),'Composite details retain complete member geometry');
+  const compositeExports=get('road-detail').children.find(n=>n.className==='road-exports').children;
+  check(compositeExports.every(n=>n.href.includes('members=11%2C12')),'All composite exports carry the same selected member IDs');
+  await get('road-detail').children.find(n=>n.className==='favorite-heart').onclick();
+  check(compositeSaved.member_ids.join(',')==='11,12','Favoriting preserves complete consolidated road');
   logged=true;mustChange=true;
   const forcedWindow={...window,location:{pathname:'/',replace:p=>redirectTarget=p}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(forcedWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);

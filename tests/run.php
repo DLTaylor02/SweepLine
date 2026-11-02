@@ -313,5 +313,37 @@ check(!SweepLine\SessionSettings::valid($loginTime,$loginTime+6*86400,1),'Shorte
 check(SweepLine\SessionSettings::valid($loginTime,$loginTime+8*86400,14),'Longer setting extends existing live session');
 check(!SweepLine\SessionSettings::valid(0,$loginTime,7),'Missing login time rejected');
 check(!SweepLine\SessionSettings::valid($loginTime+1,$loginTime,7),'Future login time rejected');
+
+$overlapRoad=static function($id,$name,$points,$direction=0) {return ['id'=>$id,'name'=>$name,'ref'=>null,'alternate_names'=>[],'length_m'=>Geometry::length($points),'travel_direction'=>$direction,'geometry'=>['type'=>'LineString','coordinates'=>$points]];};
+$line=[];for($i=0;$i<=12;$i++)$line[]=$xy($i*200,0);
+$whole=$overlapRoad(101,'Main Highway',$line);
+$section=$overlapRoad(102,'Other Highway Name',array_slice($line,3,6));
+$groups=SweepLine\RoadOverlap::groups([$section,$whole]);
+check(count($groups)===1 && count($groups[0]['members'])===2,'Contained road section consolidates with full road');
+check(abs(Geometry::length($groups[0]['points'])-Geometry::length($line))<1,'Overlap never doubles length');
+$leftPart=$overlapRoad(103,'Western name',array_slice($line,0,9));
+$rightPart=$overlapRoad(104,'Eastern name',array_slice($line,5));
+$groups=SweepLine\RoadOverlap::groups([$leftPart,$rightPart]);
+check(count($groups)===1 && abs(Geometry::length($groups[0]['points'])-Geometry::length($line))<1,'Partially overlapping continuous roads form full union');
+$branch=$overlapRoad(105,'Branch',array_merge(array_slice($line,0,5),[$xy(800,400),$xy(800,800)]));
+check(count(SweepLine\RoadOverlap::groups([$whole,$branch]))===2,'Shared approach with a fork remains separate');
+$parallel=$overlapRoad(106,'Main Highway',array_map(static fn($p)=>[$p[0],$p[1]+0.0001],$line));
+check(count(SweepLine\RoadOverlap::groups([$whole,$parallel]))===2,'Parallel carriageways are not merged by name or proximity');
+$crossing=$overlapRoad(107,'Crossing',[$xy(1200,-1000),$xy(1200,0),$xy(1200,1000)]);
+check(count(SweepLine\RoadOverlap::groups([$whole,$crossing]))===2,'Crossing at one point does not merge roads');
+$oneway=$overlapRoad(108,'Forward',$line,1);$opposite=$overlapRoad(109,'Opposite',$line,-1);
+check(count(SweepLine\RoadOverlap::groups([$oneway,$opposite]))===2,'Conflicting legal travel directions remain separate');
+$reverse=$overlapRoad(110,'Reverse geometry',array_reverse($line),-1);
+check(count(SweepLine\RoadOverlap::groups([$oneway,$reverse]))===1,'Equivalent one-way orientations consolidate');
+$names=SweepLine\RoadNames::collect([['name'=>'Main Highway','ref'=>'SR 431','alternate_names'=>['Other Name'],'tags'=>['alt_name'=>'Other Name;Historic Name']]],'Main Highway');
+check($names===['SR 431','Other Name','Historic Name'],'Alternate names retain refs and OSM aliases without duplicates');
+check(SweepLine\Api::memberIds('104,103',103)===[103,104],'Composite member IDs normalize');
+check(rejects(fn()=>SweepLine\Api::memberIds('104,invalid',103)),'Invalid composite member IDs rejected');
+check(rejects(fn()=>SweepLine\Api::memberIds('104',103)),'Composite must contain requested road');
+$aliasedExport=$export;$aliasedExport['alternate_names']=['Other Name','SR 431'];
+check(str_contains(SweepLine\RoadExport::gpx($aliasedExport),'Other Name'),'GPX includes alternate names');
+check(str_contains(SweepLine\RoadExport::kml($aliasedExport),'Other Name'),'KML/KMZ includes alternate names');
+check(str_contains(SweepLine\RoadExport::pdf($aliasedExport),'Other Name'),'PDF includes alternate names');
+
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

@@ -43,22 +43,26 @@ final class RoadDiagnostics
             WHERE s.geom && a.bounds AND ST_DWithin(s.geom::geography,a.geom,a.meters)
             AND (s.name ILIKE ? OR s.ref ILIKE ?) ORDER BY s.osm_id,r.imported_at DESC LIMIT 101");
         $q->execute([...$base,$pattern,$pattern]);$ways=$q->fetchAll(PDO::FETCH_ASSOC);
-        $q=$this->db->prepare($prefix."SELECT c.id,c.name,c.ref,c.highway,c.length_m,c.mandatory_stops,c.uncertain_controls,c.surface_known_paved,c.surface_status,c.metrics,
+        $q=$this->db->prepare($prefix."SELECT c.id,c.name,c.ref,c.highway,c.length_m,c.mandatory_stops,c.uncertain_controls,c.surface_known_paved,c.surface_status,c.metrics,c.alternate_names,
             (SELECT jsonb_agg(DISTINCT s.surface) FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id WHERE m.candidate_id=c.id) AS surface_values
             FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id CROSS JOIN area a
             WHERE ST_DWithin(c.geom,a.geom,a.meters)
-            AND (c.name ILIKE ? OR c.ref ILIKE ? OR EXISTS(
+            AND (c.name ILIKE ? OR c.ref ILIKE ? OR c.alternate_names::text ILIKE ? OR EXISTS(
                 SELECT 1 FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id
                 WHERE m.candidate_id=c.id AND (s.name ILIKE ? OR s.ref ILIKE ?)))
             ORDER BY c.length_m DESC,c.id LIMIT 101");
-        $q->execute([...$base,$pattern,$pattern,$pattern,$pattern]);$roads=$q->fetchAll(PDO::FETCH_ASSOC);
-        $search=$api->search($p);$visible=array_column($search['results'],'id');
+        $q->execute([...$base,$pattern,$pattern,$pattern,$pattern,$pattern]);$roads=$q->fetchAll(PDO::FETCH_ASSOC);
+        $search=$api->search($p);$visible=[];$combined=[];
+        foreach($search['results'] as $result)foreach($result['member_ids']??[$result['id']] as $member){$visible[]=(int)$member;$combined[(int)$member]=$result['id'];}
         $truncated=count($ways)>100 || count($roads)>100;$ways=array_slice($ways,0,100);$roads=array_slice($roads,0,100);
         foreach ($roads as &$road) {
             $road['surface_values']=json_decode($road['surface_values']?:'[]',true,512,JSON_THROW_ON_ERROR);
+            $road['alternate_names']=json_decode($road['alternate_names'],true,512,JSON_THROW_ON_ERROR);
             $road['metrics']=json_decode($road['metrics'],true,512,JSON_THROW_ON_ERROR);
             $road['reasons']=self::reasons($road,$p);$road['returned']=in_array((int)$road['id'],$visible,true);
-            if (!$road['reasons'] && !$road['returned']) {$road['reasons'][]='Eligible, but may be hidden by identical-geometry deduplication or the 100-result limit.';}
+            $road['combined_into']=$combined[(int)$road['id']]??null;
+            if($road['returned'])$road['reasons'][]='Included in a consolidated result; metrics here describe the original source candidate.';
+            if (!$road['reasons'] && !$road['returned']) {$road['reasons'][]='Eligible, but may be hidden by overlap consolidation or bounded result processing.';}
         }
         return ['road'=>$name,'parameters'=>$p,'ways'=>$ways,'candidates'=>$roads,'truncated'=>$truncated,
             'full_radius_covered'=>$search['full_radius_covered'],

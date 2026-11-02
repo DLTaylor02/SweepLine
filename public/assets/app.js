@@ -1,4 +1,6 @@
 'use strict';
+const alternateLabel=road=>(road.alternate_names||[]).length?'Also known as: '+road.alternate_names.join('; '):'';
+const memberQuery=road=>(road.member_ids||[]).length>1?'&members='+encodeURIComponent(road.member_ids.join(',')):'';
 const normalizedDensity=m=>Math.max(1,Math.min(10,m.curve_density_score??(1+9*m.curve_density/53.6448))).toFixed(1);
 
 const $ = id => document.getElementById(id);
@@ -169,6 +171,7 @@ function render() {
     const top=text('div','', 'road-top');
     top.append(text('span',`${String(index+1).padStart(2,'0')}  ${road.name}`,'road-title'),text('span',road.score.toFixed(0),'score'));
     b.append(top,text('div',`${(road.length_m/1609.344).toFixed(1)} mi · ${normalizedDensity(road.metrics)}/10 curve density · ${road.mandatory_stops} mapped stops + ${road.uncertain_controls} uncertain`,'road-meta'),text('div',`${road.speed_mph === null ? 'Speed unknown' : road.speed_mph.toFixed(0)+' mph minimum posted'} · ${Math.round(road.confidence*100)}% attribute completeness`,'road-meta'),text('div',(activeProfile==='twisty'?'Twisty Roads':'Open Highways')+'  ↗','road-tag'));
+    if(alternateLabel(road))b.append(text('div',alternateLabel(road),'road-meta'));
     b.onclick=()=>selectRoad(road.id); $('results').append(b);
   });
 }
@@ -181,9 +184,10 @@ async function selectRoad(id) {
   const close=text('button','Close');close.onclick=()=>{detail.hidden=true;};
   detail.append(close,text('h2',road.name),text('p','Loading score breakdown…'));
   try {
-    const data=road._snapshot?road:await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}`);
+    const data=road._snapshot?road:await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}${memberQuery(road)}`);
     if(selected!==id) return;
     detail.replaceChildren(close,text('h2',`${data.name} · ${data.score}/100`));
+    if(alternateLabel(data))detail.append(text('p',alternateLabel(data),'road-aliases'));
     const heart=text('button',data.favorite_id?'♥ Favorited':'♡ Add to favorites');heart.type='button';heart.className='favorite-heart';
     heart.setAttribute('aria-pressed',String(!!data.favorite_id));
     const favoriteStatus=text('p','');favoriteStatus.setAttribute('role','status');
@@ -194,7 +198,7 @@ async function selectRoad(id) {
           await api('/api/favorites/'+data.favorite_id,{method:'DELETE'});data.favorite_id=null;
           favoriteStatus.textContent='Removed from favorites.';
         } else {
-          const saved=await api('/api/favorites',{method:'POST',body:JSON.stringify({road_id:data.id,profile:activeProfile,search:currentSearchParameters})});
+          const saved=await api('/api/favorites',{method:'POST',body:JSON.stringify({road_id:data.id,profile:activeProfile,search:currentSearchParameters,...((data.member_ids||[]).length>1?{member_ids:data.member_ids}:{})})});
           data.favorite_id=saved.id;favoriteStatus.textContent='Road saved to favorites.';
         }
         heart.textContent=data.favorite_id?'♥ Favorited':'♡ Add to favorites';heart.setAttribute('aria-pressed',String(!!data.favorite_id));
@@ -204,7 +208,7 @@ async function selectRoad(id) {
     detail.append(heart,favoriteStatus);
     const exports=text('div','','road-exports');
     for(const [format,label] of [['gpx','GPX'],['kmz','KMZ'],['pdf','Printable PDF']]) {
-      const link=text('a',label);link.href=road._snapshot?`/api/favorites/${data.favorite_id}/export?format=${format}`:`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}`;
+      const link=text('a',label);link.href=road._snapshot?`/api/favorites/${data.favorite_id}/export?format=${format}`:`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}${memberQuery(data)}`;
       if(format==='pdf') {
         link.target='_blank';link.rel='noopener';link.setAttribute('aria-label','Preview PDF in a new tab');
         link.onclick=markPdfPreview;
@@ -268,6 +272,7 @@ $('road-diagnostic').onsubmit=async event=>{
       const row=text('div','','diagnostic-road');
       row.append(text('strong',road.name+(road.ref?' ('+road.ref+')':'')),
         text('p',(road.length_m/1609.344).toFixed(2)+' mi · '+road.mandatory_stops+' stops + '+road.uncertain_controls+' uncertain · '+road.highway));
+      if(alternateLabel(road))row.append(text('p',alternateLabel(road)));
       const reasons=road.reasons.length?road.reasons:['Included in the current search results.'];
       reasons.forEach(reason=>row.append(text('p',reason)));$('diagnostic-results').append(row);
     });

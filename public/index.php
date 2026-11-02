@@ -113,12 +113,12 @@ try {
                 }
             } elseif (preg_match('#^/api/roads/([1-9]\\d{0,17})$#',$path,$m)) {
                 $profile=$_GET['profile']??'twisty'; if (!is_string($profile)) { throw new InvalidArgumentException('Unknown profile'); }
-                $result=$api->detail((int)$m[1],$profile);
+                $result=$api->detail((int)$m[1],$profile,SweepLine\Api::memberIds($_GET['members']??null,(int)$m[1]));
                 $result['favorite_id']=(new SweepLine\Favorites($db))->find((int)$user['id'],$result['geometry_key'],$profile);
             } elseif (preg_match('#^/api/roads/([1-9]\\d{0,17})/export$#',$path,$m)) {
                 $format=$_GET['format']??'';$profile=$_GET['profile']??'twisty';
                 if (!is_string($format) || !in_array($format,['gpx','kmz','pdf'],true) || !is_string($profile)) { throw new InvalidArgumentException('Invalid export format or profile'); }
-                SweepLine\RoadExport::download($api->exportRoad((int)$m[1],$profile,$format==='pdf'),$format);
+                SweepLine\RoadExport::download($api->exportRoad((int)$m[1],$profile,$format==='pdf',SweepLine\Api::memberIds($_GET['members']??null,(int)$m[1])),$format);
             } elseif ($path==='/api/admin/users') {
                 $result=$method==='GET'?$auth->users():$auth->create($input);
             } elseif (preg_match('#^/api/admin/users/([1-9]\\d{0,17})$#',$path,$m)) { $result=$auth->update((int)$m[1],$input); }

@@ -17,7 +17,7 @@ final class Favorites
         $search=Validation::search($input['search']);$profile=$input['profile']??$search['profile'];
         if (!is_string($profile) || $profile!==$search['profile']) {throw new \InvalidArgumentException('Profile must match the search');}
         // Only server-owned road data is saved; clients cannot inject geometry or scores.
-        $road=(new Api($this->db))->exportRoad((int)$id,$profile,true);$key=$road['geometry_key'];
+        $road=(new Api($this->db))->exportRoad((int)$id,$profile,true,Api::memberIds($input['member_ids']??null,(int)$id));$key=$road['geometry_key'];
         $this->db->beginTransaction();
         try {
             $this->db->prepare('SELECT id FROM app_users WHERE id=? FOR UPDATE')->execute([$user]);

@@ -99,7 +99,7 @@
   const text=(tag,value)=>{const node=document.createElement(tag);node.textContent=value;return node;};
   function thumbnail(road,id) {
     const image=document.createElement('img');
-    image.src='/api/favorites/'+id+'/thumbnail';image.alt=road.name+' on a geographic street basemap';
+    image.src='/api/favorites/'+id+'/thumbnail';image.alt=road.name+((road.alternate_names||[]).length?' (also known as '+road.alternate_names.join('; ')+')':'')+' on a geographic street basemap';
     image.loading='lazy';image.decoding='async';image.width=532;image.height=280;
     return image;
   }
@@ -116,6 +116,7 @@
         link.append(thumbnail(road,item.id),text('h3',road.name),text('p',`${road.score}/100 · ${(road.length_m/1609.344).toFixed(1)} mi · ${item.profile==='twisty'?'Twisty Roads':'Open Highways'}`),
           text('p',`${Math.max(1,Math.min(10,road.metrics.curve_density_score??(1+9*road.metrics.curve_density/53.6448))).toFixed(1)}/10 curve density · ${road.mandatory_stops} mapped stops + ${road.uncertain_controls} uncertain`),
           text('p',`${road.speed_mph==null?'Speed unknown':road.speed_mph.toFixed(0)+' mph minimum posted'} · ${Math.round(road.confidence*100)}% attribute completeness`));
+        if((road.alternate_names||[]).length)link.append(text('p','Also known as: '+road.alternate_names.join('; ')));
         const remove=text('button','Remove favorite');remove.type='button';
         remove.onclick=async()=>{remove.disabled=true;try{await window.sweeplineRequest('/api/favorites/'+item.id,{method:'DELETE'});await refreshFavorites();}catch(e){el('favorites-status').textContent=e.message;remove.disabled=false;}};
         card.append(link,remove);el('favorites-list').append(card);

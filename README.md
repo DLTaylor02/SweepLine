@@ -329,3 +329,18 @@ Run `sudo ./setup.sh` after upgrading: SweepLine's isolated PHP-FPM pool must re
 
 
 PDF exports open in a new tab using the browser PDF viewer, where users can preview, print, or save the road-named PDF. Browsers configured to always download PDFs may honor that local preference. PDFs are generated in memory per request and are not stored as server files, so no retention cleanup job is needed. GPX and KMZ exports remain direct downloads.
+
+### Overlap consolidation and alternate road names
+
+Discovery consolidates candidates sharing actual mapped edges, including contained sections and partially overlapping stretches from neighboring data tiles. The union must remain one connected, unbranched line with compatible legal travel direction. Crossing at an intersection, matching names, or proximity alone do not combine roads; parallel carriageways and forks remain separate. Coordinate identities are compared at seven decimal places, matching normal OSM precision. Revised or differently sampled geometry without shared edges is conservatively kept separate.
+
+The longest contributing candidate supplies the primary name; `alternate_names` preserves other candidate names, route references, and OSM `alt_name`, `official_name`, `loc_name`, `short_name`, `old_name`, and `name:en` values. Names never determine physical overlap. Results, road details, Favorites and their accessible thumbnails display aliases. GPX/KMZ descriptions and PDF roadbooks include them as well.
+
+Merged length and curvature come from the unique union geometry. Mapped stops and intersections are recalculated using unique OSM nodes and local connectivity rather than summing overlapping inventories. Surface and speed completeness remain conservative, elevation is unavailable until supported, and all requested filters are reapplied to the merged road before ranking. This can exclude a combined road when its complete length/stops exceed the selected limits.
+
+The API's `member_ids` field identifies contributing candidates. Detail/export links carry a bounded, validated `members` list; Favorites submit `member_ids` and save an authoritative server-generated combined snapshot. All IDs must still belong to active data, form one valid overlapping stretch, and include the selected road ID. Clients cannot supply geometry, aliases or scores. Favorites remain private to their owner. Contained combinations use the same normalized geometry identity as the full source road to preserve favorite matching.
+
+Search processing is bounded to 600 scored source candidates, 200,000 geometry points and 50 members per combination; responses indicate truncation where the candidate/result cap applies. A geometry resource-limit error asks for a smaller radius rather than silently substituting data. Normal ranked output remains capped at 100. Shared results cache merged analysis in PostgreSQL for seven days, retaining at most 500 combinations; keys include profile weights and current member data. Active-source validation occurs before cached details are used. Map context and other private user state are not cached there.
+
+Migration `013_road_aliases.sql` backfills names for existing imports and saved Favorite snapshots and creates the bounded combination cache. Run `sudo ./setup.sh`; existing coverage does not need downloading again. Saved snapshots retain their original geometry, while new searches/Favorites use consolidated geometry. Missing-road diagnostics still inspect raw source candidates to explain underlying OSM tagging and filtering.
+
