@@ -4,7 +4,8 @@ namespace SweepLine;
 use ZipArchive;
 final class BeamMap
 {
-    public const ROAD_CLEARANCE_M=0.25;
+    public const ROAD_ELEVATION_OFFSET_M=0.25;
+    public const ROAD_CLEARANCE_M=0.60;
     private static function json(mixed $value): string {return json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);}
     public static function spawn(array $road,array $profiles,bool $end,bool $oneway): array
     {
@@ -47,8 +48,8 @@ final class BeamMap
             $left=$i;while($left>0 && $chain[$i]-$chain[$left-1]<40)$left--;
             for($j=$left;$j<count($points) && $chain[$j]-$chain[$i]<40;$j++){$weight=exp(-0.5*(($chain[$j]-$chain[$i])/12)**2);$sum+=$rawHeights[$j]*$weight;$weights+=$weight;}
             $z=$sum/$weights;
-            if($i>0 && abs($z-($road[$i-1][2]+$origin-self::ROAD_CLEARANCE_M))/max(0.01,hypot($p[0]-$points[$i-1][0],$p[1]-$points[$i-1][1]))>0.35)throw new \RuntimeException('The sampled elevation creates an unsupported road grade. Higher-quality road elevation is required for this stretch.');
-            $road[]=[$p[0],$p[1],$z-$origin+self::ROAD_CLEARANCE_M];if($profiles[$i]['estimated_lanes'])$estimated++;
+            if($i>0 && abs($z-($road[$i-1][2]+$origin-self::ROAD_ELEVATION_OFFSET_M))/max(0.01,hypot($p[0]-$points[$i-1][0],$p[1]-$points[$i-1][1]))>0.35)throw new \RuntimeException('The sampled elevation creates an unsupported road grade. Higher-quality road elevation is required for this stretch.');
+            $road[]=[$p[0],$p[1],$z-$origin+self::ROAD_ELEVATION_OFFSET_M];if($profiles[$i]['estimated_lanes'])$estimated++;
         }
         $progress('Shaping the road corridor while preserving surrounding terrain');
         $nearest=str_repeat(pack('g',INF),$n*$n);$corridor=str_repeat("\0",$n*$n);

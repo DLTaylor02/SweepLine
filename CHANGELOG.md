@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restored the original BeamNG road elevation handling: 25 cm above smoothed sampled elevation and terrain recessed 60 cm below the road surface. Retained texture, spawn and arch fixes.
+
 - Rotated both BeamNG vehicle spawns 180 degrees, preserving lane positions, grade alignment and arch orientation. Increased road clearance from 15 cm to 25 cm to reduce remaining terrain clipping.
 
 - Fixed BeamNG terrain base texture scaling to use grid units rather than world meters, matching the installed 0.40 shader. Added asymmetric image-landmark sampling checks and increased road clearance to 15 cm.

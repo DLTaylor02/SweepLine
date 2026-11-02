@@ -377,3 +377,5 @@ Every new BeamNG generation downloads fresh elevation and imagery; completed exp
 BeamNG 0.40 samples terrain base textures in grid units. Export material BaseTexSize fields therefore use terrain resolution, while squareSize retains the real-world meter spacing. The aerial PNG remains north-up to match the shader''s Y flip. This avoids stretching a small portion of the imagery across a large map. Road clearance is 15 cm; regeneration is required for existing ZIPs.
 
 BeamNG road clearance is now 25 cm. Vehicle spawn frames include a 180-degree facing correction at both endpoints, preserving their lane positions and leaving arch orientation unchanged. Generate a fresh ZIP after upgrading.
+
+Road-height behavior has been restored to the initial BeamNG exporter: the MeshRoad surface is 0.25 m above smoothed sampled elevation, and corridor terrain is recessed 0.60 m below the road surface. This supersedes the later clearance adjustments. Texture alignment and spawn/arch orientation fixes remain in place. Regenerate exports to apply the restored offsets.

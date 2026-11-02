@@ -149,8 +149,8 @@ try{
         $ground=unpack('v',substr($binary,5+($y*$n+$x)*2,2))[1]/65536*$terrainObject['maxHeight'];
         $gap=$point[2]-$ground;$maxGap=max($maxGap,$gap);$minGap=min($minGap,$gap);
     }
-    check($minGap>=0 && $maxGap<0.26,'Serialized road surface meets terrain within 26 cm including height quantization');
-    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.25)<0.001,'Road uses ground elevation with only anti-flicker clearance');
+    check($minGap>=0 && $minGap>0.59 && $maxGap<0.61,'Original 60 cm terrain recess beneath road is restored');
+    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.25)<0.001,'Original road surface offset is 25 cm above sampled elevation');
     $mats=json_decode($flatZip->getFromName($flatBase.'art/terrains/main.materials.json'),true);
     $aerial=imagecreatefromstring($flatZip->getFromName($flatBase.'art/terrains/aerial.color.png'));
     $mat=array_values(array_filter($mats,fn($m)=>$m['class']==='TerrainMaterial'))[0];
