@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Made BeamNG rejection and background failure reasons prominent in the export row with accessible alerts. Error messages persist per account/road for the browser session and survive reopening the road; retry clears the previous failure.
+
 - Restored original 1024 elevation downloads and road-height sampling for future BeamNG exports, independently of 2048 aerial imagery/terrain output. Terrain is bilinearly upsampled from that source; reports expose both resolutions. Existing ZIPs are untouched.
 
 - Restored the original BeamNG road elevation handling: 25 cm above smoothed sampled elevation and terrain recessed 60 cm below the road surface. Retained texture, spawn and arch fixes.

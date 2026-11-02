@@ -41,3 +41,5 @@
 
 
 .road-exports a.beam-ready{background:#f59e0b;color:#172033}.road-exports a.beam-ready:hover{background:#fbbf24}.road-exports a[aria-disabled=true]{opacity:.65;cursor:progress}.beam-status{font-size:12px;line-height:1.5;margin:8px 0}.beam-status button{float:none!important;font-size:12px;margin-left:8px}.beam-status .spinner{margin-right:8px}
+
+.road-exports .beam-status{flex-basis:100%;min-width:0;overflow-wrap:anywhere;margin:0;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}.road-exports .beam-status.beam-error{border-color:#d97706;border-left-width:4px;background:var(--soft);font-weight:600}.beam-status [role=alert]{white-space:pre-line}

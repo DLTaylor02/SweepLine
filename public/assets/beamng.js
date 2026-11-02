@@ -10,9 +10,10 @@
     const status=node('span');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
     const spinner=node('span');spinner.className='spinner';spinner.hidden=true;spinner.setAttribute('aria-hidden','true');
     const cancel=node('button','Cancel export');cancel.type='button';cancel.hidden=true;
-    section.append(spinner,status,cancel);container.append(action);container.insertAdjacentElement('afterend',section);
+    section.append(spinner,status,cancel);container.append(action,section);
     const user=window.SweepLineAccount?.user?.id;
     const storageKey='sweepline:beamng:'+user+':'+(road.geometry_key||road.id);
+    const noticeKey=storageKey+':notice';
     let jobId=null,busy=false,ready=false,expires=0;
     const paint=job=>{
       if(!['queued','running'].includes(job.status)){try{window.sessionStorage?.removeItem(storageKey);}catch(_){}}
@@ -23,14 +24,20 @@
       action.classList.toggle('beam-ready',ready);action.setAttribute('aria-disabled',String(busy));
       action.href=ready?job.download_url:'#';
       if(ready)action.setAttribute('download','');else action.removeAttribute('download');
-      section.hidden=false;cancel.hidden=!busy;spinner.hidden=!busy;status.textContent=job.error||job.progress||'';
+      const failed=job.status==='failed';
+      section.hidden=false;section.classList.toggle('beam-error',failed);
+      cancel.hidden=!busy;spinner.hidden=!busy;
+      status.setAttribute('role',failed?'alert':'status');status.setAttribute('aria-live',failed?'assertive':'polite');
+      status.textContent=failed?'BeamNG export could not be generated. '+(job.error||job.progress||'No reason was returned. Please retry; if it persists, ask a SuperAdmin to check Manage.'):(job.progress||'');
+      if(failed){try{window.sessionStorage?.setItem(noticeKey,job.error||job.progress||'No reason was returned. Please retry.');}catch(_){}section.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
+      else if(busy||ready){try{window.sessionStorage?.removeItem(noticeKey);}catch(_){}}
       if(ready&&expires)timer=setTimeout(poll,Math.max(1000,expires-Date.now()+100));
       return busy;
     };
-    const fail=e=>{busy=false;ready=false;paint({status:'failed',error:e.message});};
+    const fail=e=>{busy=false;ready=false;paint({status:'failed',error:e?.message||'The export request failed. Check your connection and try again.'});};
     const poll=async(resuming=false)=>{
       if(current!==view||!jobId)return;
-      try{const job=await window.sweeplineRequest('/api/beamng/'+jobId);if(current!==view)return;if(resuming&&!['queued','running'].includes(job.status)){try{window.sessionStorage?.removeItem(storageKey);}catch(_){}return;}if(paint(job))timer=setTimeout(poll,3000);}
+      try{const job=await window.sweeplineRequest('/api/beamng/'+jobId);if(current!==view)return;if(resuming&&!['queued','running','failed'].includes(job.status)){try{window.sessionStorage?.removeItem(storageKey);}catch(_){}return;}if(paint(job))timer=setTimeout(poll,3000);}
       catch(e){if(current===view)fail(e);}
     };
     action.onclick=async event=>{
@@ -51,6 +58,7 @@
       try{await window.sweeplineRequest('/api/beamng/'+jobId+'/cancel',{method:'POST',body:'{}'});await poll();}
       catch(e){if(current===view)status.textContent=e.message;}finally{cancel.disabled=false;}
     };
+    try{const notice=window.sessionStorage?.getItem(noticeKey);if(notice)paint({status:'failed',error:notice});}catch(_){}
     try{const saved=JSON.parse(window.sessionStorage?.getItem(storageKey)||'null');if(saved&&/^[a-f0-9]{32}$/.test(saved.id)){jobId=saved.id;poll(true);}}catch(_){}
   };
 })();
