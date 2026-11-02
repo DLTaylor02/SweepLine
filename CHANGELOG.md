@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed BeamNG export queue creation selecting the text-projection PostGIS overload by explicitly typing the target EPSG as an integer. Added a native-PDO/PostGIS integration regression check.
+
 - Added experimental background BeamNG.drive 0.40 map exports: real-scale square terrain, USGS elevation/NAIP imagery, mapped or estimated lanes, generated scenery, two endpoint spawns, private expiring ZIP downloads and Manage cancellation. Added GDAL installation, queue migration, temporary-file cleanup and offline package tests. In-game and live raster pipeline verification remain pending.
 
 - Consolidated physically overlapping, unbranched candidate stretches with legal direction checks, unique-edge geometry, recalculated metrics/filtering and a bounded local analysis cache.

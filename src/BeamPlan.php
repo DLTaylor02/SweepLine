@@ -39,7 +39,7 @@ final class BeamPlan
             }
         }
         $geometries=[$road['geometry']];foreach($parts as $part)$geometries[]=$part['geometry'];
-        $q=$db->prepare('SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?),4326),?),9)');
+        $q=$db->prepare('SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?),4326),CAST(? AS integer)),9)');
         $q->execute([json_encode(['type'=>'GeometryCollection','geometries'=>$geometries],JSON_THROW_ON_ERROR),$epsg]);
         $projected=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['geometries'];
         $points=$projected[0]['coordinates'];$bounds=self::square($points,$options['padding_miles']*1609.344);

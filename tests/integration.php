@@ -19,6 +19,11 @@ check($data['results'][0]['mandatory_stops']===1,'Merged road counts all-way sto
 check($api->detail($data['results'][0]['id'],'twisty')['name']==='Synthetic Main','Road detail endpoint service');
 
 $sourceId=$data['results'][0]['id'];
+// Exercise native PDO parameter typing against the real PostGIS overloads.
+$beamPlan=SweepLine\BeamPlan::project($db,$api->exportRoad($data['results'][0]['id'],'open'),SweepLine\BeamPlan::options([]));
+check($beamPlan['epsg']===32611 && $beamPlan['points'][0][0]>100000 && $beamPlan['points'][0][0]<900000,'BeamNG native prepared projection uses numeric UTM SRID');
+check(abs(($beamPlan['bounds'][2]-$beamPlan['bounds'][0])-($beamPlan['bounds'][3]-$beamPlan['bounds'][1]))<0.001,'Database-projected BeamNG footprint remains square');
+
 $clone=$db->prepare("INSERT INTO road_candidates(job_id,name,ref,highway,surface_known_paved,length_m,mandatory_stops,uncertain_controls,speed_mph,metrics,geom,geometry_key,surface_status,alternate_names)
     SELECT job_id,'Synthetic Alternate Road',ref,highway,surface_known_paved,length_m,mandatory_stops,uncertain_controls,speed_mph,metrics,geom,geometry_key,surface_status,'[]'::jsonb FROM road_candidates WHERE id=? RETURNING id");
 $clone->execute([$sourceId]);$cloneId=(int)$clone->fetchColumn();
