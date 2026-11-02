@@ -31,13 +31,6 @@ final class BeamPlan
         foreach($parts as $part){$key=hash('sha256',json_encode([$part['geometry'],$part['tags']??[],(int)($part['direction']??0)],JSON_THROW_ON_ERROR));$unique[$key]=$part;}
         $parts=array_values($unique);
         if(count($parts)>500)throw new \InvalidArgumentException('This road has too many source parts for BeamNG export.');
-        foreach($parts as $part) {
-            $tags=$part['tags']??[];
-            if((isset($tags['bridge']) && !in_array($tags['bridge'],['no','false','0'],true)) ||
-               (isset($tags['tunnel']) && !in_array($tags['tunnel'],['no','false','0'],true))) {
-                throw new \InvalidArgumentException('This stretch contains a mapped bridge or tunnel. Accurate structure elevations are not yet supported by BeamNG export.');
-            }
-        }
         $geometries=[$road['geometry']];foreach($parts as $part)$geometries[]=$part['geometry'];
         $q=$db->prepare('SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?),4326),CAST(? AS integer)),9)');
         $q->execute([json_encode(['type'=>'GeometryCollection','geometries'=>$geometries],JSON_THROW_ON_ERROR),$epsg]);
@@ -45,8 +38,9 @@ final class BeamPlan
         $points=$projected[0]['coordinates'];$bounds=self::square($points,$options['padding_miles']*1609.344);
         $sources=[];
         foreach($parts as $i=>$part)$sources[]=['points'=>$projected[$i+1]['coordinates'],'tags'=>$part['tags']??[],'highway'=>$part['highway']??$road['highway']??'secondary','direction'=>(int)($part['direction']??0)];
+        $bridges=BeamStructures::spans($points,$sources);
         $oneway=false;foreach($road['parts']??[] as $part)if((int)$part['direction']!==0)$oneway=true;
-        return $options+['name'=>$road['name'],'alternate_names'=>$road['alternate_names']??[],'epsg'=>$epsg,'bounds'=>$bounds,'points'=>$points,'sources'=>$sources,'oneway'=>$oneway,'center'=>[$lon,$lat]];
+        return $options+['name'=>$road['name'],'alternate_names'=>$road['alternate_names']??[],'epsg'=>$epsg,'bounds'=>$bounds,'points'=>$points,'sources'=>$sources,'bridges'=>$bridges,'oneway'=>$oneway,'center'=>[$lon,$lat]];
     }
     /** Keep original vertices while adding short supports, avoiding cuts across sharp corners. */
     public static function sample(array $points,float $spacing=8): array

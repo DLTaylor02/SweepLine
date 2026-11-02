@@ -29,6 +29,7 @@
       cancel.hidden=!busy;spinner.hidden=!busy;
       status.setAttribute('role',failed?'alert':'status');status.setAttribute('aria-live',failed?'assertive':'polite');
       status.textContent=failed?'BeamNG export could not be generated. '+(job.error||job.progress||'No reason was returned. Please retry; if it persists, ask a SuperAdmin to check Manage.'):(job.progress||'');
+      if(!failed&&job.warning)status.textContent+=' '+job.warning;
       if(failed){try{window.sessionStorage?.setItem(noticeKey,job.error||job.progress||'No reason was returned. Please retry.');}catch(_){}section.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
       else if(busy||ready){try{window.sessionStorage?.removeItem(noticeKey);}catch(_){}}
       if(ready&&expires)timer=setTimeout(poll,Math.max(1000,expires-Date.now()+100));

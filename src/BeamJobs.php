@@ -43,7 +43,7 @@ final class BeamJobs
         }
         $plan=BeamPlan::project($this->db,$road,$options);$payload=json_encode($plan,JSON_THROW_ON_ERROR);
         if(strlen($payload)>2097152)throw new \InvalidArgumentException('This road contains too much geometry for BeamNG export. Choose a shorter stretch.');
-        $fingerprint=hash('sha256','beamng-v0.40-10'.$payload);
+        $fingerprint=hash('sha256','beamng-v0.40-11'.$payload);
         $this->db->beginTransaction();
         try {
             $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
@@ -62,10 +62,11 @@ final class BeamJobs
     public function status(int $user,string $id): array
     {
         self::validId($id);
-        $q=$this->db->prepare('SELECT id,name,status,progress,error,expires_at,file_bytes,cancel_requested,report FROM beamng_exports WHERE id=? AND user_id=?');
+        $q=$this->db->prepare("SELECT id,name,status,progress,error,expires_at,file_bytes,cancel_requested,report,jsonb_array_length(COALESCE(payload->'bridges','[]'::jsonb)) AS bridge_count FROM beamng_exports WHERE id=? AND user_id=?");
         $q->execute([$id,$user]);$row=$q->fetch(PDO::FETCH_ASSOC)?:throw new \OutOfBoundsException('Export not found.');
         if($row['status']==='complete' && strtotime($row['expires_at'])<=time()){$row['status']='expired';$row['progress']='Download expired. Generate a new export.';}
         $row['report']=$row['report']?json_decode($row['report'],true,512,JSON_THROW_ON_ERROR):null;
+        if((int)$row['bridge_count']>0 || !empty($row['report']['bridges']))$row['warning']='Bridge decks and generic structures will be estimated from approach elevations.';
         if($row['status']==='complete')$row['download_url']='/api/beamng/'.$id.'/download';
         return $row;
     }

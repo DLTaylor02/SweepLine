@@ -43,6 +43,8 @@ final class BeamMap
         $origin=$min-32;$maxHeight=max(64,ceil(($max-$origin+32)/64)*64);
         $road=[];$estimated=0;$chain=[0.0];
         for($i=1;$i<count($points);$i++)$chain[]=$chain[$i-1]+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);
+        $bridges=BeamStructures::spans($world,$plan['sources']);
+        $rawHeights=BeamStructures::deckSamples($points,$chain,$rawHeights,$bridges,$raster);
         foreach($points as $i=>$p) {
             $sum=0.0;$weights=0.0;
             $left=$i;while($left>0 && $chain[$i]-$chain[$left-1]<40)$left--;
@@ -53,13 +55,22 @@ final class BeamMap
         }
         $progress('Shaping the road corridor while preserving surrounding terrain');
         $nearest=str_repeat(pack('g',INF),$n*$n);$corridor=str_repeat("\0",$n*$n);
+        $bridgeMask=str_repeat("\0",$n*$n);
+        foreach($bridges as $bridge){[$first,$last]=BeamStructures::indices($chain,$bridge);
+            for($i=$first;$i<=$last;$i++){
+                if($i%100===0)$progress(null);
+                if($profiles[$i]['width_m']>20)throw new \RuntimeException('Bridge width exceeds the 20-meter simple-bridge export limit.');
+                $p=$road[$i];$radius=$profiles[$i]['width_m']/2+2*$step;$cells=(int)ceil($radius/$step);$cx=(int)round($p[0]/$step);$cy=(int)round($p[1]/$step);
+                for($y=max(0,$cy-$cells);$y<=min($n-1,$cy+$cells);$y++)for($x=max(0,$cx-$cells);$x<=min($n-1,$cx+$cells);$x++)if(hypot($x*$step-$p[0],$y*$step-$p[1])<=$radius)$bridgeMask[$y*$n+$x]="\1";
+            }
+        }
         foreach($road as $i=>$p) {
             if($i%100===0)$progress(null);$width=$profiles[$i]['width_m'];$carveRadius=$width/2+max(3,2*$step);$radius=max($carveRadius,$width/2+20+2*$step);$cells=(int)ceil($radius/$step);
             $cx=(int)round($p[0]/$step);$cy=(int)round($p[1]/$step);
             for($y=max(0,$cy-$cells);$y<=min($n-1,$cy+$cells);$y++)for($x=max(0,$cx-$cells);$x<=min($n-1,$cx+$cells);$x++) {
                 $distance=hypot($x*$step-$p[0],$y*$step-$p[1]);if($distance>$radius)continue;
                 if($distance<$width/2+20+2*$step)$corridor[$y*$n+$x]="\1";
-                if($distance>$carveRadius)continue;
+                if($distance>$carveRadius || $bridgeMask[$y*$n+$x]!=="\0")continue;
                 $offset=($y*$n+$x)*4;$best=unpack('g',substr($nearest,$offset,4))[1];if($distance>=$best)continue;
                 $bytes=pack('g',$distance);for($j=0;$j<4;$j++)$nearest[$offset+$j]=$bytes[$j];
                 $fade=max(0,min(1,($distance-$width/2-$step)/max(1,$step)));
@@ -97,6 +108,23 @@ final class BeamMap
                 ['class'=>'ScatterSky','name'=>'theSky','__parent'=>'MissionGroup','sunSize'=>1,'skyBrightness'=>40,'exposure'=>1,'elevation'=>50,'azimuth'=>180,'ambientScale'=>[1,1,1,1],'sunScale'=>[1,1,1,1],'ambientScaleGradientFile'=>'art/sky_gradients/default/gradient_ambient.png','sunScaleGradientFile'=>'art/sky_gradients/default/gradient_sunscale.png','colorizeGradientFile'=>'art/sky_gradients/default/gradient_colorize.png'],
                 ['class'=>'TimeOfDay','name'=>'timeOfDay','__parent'=>'MissionGroup','time'=>0.35,'play'=>false],
                 ['class'=>'TerrainBlock','name'=>'theTerrain','__parent'=>'MissionGroup','position'=>[0,0,0],'terrainFile'=>$path.'theTerrain.ter','squareSize'=>$step,'maxHeight'=>$maxHeight,'baseTexSize'=>1024,'castShadows'=>true,'materialTextureSet'=>$prefix.'_terrain_set']];
+            $bridgeMaterial=$prefix.'_bridge';
+            if($bridges){
+                $put('art/shapes/bridge-pier.dae',BeamAssets::shape($bridgeMaterial,'bridge-pier'));
+                $put('art/shapes/bridge.materials.json',self::json([$bridgeMaterial=>['class'=>'Material','name'=>$bridgeMaterial,'mapTo'=>$bridgeMaterial,'version'=>1,'Stages'=>[['diffuseColor'=>[0.48,0.49,0.5,1]]]]]));
+                foreach($bridges as $bi=>$bridge){[$first,$last]=BeamStructures::indices($chain,$bridge);if($last<=$first)throw new \RuntimeException('Bridge span is too short for reliable deck geometry.');
+                    foreach([-1,1] as $sideSign){$rail=[];
+                        for($i=$first;$i<=$last;$i++){
+                if($i%100===0)$progress(null);$p=$road[$i];$a=$road[max(0,$i-1)];$b=$road[min(count($road)-1,$i+1)];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$len=hypot($dx,$dy)?:1;$offset=$sideSign*($profiles[$i]['width_m']/2+0.25);
+                            $rail[]=[$p[0]+$dy/$len*$offset,$p[1]-$dx/$len*$offset,$p[2]+1.1,0.3,0.8,0,0,1];}
+                        $objects[]=['class'=>'MeshRoad','name'=>'bridge_'.$bi.'_rail_'.($sideSign>0?'right':'left'),'__parent'=>'MissionGroup','topMaterial'=>$bridgeMaterial,'bottomMaterial'=>$bridgeMaterial,'sideMaterial'=>$bridgeMaterial,'breakAngle'=>1,'nodes'=>$rail];
+                    }
+                    $lastPier=-INF;
+                    for($i=$first;$i<=$last;$i++)if($chain[$i]-$lastPier>=25){$lastPier=$chain[$i];$p=$road[$i];$ground=$raster->height($p[0],$p[1])-$origin;$height=$p[2]-0.5-$ground;
+                        if($height>0.4)$objects[]=['class'=>'TSStatic','name'=>'bridge_'.$bi.'_pier_'.$i,'__parent'=>'MissionGroup','shapeName'=>$path.'art/shapes/bridge-pier.dae','position'=>[$p[0],$p[1],$ground-0.2],'scale'=>[1.5,1.5,$height+0.2],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
+                    }
+                }
+            }
             $roadMaterials=[];$chunks=[];$last=null;
             foreach($road as $i=>$p) {
                 $profile=$profiles[$i];$key=$profile['lanes'].'_'.$profile['backward'].'_'.(int)$profile['oneway'];
@@ -161,9 +189,9 @@ final class BeamMap
             $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
-            $report=['target'=>'BeamNG.drive v0.40','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,
+            $report=['target'=>'BeamNG.drive v0.40','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
-                'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Mapped bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation graph covers only the selected road; traffic behavior requires in-game validation.','Requires in-game v0.40 validation.']];
+                'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Short simple bridges use estimated approach-derived decks. Complex bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation graph covers only the selected road; traffic behavior requires in-game validation.','Requires in-game v0.40 validation.']];
             $put('sweepline-report.json',self::json($report));
             $zip->addFromString('INSTALL.txt',"SweepLine BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." — SweepLine, then Start or End.\nStart is the default spawn. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nNo BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
             $progress('Finalizing the map ZIP');

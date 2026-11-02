@@ -11,7 +11,9 @@ final class BeamAssets
             foreach([[$x,$y,$z],[$x+$w,$y,$z],[$x+$w,$y+$d,$z],[$x,$y+$d,$z],[$x,$y,$z+$h],[$x+$w,$y,$z+$h],[$x+$w,$y+$d,$z+$h],[$x,$y+$d,$z+$h]] as $v)$vertices[]=$v;
             foreach([[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]] as $t)$triangles[]=array_map(static fn($i)=>$i+$base,$t);
         };
-        if($kind==='arch') {
+        if($kind==='bridge-pier') {
+            $box(-0.5,-0.5,0,1,1,1);
+        } elseif($kind==='arch') {
             $box(-$span/2-0.6,-0.35,-2,0.6,0.7,9);
             $box($span/2,-0.35,-2,0.6,0.7,9);
             $box(-$span/2-0.6,-0.35,6, $span+1.2,0.7,1);

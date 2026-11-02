@@ -179,3 +179,33 @@ check(abs($high->cell(3,4)-$low->height(30,40))<0.00001,'Output terrain samples 
 $before=$high->roadHeight(40,40);$high->put(4,4,150);
 check($high->roadHeight(40,40)===$before && $high->height(40,40)===150.0,'Corridor shaping cannot modify original road elevation samples');
 try{BeamRaster::fromElevation(8,80,str_repeat(pack('g',-9999),16),str_repeat(chr(70),192),4,fn($m)=>null);check(false,'Invalid source elevation rejected during upsampling');}catch(RuntimeException $e){check(str_contains($e->getMessage(),'No synthetic'),'Invalid source elevation rejected during upsampling');}
+
+// Structure tags apply only to collinear overlap with the selected stretch.
+$structRoad=[[0,0],[100,0],[200,0],[300,0],[500,0]];
+$structSource=fn($points,$tags)=>['points'=>$points,'tags'=>$tags,'highway'=>'secondary','direction'=>0];
+check(SweepLine\BeamStructures::spans($structRoad,[$structSource([[700,0],[800,0]],['tunnel'=>'yes'])])===[],'Tunnel elsewhere on source data does not reject selected road');
+check(SweepLine\BeamStructures::spans($structRoad,[$structSource([[150,-50],[150,50]],['tunnel'=>'yes'])])===[],'Crossing tunnel does not imply the selected road enters a tunnel');
+check(SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,3],[200,3]],['bridge'=>'yes'])])===[],'Parallel nearby bridge is not attributed to selected carriageway');
+check(rejects(fn()=>SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[200,0]],['tunnel'=>'yes'])])),'Actual selected tunnel is rejected');
+check(rejects(fn()=>SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[200,0]],['bridge'=>'viaduct'])])),'Complex bridge rejected explicitly');
+check(rejects(fn()=>SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[350,0]],['bridge'=>'yes'])])),'Bridge over 200 meters is rejected');
+check(rejects(fn()=>SweepLine\BeamStructures::spans($structRoad,[$structSource([[0,0],[100,0]],['bridge'=>'yes'])])),'Bridge without start approach is rejected');
+$spans=SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[150,0]],['bridge'=>'yes']),$structSource([[150,0],[200,0]],['bridge'=>'yes'])]);
+check(count($spans)===1 && abs($spans[0]['length_m']-100)<0.001,'Contiguous mapped bridge pieces form one span');
+$bridgePlan=$plan;$bridgePlan['bounds']=[0,0,$side,$side];$bridgePlan['points']=[[100,600],[350,600],[450,600],[900,600]];
+$bridgePlan['sources']=[$structSource($bridgePlan['points'],['lanes'=>'2']),$structSource([[350,600],[450,600]],['bridge'=>'yes','lanes'=>'2'])];
+$bridgeHeights="";for($row=0;$row<$n;$row++)for($x=0;$x<$n;$x++)$bridgeHeights.=pack('g',($x*$side/$n>350 && $x*$side/$n<450)?80:100);
+$bridgeRaster=new BeamRaster($n,$side,$bridgeHeights,$colors);$bridgeFile=tempnam(sys_get_temp_dir(),'sl-bridge-');
+try{
+    $bridgeReport=BeamMap::build($bridgePlan,$bridgeRaster,str_repeat('c',32),$bridgeFile,fn($m)=>null);
+    $bridgeZip=new ZipArchive();$bridgeZip->open($bridgeFile);$bridgeBase='levels/sweepline_cccccccccccccccc/';
+    $bridgeObjects=array_map(fn($line)=>json_decode($line,true),explode("\n",trim($bridgeZip->getFromName($bridgeBase.'main/MissionGroup/items.level.json'))));
+    $deck=array_values(array_filter($bridgeObjects,fn($o)=>$o['class']==='MeshRoad' && str_starts_with($o['name'],'road_')))[0];
+    $bridgeNode=array_values(array_filter($deck['nodes'],fn($p)=>$p[0]>390&&$p[0]<410))[0];
+    check(abs($bridgeNode[2]+$bridgeReport['elevation_origin_m']-100.25)<0.05,'Bridge deck follows approaches rather than valley floor');
+    check(abs($bridgeRaster->height(400,600)-80)<0.01,'Under-bridge terrain remains unfilled');
+    check(count(array_filter($bridgeObjects,fn($o)=>str_starts_with($o['name']??'','bridge_0_rail_')))===2,'Bridge has two generic collision guardrails');
+    check(count(array_filter($bridgeObjects,fn($o)=>str_starts_with($o['name']??'','bridge_0_pier_')))>0,'Elevated bridge includes generated supports');
+    check(!empty($bridgeReport['bridge_warning'])&&count($bridgeReport['bridges'])===1,'Export report discloses estimated bridge geometry');
+    $bridgeZip->close();
+}finally{unlink($bridgeFile);}
