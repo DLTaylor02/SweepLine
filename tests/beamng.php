@@ -54,6 +54,17 @@ try {
     $arches=array_values(array_filter($objects,fn($o)=>in_array($o['name']??'',['start_arch','finish_arch'],true)));
     check(count($arches)===2,'Start and Finish each have one physical arch');
     foreach($arches as $arch){
+        // Transform the local beam X axis using the serialized axis columns.
+        $m=$arch['rotationMatrix'];$nearest=INF;$tangent=null;
+        foreach($roads as $mesh)for($i=1;$i<count($mesh['nodes']);$i++){
+            $a=$mesh['nodes'][$i-1];$b=$mesh['nodes'][$i];$d=hypot($b[0]-$arch['position'][0],$b[1]-$arch['position'][1]);
+            if($d<$nearest){$nearest=$d;$tangent=[$b[0]-$a[0],$b[1]-$a[1]];}
+        }
+        $length=hypot(...$tangent)?:1;
+        check(abs(($m[0]*$tangent[0]+$m[1]*$tangent[1])/$length)<0.15,'Arch beam world axis crosses road rather than running along it');
+    }
+
+    foreach($arches as $arch){
         $dae=simplexml_load_string($archive->getFromName(ltrim($arch['shapeName'],'/')),SimpleXMLElement::class,LIBXML_NONET);
         check($dae!==false && $arch['collisionType']==='Visible Mesh Final','Arch mesh is bundled and collidable');
         $arrays=$dae->xpath('//*[local-name()="float_array" and @id="positions-array"]');$vertices=preg_split('/\s+/',trim((string)$arrays[0]));$lowestCenter=INF;
@@ -109,14 +120,14 @@ try{$source->downloadRaster('https://example.invalid','unused','USGS elevation',
 $attempts=0;
 try{$source->downloadRaster('https://example.invalid','unused','USGS elevation',function($m){if($m===null)throw new SweepLine\JobCancelled('Cancelled');},fn()=>null);check(false,'Retry wait cancellation propagated');}catch(SweepLine\JobCancelled $e){check($attempts===1,'Cancellation interrupts provider backoff immediately');}
 
-foreach([[1,0],[0,1],[-1,0],[0,-1]] as [$dx,$dy]){
+foreach([[1,0],[0,1],[-1,0],[0,-1],[sqrt(0.5),sqrt(0.5)],[-sqrt(0.5),sqrt(0.5)]] as [$dx,$dy]){
     $track=[];for($i=0;$i<20;$i++)$track[]=[$i*8*$dx,$i*8*$dy,$i*0.8];
     $laneProfiles=array_fill(0,20,BeamLanes::infer(['lanes'=>'2','width'=>'8'],'secondary',0));
     foreach([false,true] as $end){$spawn=BeamMap::spawn($track,$laneProfiles,$end,false);$m=$spawn['rotationMatrix'];$sign=$end?-1:1;
-        check($m[1]*$dx*$sign+$m[4]*$dy*$sign>0.99,'Spawn frame faces travel along cardinal road and follows grade');
+        check($m[3]*$dx*$sign+$m[4]*$dy*$sign>0.99,'Spawn frame faces travel along cardinal road and follows grade');
         $position=$spawn['position'];$rightDistance=($position[0]*$dy-$position[1]*$dx)*$sign;
         check(abs($rightDistance-2)<0.001,'Both endpoints spawn in center of right-hand travel lane');
-        check(abs($m[7]-$sign*0.1/sqrt(1.01))<0.001,'Spawn pitch follows road elevation');
+        check(abs($m[5]-$sign*0.1/sqrt(1.01))<0.001,'Spawn pitch follows road elevation');
     }
 }
 
@@ -136,7 +147,7 @@ try{
         $ground=unpack('v',substr($binary,5+($y*$n+$x)*2,2))[1]/65536*$terrainObject['maxHeight'];
         $gap=$point[2]-$ground;$maxGap=max($maxGap,$gap);$minGap=min($minGap,$gap);
     }
-    check($minGap>=0 && $maxGap<0.02,'Serialized road surface meets terrain within 2 cm including height quantization');
-    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.01)<0.001,'Road uses ground elevation with only anti-flicker clearance');
+    check($minGap>=0 && $maxGap<0.04,'Serialized road surface meets terrain within 4 cm including height quantization');
+    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.03)<0.001,'Road uses ground elevation with only anti-flicker clearance');
     $flatZip->close();
 }finally{unlink($flatFile);}

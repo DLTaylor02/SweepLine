@@ -367,3 +367,5 @@ BeamNG provider timeouts and temporary HTTP errors are retried up to three attem
 BeamNG map cards include the SweepLine label and road name. Start/End spawn cards have separate labeled aerial-map previews. Previews are map views, not in-game screenshots. Imagery explicitly uses the USGS NaturalColor rendering template; neutral daylight settings avoid relying on unspecified sky lighting. Spawn points move inward from road endpoints and use lane-centered right-hand placement with road-grade alignment. Regenerate old exports to obtain these updates.
 
 BeamNG exports include generic START and FINISH arches centered across the road at the spawn locations. Supports stand two meters outside each road edge, the beam has six meters of clearance, and labels appear on both sides. Arches and lettering are generated assets; regenerate an export to include them.
+
+Road surfaces now use 3 cm clearance above the shaped corridor to reduce terrain clipping. Spawn and arch transforms serialize contiguous basis-axis columns; arches remain upright across the road while spawn frames follow grade. Regenerate older maps to apply these changes.
