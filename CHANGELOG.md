@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed BeamNG terrain base texture scaling to use grid units rather than world meters, matching the installed 0.40 shader. Added asymmetric image-landmark sampling checks and increased road clearance to 15 cm.
+
 - Removed completed BeamNG export reuse: new generations always fetch fresh raster sources. Only active jobs resume across road selection; source rasters remain deleted immediately after processing, while finished ZIPs retain their 30-minute download window.
 
 - Moved BeamNG generation into the export button row; it becomes an orange Download link when ready. Removed UI padding/resolution options and defaulted terrain to 2048. Raised road clearance to 8 cm and made Finish always face toward Start for simulation.

@@ -133,7 +133,8 @@ foreach([[1,0],[0,1],[-1,0],[0,-1],[sqrt(0.5),sqrt(0.5)],[-sqrt(0.5),sqrt(0.5)]]
 }
 
 // Flat reference terrain isolates road clearance from DEM slopes and sampling.
-$flatRaster=new BeamRaster($n,$side,str_repeat(pack('g',100),$n*$n),$colors);
+$landmarkColors="";for($band=0;$band<3;$band++)for($row=0;$row<$n;$row++)for($x=0;$x<$n;$x++)$landmarkColors.=chr($band===0?($x*2):($band===1?$row*2:70));
+$flatRaster=new BeamRaster($n,$side,str_repeat(pack('g',100),$n*$n),$landmarkColors);
 $flatFile=tempnam(sys_get_temp_dir(),'sl-flush-');
 try{
     $flatReport=BeamMap::build($plan,$flatRaster,str_repeat('b',32),$flatFile,fn($m)=>null);
@@ -148,7 +149,18 @@ try{
         $ground=unpack('v',substr($binary,5+($y*$n+$x)*2,2))[1]/65536*$terrainObject['maxHeight'];
         $gap=$point[2]-$ground;$maxGap=max($maxGap,$gap);$minGap=min($minGap,$gap);
     }
-    check($minGap>=0 && $maxGap<0.09,'Serialized road surface meets terrain within 9 cm including height quantization');
-    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.08)<0.001,'Road uses ground elevation with only anti-flicker clearance');
+    check($minGap>=0 && $maxGap<0.16,'Serialized road surface meets terrain within 16 cm including height quantization');
+    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.15)<0.001,'Road uses ground elevation with only anti-flicker clearance');
+    $mats=json_decode($flatZip->getFromName($flatBase.'art/terrains/main.materials.json'),true);
+    $aerial=imagecreatefromstring($flatZip->getFromName($flatBase.'art/terrains/aerial.color.png'));
+    $mat=array_values(array_filter($mats,fn($m)=>$m['class']==='TerrainMaterial'))[0];
+    // Reproduce v0.40 shader: grid UV / BaseTexSize, then Y flip.
+    foreach([[17,27],[83,101],[110,40]] as [$gx,$gy]){
+        $tu=($gx+0.5)/$mat['baseColorBaseTexSize'];$tv=1-($gy+0.5)/$mat['baseColorBaseTexSize'];
+        $px=min($n-1,(int)floor($tu*$n));$py=min($n-1,(int)floor($tv*$n));
+        $actual=imagecolorat($aerial,$px,$py);$expected=$flatRaster->rgb($gx,$gy);
+        check([($actual>>16)&255,($actual>>8)&255,$actual&255]===$expected,'Terrain shader samples the correct asymmetric aerial landmark');
+    }
+    check($mat['baseColorBaseTexSize']===$n && $side!==$n,'Aerial texture spans full grid even when world spacing is not one meter');
     $flatZip->close();
 }finally{unlink($flatFile);}

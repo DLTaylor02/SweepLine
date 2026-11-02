@@ -4,7 +4,7 @@ namespace SweepLine;
 use ZipArchive;
 final class BeamMap
 {
-    public const ROAD_CLEARANCE_M=0.08;
+    public const ROAD_CLEARANCE_M=0.15;
     private static function json(mixed $value): string {return json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);}
     public static function spawn(array $road,array $profiles,bool $end,bool $oneway): array
     {
@@ -71,9 +71,10 @@ final class BeamMap
         try {
             $prefix='sl_'.substr($id,0,12);$materials=[];$terrainNames=[];$ground=['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
             $progress('Writing collision terrain and generic surface materials');
+            // v0.40 terrain UVs are in layer/grid units, not world meters.
             for($i=0;$i<5;$i++) {
                 $mat=$prefix.'_terrain_'.$i;$terrainNames[]=$mat;
-                $materials[$mat]=['class'=>'TerrainMaterial','name'=>$mat,'internalName'=>$mat,'baseColorBaseTex'=>$path.'art/terrains/aerial.color.png','baseColorBaseTexSize'=>$side,'baseColorDetailTex'=>$path.'art/terrains/detail.color.png','baseColorDetailTexSize'=>5,'baseColorDetailStrength'=>[0.15,0],'normalBaseTex'=>$path.'art/terrains/flat.normal.png','normalBaseTexSize'=>$side,'roughnessBaseTex'=>$path.'art/terrains/roughness.data.png','roughnessBaseTexSize'=>$side,'aoBaseTex'=>$path.'art/terrains/ao.data.png','aoBaseTexSize'=>$side,'heightBaseTex'=>$path.'art/terrains/roughness.data.png','heightBaseTexSize'=>$side,'groundmodelName'=>$ground[$i]];
+                $materials[$mat]=['class'=>'TerrainMaterial','name'=>$mat,'internalName'=>$mat,'baseColorBaseTex'=>$path.'art/terrains/aerial.color.png','baseColorBaseTexSize'=>$n,'baseColorDetailTex'=>$path.'art/terrains/detail.color.png','baseColorDetailTexSize'=>5,'baseColorDetailStrength'=>[0.15,0],'normalBaseTex'=>$path.'art/terrains/flat.normal.png','normalBaseTexSize'=>$n,'roughnessBaseTex'=>$path.'art/terrains/roughness.data.png','roughnessBaseTexSize'=>$n,'aoBaseTex'=>$path.'art/terrains/ao.data.png','aoBaseTexSize'=>$n,'heightBaseTex'=>$path.'art/terrains/roughness.data.png','heightBaseTexSize'=>$n,'groundmodelName'=>$ground[$i]];
             }
             $terrain=chr(9).pack('V',$n);
             for($y=0;$y<$n;$y++){
