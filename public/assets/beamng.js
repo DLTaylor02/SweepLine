@@ -15,6 +15,7 @@
     const storageKey='sweepline:beamng:'+user+':'+(road.geometry_key||road.id);
     let jobId=null,busy=false,ready=false,expires=0;
     const paint=job=>{
+      if(!['queued','running'].includes(job.status)){try{window.sessionStorage?.removeItem(storageKey);}catch(_){}}
       busy=['queued','running'].includes(job.status);
       ready=job.status==='complete'&&!!job.download_url;
       expires=job.expires_at?Date.parse(job.expires_at):0;
@@ -27,9 +28,9 @@
       return busy;
     };
     const fail=e=>{busy=false;ready=false;paint({status:'failed',error:e.message});};
-    const poll=async()=>{
+    const poll=async(resuming=false)=>{
       if(current!==view||!jobId)return;
-      try{const job=await window.sweeplineRequest('/api/beamng/'+jobId);if(current!==view)return;if(paint(job))timer=setTimeout(poll,3000);}
+      try{const job=await window.sweeplineRequest('/api/beamng/'+jobId);if(current!==view)return;if(resuming&&!['queued','running'].includes(job.status)){try{window.sessionStorage?.removeItem(storageKey);}catch(_){}return;}if(paint(job))timer=setTimeout(poll,3000);}
       catch(e){if(current===view)fail(e);}
     };
     action.onclick=async event=>{
@@ -50,6 +51,6 @@
       try{await window.sweeplineRequest('/api/beamng/'+jobId+'/cancel',{method:'POST',body:'{}'});await poll();}
       catch(e){if(current===view)status.textContent=e.message;}finally{cancel.disabled=false;}
     };
-    try{const saved=JSON.parse(window.sessionStorage?.getItem(storageKey)||'null');if(saved&&/^[a-f0-9]{32}$/.test(saved.id)){jobId=saved.id;poll();}}catch(_){}
+    try{const saved=JSON.parse(window.sessionStorage?.getItem(storageKey)||'null');if(saved&&/^[a-f0-9]{32}$/.test(saved.id)){jobId=saved.id;poll(true);}}catch(_){}
   };
 })();

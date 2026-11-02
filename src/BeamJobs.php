@@ -48,7 +48,7 @@ final class BeamJobs
         try {
             $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
             $this->db->prepare('SELECT id FROM app_users WHERE id=? FOR UPDATE')->execute([$user]);
-            $q=$this->db->prepare("SELECT id FROM beamng_exports WHERE user_id=? AND fingerprint=? AND (status IN ('queued','running') OR (status='complete' AND expires_at>now())) ORDER BY created_at DESC LIMIT 1");
+            $q=$this->db->prepare("SELECT id FROM beamng_exports WHERE user_id=? AND fingerprint=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1");
             $q->execute([$user,$fingerprint]);$id=$q->fetchColumn();
             if(!$id) {
                 $q=$this->db->prepare("SELECT count(*) FROM beamng_exports WHERE status IN ('queued','running') AND (user_id=? OR (SELECT count(*) FROM beamng_exports WHERE status IN ('queued','running'))>=20)");

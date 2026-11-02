@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Removed completed BeamNG export reuse: new generations always fetch fresh raster sources. Only active jobs resume across road selection; source rasters remain deleted immediately after processing, while finished ZIPs retain their 30-minute download window.
+
 - Moved BeamNG generation into the export button row; it becomes an orange Download link when ready. Removed UI padding/resolution options and defaulted terrain to 2048. Raised road clearance to 8 cm and made Finish always face toward Start for simulation.
 
 - Corrected BeamNG spawn and arch rotation serialization to contiguous basis-axis columns, with diagonal-road and arch-crossing checks. Increased road clearance from 1 cm to 3 cm and invalidated older cached exports.
