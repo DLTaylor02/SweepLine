@@ -176,12 +176,13 @@ function render() {
   });
 }
 async function selectRoad(id) {
+  window.sweeplineBeamStop?.();
   selected=id;
   document.querySelectorAll('.road').forEach(e=>e.classList.toggle('selected',Number(e.dataset.id)===id));
   const road=roads.find(r=>r.id===id); if (!road) return;
   if(map && map.getLayer('selected')) { map.setFilter('selected',['==',['get','id'],id]); map.fitBounds(bounds(road.geometry.coordinates),{padding:65,maxZoom:13}); }
   const detail=$('road-detail'); detail.replaceChildren(); detail.hidden=false;
-  const close=text('button','Close');close.onclick=()=>{detail.hidden=true;};
+  const close=text('button','Close');close.onclick=()=>{detail.hidden=true;window.sweeplineBeamStop?.();};
   detail.append(close,text('h2',road.name),text('p','Loading score breakdown…'));
   try {
     const data=road._snapshot?road:await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}${memberQuery(road)}`);
@@ -216,6 +217,7 @@ async function selectRoad(id) {
       exports.append(link);
     }
     detail.append(exports,text('p','Export this road track or a PDF with a road sketch and section directions. No navigation to the start is included.'));
+    window.sweeplineBeamExport?.(detail,data,{profile:activeProfile,favoriteId:road._snapshot?data.favorite_id:null});
     Object.entries(data.dimensions).forEach(([key,value])=>{const row=text('div','','dimension');row.append(text('span',key),text('strong',`${Math.round(value*100)}/100`));detail.append(row);});
     detail.append(text('p','Elevation unavailable. Score dimensions are weighted for the selected profile. Completeness measures mapped attributes, not certainty that every control is present.'));
   } catch(e) { if(selected===id) detail.append(text('p',e.message)); }
@@ -316,6 +318,7 @@ async function openFavorite(id) {
 async function handleSession(event) {
   if(window.location?.pathname && window.location.pathname!=='/')return;
   if(!event.detail.user) {
+    window.sweeplineBeamStop?.();
     if(activeSearchUser) {try {window.sessionStorage?.removeItem(searchStorageKey(activeSearchUser));}catch(_) {}}
     ++diagnosticRequest;$('diagnostic-results').replaceChildren();$('diagnostic-status').textContent='';$('diagnostic-submit').disabled=false;
     ++zipPickRequest;setZipPickMode(false);$('pick-zip').disabled=false;$('zip-pick-status').textContent='';

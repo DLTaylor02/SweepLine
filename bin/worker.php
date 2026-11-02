@@ -4,11 +4,12 @@ require dirname(__DIR__).'/src/bootstrap.php';
 
 $db=SweepLine\Database::connect();
 if (!$db->query('SELECT pg_try_advisory_lock(73019422)')->fetchColumn()) { exit("Another data worker is active\n"); }
+$exports=new SweepLine\BeamJobs($db);$exports->recover();$exports->maintain();
 $worker=new SweepLine\DataWorker($db); $worker->recover(); $worker->maintain();
 $once=in_array('--once',$argv,true); $lastMaintenance=time();
 do {
     $worker->heartbeat();
-    $handled=$worker->runOne();
+    $handled=$exports->runOne() || $worker->runOne();
     if (!$handled) {
         // Retain the explicit local import tools for diagnostics and advanced provisioning.
         $db->beginTransaction();

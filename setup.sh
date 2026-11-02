@@ -17,7 +17,7 @@ PUBLIC_DIR_RELATIVE="public"
 NGINX_TEMPLATE_RELATIVE="config/nginx.conf.example"
 SCHEMA_RELATIVE=""
 WORKER_SCRIPT_RELATIVE="bin/worker.php"
-SCHEDULED_SCRIPT_RELATIVE=""    # Example: bin/collect.php; empty disables it.
+SCHEDULED_SCRIPT_RELATIVE="bin/cleanup-beamng.php"    # Example: bin/collect.php; empty disables it.
 SCHEDULE="* * * * *"
 SCHEDULE_LOG_RELATIVE="var/scheduled.log"
 PRESERVED_PATHS=(.env vendor var .sweepline-deployment)
@@ -154,7 +154,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 if [[ "$DEPLOYED" != "1" ]]; then
-    packages=(postgresql postgresql-contrib nginx cron curl unzip openssl rsync ca-certificates iproute2 osmium-tool)
+    packages=(postgresql postgresql-contrib nginx cron curl unzip openssl rsync ca-certificates iproute2 osmium-tool gdal-bin)
     if command -v php >/dev/null 2>&1; then
         installed_php="$(php -r 'echo PHP_MAJOR_VERSION,".",PHP_MINOR_VERSION;')"
         packages+=("php$installed_php-cli" "php$installed_php-fpm" "php$installed_php-pgsql" "php$installed_php-mbstring" "php$installed_php-xml" "php$installed_php-curl" "php$installed_php-zip")

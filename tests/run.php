@@ -345,5 +345,6 @@ check(str_contains(SweepLine\RoadExport::gpx($aliasedExport),'Other Name'),'GPX 
 check(str_contains(SweepLine\RoadExport::kml($aliasedExport),'Other Name'),'KML/KMZ includes alternate names');
 check(str_contains(SweepLine\RoadExport::pdf($aliasedExport),'Other Name'),'PDF includes alternate names');
 
+require __DIR__.'/beamng.php';
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

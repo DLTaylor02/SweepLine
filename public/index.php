@@ -22,7 +22,7 @@ header('X-Content-Type-Options: nosniff');
 try {
     if ($path==='/api/setup') { throw new OutOfBoundsException('Endpoint not found'); }
     $method=$_SERVER['REQUEST_METHOD']??'GET';
-    $postPaths=['/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings'];
+    $postPaths=['/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/beamng'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if ($path==='/api/admin/storage' && $method==='PATCH') {$expected='PATCH';}
     if ($path==='/api/admin/session-settings' && $method==='GET') {$expected='GET';}
@@ -33,6 +33,7 @@ try {
     if (preg_match('#^/api/search-history/[1-9]\\d{0,17}$#',$path)) { $expected='DELETE'; }
     if ($path==='/api/favorites' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/favorites/[1-9]\\d{0,17}$#',$path)) { $expected=$method==='DELETE'?'DELETE':'GET'; }
+    if(preg_match('#^/api/(?:admin/)?beamng/[a-f0-9]{32}/cancel$#',$path))$expected='POST';
     if ($method!==$expected) { header('Allow: '.$expected); throw new SweepLine\HttpException(405,'Method not allowed'); }
     $input=[];
     if (in_array($method,['POST','PATCH','DELETE'],true)) {
@@ -61,7 +62,14 @@ try {
             $user=$auth->requireUser(preg_match('#^/api/admin/users(?:/|$)#',$path)?'admin':str_starts_with($path,'/api/admin/'));
             // Release the session lock before spatial queries or polling.
             if ($path!=='/api/password/change') {session_write_close();}
-            if ($path==='/api/profiles') {$result=SweepLine\Scorer::profiles();}
+            if($path==='/api/beamng'){$result=(new SweepLine\BeamJobs($db))->create((int)$user['id'],$input);}
+            elseif(preg_match('#^/api/beamng/([a-f0-9]{32})(?:/(download|cancel))?$#',$path,$m)) {
+                $exports=new SweepLine\BeamJobs($db);$action=$m[2]??'';
+                if($action==='download')$exports->download((int)$user['id'],$m[1]);
+                $result=$action==='cancel'?$exports->cancel($m[1],(int)$user['id']):$exports->status((int)$user['id'],$m[1]);
+            }
+            elseif(preg_match('#^/api/admin/beamng/([a-f0-9]{32})/cancel$#',$path,$m)){$result=(new SweepLine\BeamJobs($db))->cancel($m[1]);}
+            elseif ($path==='/api/profiles') {$result=SweepLine\Scorer::profiles();}
             elseif ($path==='/api/password-policy') {$result=(new SweepLine\PasswordPolicy($db))->read();}
             elseif ($path==='/api/admin/session-settings') {$settings=new SweepLine\SessionSettings($db);$result=$method==='GET'?$settings->read():$settings->save($input);}
             elseif ($path==='/api/admin/password-policy') {$result=(new SweepLine\PasswordPolicy($db))->save($input);}

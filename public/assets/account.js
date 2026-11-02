@@ -257,7 +257,7 @@
         '. ZIP coordinates updated: '+(data.zip_last_sync || 'preparing automatically')+'.';
       el('task-list').replaceChildren();
       el('job-counts').textContent=(data.counts || []).map(item=>item.count+' '+item.status).join(' · ');
-      const jobs=[...data.tasks.map(t=>({...t,source:'tasks'})),...(data.imports || []).map(t=>({...t,task_key:t.name,source:'imports'}))];
+      const jobs=[...data.tasks.map(t=>({...t,source:'tasks'})),...(data.beamng || []).map(t=>({...t,source:'beamng'})),...(data.imports || []).map(t=>({...t,task_key:t.name,source:'imports'}))];
       jobs.filter(task=>task.status!=='cancelled'&&!task.cancel_requested).forEach(task=>{
         const row=text('div','');row.className='task-row';
         row.append(text('strong',task.kind==='zips'?'US ZIP coordinates':task.task_key),

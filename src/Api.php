@@ -89,14 +89,19 @@ final class Api
         if(count($memberIds)>1) {
             // The union is already oriented legally; do not replay full source ways.
             $road['parts']=[['name'=>$road['name'],'ref'=>$road['ref'],'direction'=>$road['travel_direction'],'reversed'=>false,'geometry'=>$road['geometry']]];
+            $marks=implode(',',array_fill(0,count($memberIds),'?'));
+            $attributes=$this->db->prepare("SELECT DISTINCT s.id,s.name,s.ref,s.direction,s.highway,s.tags,ST_AsGeoJSON(s.geom,9) AS geometry FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id WHERE m.candidate_id IN ($marks) LIMIT 501");
+            $attributes->execute($memberIds);$road['source_parts']=$attributes->fetchAll(PDO::FETCH_ASSOC);
+            foreach($road['source_parts'] as &$part){$part['geometry']=json_decode($part['geometry'],true,512,JSON_THROW_ON_ERROR);$part['tags']=json_decode($part['tags'],true,512,JSON_THROW_ON_ERROR);}unset($part);
             if($withMap)$road['basemap']=ExportMap::load($this->db,$road);return $road;
         }
         $q=$this->db->prepare('SELECT ST_AsGeoJSON(c.geom::geometry,9) FROM road_candidates c WHERE c.id=?');
         $q->execute([$id]);$road['geometry']=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR);
-        $q=$this->db->prepare('SELECT s.name,s.ref,s.direction,m.reversed,ST_AsGeoJSON(s.geom,9) AS geometry
+        $q=$this->db->prepare('SELECT s.name,s.ref,s.direction,s.highway,s.tags,m.reversed,ST_AsGeoJSON(s.geom,9) AS geometry
             FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id WHERE m.candidate_id=? ORDER BY m.position');
         $q->execute([$id]);$road['parts']=$q->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($road['parts'] as &$part) { $part['geometry']=json_decode($part['geometry'],true,512,JSON_THROW_ON_ERROR); }
+        foreach ($road['parts'] as &$part) { $part['geometry']=json_decode($part['geometry'],true,512,JSON_THROW_ON_ERROR);$part['tags']=json_decode($part['tags'],true,512,JSON_THROW_ON_ERROR); }
+        unset($part);
         if ($withMap) {$road['basemap']=ExportMap::load($this->db,$road);}
         return $road;
     }
