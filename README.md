@@ -375,3 +375,5 @@ The BeamNG action appears beside GPX/KMZ/PDF. Generate becomes an orange Downloa
 Every new BeamNG generation downloads fresh elevation and imagery; completed exports are never reused for generation. Raw rasters and intermediate files are discarded immediately after completion, failure or cancellation. Only the finished ZIP remains downloadable for 30 minutes. Reopening a road resumes queued/running work, but does not restore a completed export as a substitute for fresh generation. Duplicate clicks while an identical job is active share that job.
 
 BeamNG 0.40 samples terrain base textures in grid units. Export material BaseTexSize fields therefore use terrain resolution, while squareSize retains the real-world meter spacing. The aerial PNG remains north-up to match the shader''s Y flip. This avoids stretching a small portion of the imagery across a large map. Road clearance is 15 cm; regeneration is required for existing ZIPs.
+
+BeamNG road clearance is now 25 cm. Vehicle spawn frames include a 180-degree facing correction at both endpoints, preserving their lane positions and leaving arch orientation unchanged. Generate a fresh ZIP after upgrading.

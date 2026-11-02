@@ -125,10 +125,10 @@ foreach([[1,0],[0,1],[-1,0],[0,-1],[sqrt(0.5),sqrt(0.5)],[-sqrt(0.5),sqrt(0.5)]]
     $track=[];for($i=0;$i<20;$i++)$track[]=[$i*8*$dx,$i*8*$dy,$i*0.8];
     $laneProfiles=array_fill(0,20,BeamLanes::infer(['lanes'=>'2','width'=>'8'],'secondary',0));
     foreach([false,true] as $end){$spawn=BeamMap::spawn($track,$laneProfiles,$end,false);$m=$spawn['rotationMatrix'];$sign=$end?-1:1;
-        check($m[3]*$dx*$sign+$m[4]*$dy*$sign>0.99,'Spawn frame faces travel along cardinal road and follows grade');
+        check(-$m[3]*$dx*$sign-$m[4]*$dy*$sign>0.99,'Vehicle-facing axis points along intended travel after 180-degree spawn correction');
         $position=$spawn['position'];$rightDistance=($position[0]*$dy-$position[1]*$dx)*$sign;
         check(abs($rightDistance-2)<0.001,'Both endpoints spawn in center of right-hand travel lane');
-        check(abs($m[5]-$sign*0.1/sqrt(1.01))<0.001,'Spawn pitch follows road elevation');
+        check(abs($m[5]+$sign*0.1/sqrt(1.01))<0.001,'Spawn pitch follows road elevation');
     }
 }
 
@@ -149,8 +149,8 @@ try{
         $ground=unpack('v',substr($binary,5+($y*$n+$x)*2,2))[1]/65536*$terrainObject['maxHeight'];
         $gap=$point[2]-$ground;$maxGap=max($maxGap,$gap);$minGap=min($minGap,$gap);
     }
-    check($minGap>=0 && $maxGap<0.16,'Serialized road surface meets terrain within 16 cm including height quantization');
-    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.15)<0.001,'Road uses ground elevation with only anti-flicker clearance');
+    check($minGap>=0 && $maxGap<0.26,'Serialized road surface meets terrain within 26 cm including height quantization');
+    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.25)<0.001,'Road uses ground elevation with only anti-flicker clearance');
     $mats=json_decode($flatZip->getFromName($flatBase.'art/terrains/main.materials.json'),true);
     $aerial=imagecreatefromstring($flatZip->getFromName($flatBase.'art/terrains/aerial.color.png'));
     $mat=array_values(array_filter($mats,fn($m)=>$m['class']==='TerrainMaterial'))[0];

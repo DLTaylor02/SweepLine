@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Rotated both BeamNG vehicle spawns 180 degrees, preserving lane positions, grade alignment and arch orientation. Increased road clearance from 15 cm to 25 cm to reduce remaining terrain clipping.
+
 - Fixed BeamNG terrain base texture scaling to use grid units rather than world meters, matching the installed 0.40 shader. Added asymmetric image-landmark sampling checks and increased road clearance to 15 cm.
 
 - Removed completed BeamNG export reuse: new generations always fetch fresh raster sources. Only active jobs resume across road selection; source rasters remain deleted immediately after processing, while finished ZIPs retain their 30-minute download window.

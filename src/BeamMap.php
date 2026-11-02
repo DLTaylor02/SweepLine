@@ -4,7 +4,7 @@ namespace SweepLine;
 use ZipArchive;
 final class BeamMap
 {
-    public const ROAD_CLEARANCE_M=0.15;
+    public const ROAD_CLEARANCE_M=0.25;
     private static function json(mixed $value): string {return json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);}
     public static function spawn(array $road,array $profiles,bool $end,bool $oneway): array
     {
@@ -17,13 +17,14 @@ final class BeamMap
         $laneWidth=$profile['width_m']/$profile['lanes'];
         $offset=$profile['lanes']>1?$profile['width_m']/2-$laneWidth/2:0;
         if($reverse){$offset=-$offset;$dx=-$dx;$dy=-$dy;$dz=-$dz;}
-        // Lane position uses original road direction; frame +Y follows travel.
+        // Keep lane position independent of the vehicle-facing correction.
         // Scene JSON stores each local basis axis contiguously (column-major).
         $ox=($b[1]-$a[1])/$length*$offset;$oy=-($b[0]-$a[0])/$length*$offset;
         $norm=sqrt(1+$dz*$dz);$fx=$dx/$norm;$fy=$dy/$norm;$fz=$dz/$norm;
         $right=[$dy,-$dx,0];$up=[-$dx*$fz,-$dy*$fz,1/$norm];
+        // Rotate local X/Y by 180 degrees; retain up/grade and spawn position.
         return ['class'=>'SpawnSphere','name'=>$end?'spawns_end':'spawns_start','__parent'=>'MissionGroup','position'=>[$p[0]+$ox,$p[1]+$oy,$p[2]+0.8],
-            'rotationMatrix'=>[$right[0],$right[1],0,$fx,$fy,$fz,$up[0],$up[1],$up[2]],'scale'=>[1,1,1],'dataBlock'=>'SpawnSphereMarker','autoplaceOnSpawn'=>false];
+            'rotationMatrix'=>[-$right[0],-$right[1],0,-$fx,-$fy,-$fz,$up[0],$up[1],$up[2]],'scale'=>[1,1,1],'dataBlock'=>'SpawnSphereMarker','autoplaceOnSpawn'=>false];
     }
     public static function build(array $plan,BeamRaster $raster,string $id,string $zipPath,callable $progress): array
     {
@@ -118,7 +119,7 @@ final class BeamMap
             foreach([['start',$start,'START',[0.08,0.35,0.8,1]],['finish',$end,'FINISH',[0.15,0.18,0.23,1]]] as [$archName,$spawn,$label,$color]){
                 $best=INF;$index=0;foreach($road as $i=>$point){$d=hypot($point[0]-$spawn['position'][0],$point[1]-$spawn['position'][1]);if($d<$best){$best=$d;$index=$i;}}
                 $point=$road[$index];$span=$profiles[$index]['width_m']+4;
-                $m=$spawn['rotationMatrix'];$len=hypot($m[3],$m[4])?:1;$dx=$m[3]/$len;$dy=$m[4]/$len;
+                $m=$spawn['rotationMatrix'];$len=hypot($m[3],$m[4])?:1;$dx=-$m[3]/$len;$dy=-$m[4]/$len;
                 foreach(['arch','arch-label'] as $kind){
                     $mat=$prefix.'_'.$archName.'_'.$kind;$file='art/shapes/'.$archName.'-'.$kind.'.dae';
                     $archMaterials[$mat]=['class'=>'Material','name'=>$mat,'mapTo'=>$mat,'version'=>1,'Stages'=>[['diffuseColor'=>$kind==='arch'?$color:[1,1,1,1]]]];
