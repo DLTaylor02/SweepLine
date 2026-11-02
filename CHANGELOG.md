@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restored original 1024 elevation downloads and road-height sampling for future BeamNG exports, independently of 2048 aerial imagery/terrain output. Terrain is bilinearly upsampled from that source; reports expose both resolutions. Existing ZIPs are untouched.
+
 - Restored the original BeamNG road elevation handling: 25 cm above smoothed sampled elevation and terrain recessed 60 cm below the road surface. Retained texture, spawn and arch fixes.
 
 - Rotated both BeamNG vehicle spawns 180 degrees, preserving lane positions, grade alignment and arch orientation. Increased road clearance from 15 cm to 25 cm to reduce remaining terrain clipping.

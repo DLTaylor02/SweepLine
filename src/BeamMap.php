@@ -32,7 +32,7 @@ final class BeamMap
         $name='sweepline_'.substr($id,0,16);$base='levels/'.$name.'/';$path='/'.$base;$n=$raster->size;$side=$raster->side;$step=$side/$n;
         $world=BeamPlan::sample($plan['points']);$profiles=BeamLanes::profiles($world,$plan['sources'],$plan['bounds']);
         $points=[];$rawHeights=[];
-        foreach($world as $p){$x=$p[0]-$plan['bounds'][0];$y=$p[1]-$plan['bounds'][1];$points[]=[$x,$y];$rawHeights[]=$raster->height($x,$y);}
+        foreach($world as $p){$x=$p[0]-$plan['bounds'][0];$y=$p[1]-$plan['bounds'][1];$points[]=[$x,$y];$rawHeights[]=$raster->roadHeight($x,$y);}
         $min=INF;$max=-INF;$black=0;$categories=str_repeat("\0",$n*$n);
         $progress('Validating elevation and estimating regional land cover');
         for($y=0;$y<$n;$y++) {
@@ -161,7 +161,7 @@ final class BeamMap
             $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
-            $report=['target'=>'BeamNG.drive v0.40','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,
+            $report=['target'=>'BeamNG.drive v0.40','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Mapped bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation graph covers only the selected road; traffic behavior requires in-game validation.','Requires in-game v0.40 validation.']];
             $put('sweepline-report.json',self::json($report));

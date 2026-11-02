@@ -164,3 +164,18 @@ try{
     check($mat['baseColorBaseTexSize']===$n && $side!==$n,'Aerial texture spans full grid even when world spacing is not one meter');
     $flatZip->close();
 }finally{unlink($flatFile);}
+
+// Elevation source resolution is independent of imagery/terrain output resolution.
+$sourcePlan=['resolution'=>2048,'bounds'=>[100,200,8292,8392]];
+$demGrid=SweepLine\BeamSources::grid($sourcePlan,'dem');$imageGrid=SweepLine\BeamSources::grid($sourcePlan,'aerial');
+check($demGrid['size']===1024 && $imageGrid['size']===2048,'Original elevation download grid remains 1024 while imagery remains 2048');
+check($demGrid['bbox']===[96,196,8288,8388] || $demGrid['bbox']===[96.0,196.0,8288.0,8388.0],'Original elevation pixel centers retain original half-cell alignment');
+$lowHeights="";for($y=0;$y<4;$y++)for($x=0;$x<4;$x++)$lowHeights.=pack('g',100+$x*$x+($y%2)*3);
+$low=new BeamRaster(4,80,$lowHeights,str_repeat(chr(70),48));$checkpoints=0;
+$high=BeamRaster::fromElevation(8,80,$lowHeights,str_repeat(chr(70),192),4,function($m)use(&$checkpoints){$checkpoints++;});
+check($high->size===8 && $high->elevationResolution()===4 && $checkpoints>0,'Terrain upsampling preserves source metadata and cancellation checkpoints');
+foreach([[0,0],[12,21],[39,47],[79,79]] as [$x,$y])check(abs($high->roadHeight($x,$y)-$low->height($x,$y))<0.000001,'Road heights match original coarse elevation interpolation');
+check(abs($high->cell(3,4)-$low->height(30,40))<0.00001,'Output terrain samples coarse elevation at world coordinates');
+$before=$high->roadHeight(40,40);$high->put(4,4,150);
+check($high->roadHeight(40,40)===$before && $high->height(40,40)===150.0,'Corridor shaping cannot modify original road elevation samples');
+try{BeamRaster::fromElevation(8,80,str_repeat(pack('g',-9999),16),str_repeat(chr(70),192),4,fn($m)=>null);check(false,'Invalid source elevation rejected during upsampling');}catch(RuntimeException $e){check(str_contains($e->getMessage(),'No synthetic'),'Invalid source elevation rejected during upsampling');}

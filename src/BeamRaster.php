@@ -7,6 +7,21 @@ final class BeamRaster
     {
         if(strlen($heights)!==$size*$size*4 || strlen($colors)!==$size*$size*3)throw new \RuntimeException('Raster dimensions or band layout do not match the map.');
     }
+    private ?self $sourceElevation=null;
+    public static function fromElevation(int $size,float $side,string $heights,string $colors,int $elevationSize,callable $progress): self
+    {
+        if($size===$elevationSize)return new self($size,$side,$heights,$colors);
+        $source=new self($elevationSize,$side,$heights,str_repeat("\0",$elevationSize*$elevationSize*3));
+        $upsampled="";
+        for($row=0;$row<$size;$row++){
+            if($row%16===0)$progress(null);
+            $y=($size-1-$row)/$size*$side;
+            for($x=0;$x<$size;$x++)$upsampled.=pack('g',$source->height($x/$size*$side,$y));
+        }
+        $raster=new self($size,$side,$upsampled,$colors);$raster->sourceElevation=$source;return $raster;
+    }
+    public function roadHeight(float $x,float $y): float {return ($this->sourceElevation??$this)->height($x,$y);}
+    public function elevationResolution(): int {return $this->sourceElevation?->size??$this->size;}
     public function cell(int $x,int $y): float
     {
         $x=max(0,min($this->size-1,$x));$y=max(0,min($this->size-1,$y));

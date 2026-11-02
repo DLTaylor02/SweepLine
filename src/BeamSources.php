@@ -43,13 +43,18 @@ final class BeamSources
             fclose($pipes[1]);fclose($pipes[2]);proc_close($process);
         }
     }
+    public static function grid(array $plan,string $kind): array
+    {
+        $size=$kind==='dem'?1024:$plan['resolution'];[$w,$s,$e,$north]=$plan['bounds'];$half=($e-$w)/$size/2;
+        return ['size'=>$size,'bbox'=>[$w-$half,$s-$half,$e-$half,$north-$half]];
+    }
     public function fetch(array $plan,string $dir,callable $progress): BeamRaster
     {
-        $n=$plan['resolution'];[$w,$s,$e,$north]=$plan['bounds'];$step=($e-$w)/$n;
-        $bbox=[$w-$step/2,$s-$step/2,$e-$step/2,$north-$step/2];
-        $common=['bbox'=>implode(',',$bbox),'bboxSR'=>$plan['epsg'],'imageSR'=>$plan['epsg'],'size'=>$n.','.$n,'format'=>'tiff','f'=>'image','adjustAspectRatio'=>'false','interpolation'=>'RSP_BilinearInterpolation','renderingRule'=>json_encode(['rasterFunction'=>'None'])];
+        [$w,$s,$e,$north]=$plan['bounds'];
         foreach(['dem'=>'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage',
                  'aerial'=>'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage'] as $kind=>$url) {
+            $grid=self::grid($plan,$kind);$n=$grid['size'];$bbox=$grid['bbox'];
+            $common=['bbox'=>implode(',',$bbox),'bboxSR'=>$plan['epsg'],'imageSR'=>$plan['epsg'],'size'=>$n.','.$n,'format'=>'tiff','f'=>'image','adjustAspectRatio'=>'false','interpolation'=>'RSP_BilinearInterpolation','renderingRule'=>json_encode(['rasterFunction'=>'None'])];
             $progress($kind==='dem'?'Downloading real USGS elevation':'Downloading NAIP aerial colors');
             if($kind==='aerial')$common['renderingRule']=json_encode(['rasterFunction'=>'NaturalColor']);
             $params=$common+($kind==='dem'?['pixelType'=>'F32']:['pixelType'=>'U8','bandIds'=>'0,1,2']);
@@ -62,7 +67,8 @@ final class BeamSources
             $header=file_get_contents($dir.'/'.$kind.'.hdr');
             if(!preg_match('/byte order\s*=\s*0/',$header))throw new \RuntimeException('GDAL did not produce a supported little-endian raster.');
         }
-        return new BeamRaster($n,$e-$w,file_get_contents($dir.'/dem.bin'),file_get_contents($dir.'/aerial.bin'));
+        $progress('Preparing terrain from original 1024 elevation samples');
+        return BeamRaster::fromElevation($plan['resolution'],$e-$w,file_get_contents($dir.'/dem.bin'),file_get_contents($dir.'/aerial.bin'),1024,$progress);
     }
 }
 
