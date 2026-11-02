@@ -8,7 +8,7 @@ final class BeamPlan
     public static function options(array $input): array
     {
         $padding=Validation::number($input,'padding_miles',0.5,0.1,5);
-        $resolution=Validation::number($input,'resolution',1024,1024,2048);
+        $resolution=Validation::number($input,'resolution',2048,1024,2048);
         if(!in_array($resolution,[1024.0,2048.0],true))throw new \InvalidArgumentException('Terrain resolution must be 1024 or 2048.');
         return ['padding_miles'=>$padding,'resolution'=>(int)$resolution];
     }

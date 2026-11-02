@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Moved BeamNG generation into the export button row; it becomes an orange Download link when ready. Removed UI padding/resolution options and defaulted terrain to 2048. Raised road clearance to 8 cm and made Finish always face toward Start for simulation.
+
 - Corrected BeamNG spawn and arch rotation serialization to contiguous basis-axis columns, with diagonal-road and arch-crossing checks. Increased road clearance from 1 cm to 3 cm and invalidated older cached exports.
 
 - Added generated START/FINISH arches at BeamNG spawn locations, with two-sided raised lettering, supports outside the roadway and six-meter overhead clearance. New exports bypass older cached packages.

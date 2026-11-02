@@ -4,14 +4,14 @@ namespace SweepLine;
 use ZipArchive;
 final class BeamMap
 {
-    public const ROAD_CLEARANCE_M=0.03;
+    public const ROAD_CLEARANCE_M=0.08;
     private static function json(mixed $value): string {return json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);}
     public static function spawn(array $road,array $profiles,bool $end,bool $oneway): array
     {
         // Move about 30 m inward to leave clearance from the mesh endpoint.
         $i=$end?count($road)-2:1;$distance=0.0;
         while(($end?$i>1:$i<count($road)-2) && $distance<30){$j=$i+($end?-1:1);$distance+=hypot($road[$j][0]-$road[$i][0],$road[$j][1]-$road[$i][1]);$i=$j;}
-        $p=$road[$i];$a=$road[$i-1];$b=$road[$i+1];$profile=$profiles[$i];$reverse=$end&&!$oneway;
+        $p=$road[$i];$a=$road[$i-1];$b=$road[$i+1];$profile=$profiles[$i];$reverse=$end;
         $dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy)?:1;$dz=($b[2]-$a[2])/$length;
         $dx/=$length;$dy/=$length;
         $laneWidth=$profile['width_m']/$profile['lanes'];
@@ -154,7 +154,7 @@ final class BeamMap
             $items='';foreach($objects as $object)$items.=json_encode($object,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES)."\n";
             $put('main/items.level.json',json_encode(['class'=>'SimGroup','name'=>'MissionGroup','persistentId'=>substr($id,0,8).'-'.substr($id,8,4).'-4'.substr($id,13,3).'-8'.substr($id,17,3).'-'.substr($id,20,12)],JSON_THROW_ON_ERROR)."\n");
             $put('main/MissionGroup/items.level.json',$items);
-            $put('info.json',self::json(['title'=>$plan['name'].' — SweepLine','description'=>'Generated real-scale road recreation. '.implode('; ',$plan['alternate_names']).' Target: BeamNG.drive v0.40. Scenery and missing lane attributes are estimates.','authors'=>'SweepLine; OpenStreetMap contributors; USGS; USDA','size'=>[$side,$side],'defaultSpawnPointName'=>'spawns_start','spawnPoints'=>[['translationId'=>'Start','objectname'=>'spawns_start','preview'=>'spawn-start.png','description'=>'Default road start'],['translationId'=>'End','objectname'=>'spawns_end','preview'=>'spawn-end.png','description'=>$plan['oneway']?'Near road end, facing legal traffic direction':'Road end, facing back along the road']],'previews'=>['preview.png']]));
+            $put('info.json',self::json(['title'=>$plan['name'].' — SweepLine','description'=>'Generated real-scale road recreation. '.implode('; ',$plan['alternate_names']).' Target: BeamNG.drive v0.40. Scenery and missing lane attributes are estimates.','authors'=>'SweepLine; OpenStreetMap contributors; USGS; USDA','size'=>[$side,$side],'defaultSpawnPointName'=>'spawns_start','spawnPoints'=>[['translationId'=>'Start','objectname'=>'spawns_start','preview'=>'spawn-start.png','description'=>'Default road start'],['translationId'=>'End','objectname'=>'spawns_end','preview'=>'spawn-end.png','description'=>'Road end, facing back toward Start (simulation)']],'previews'=>['preview.png']]));
             $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));

@@ -217,7 +217,7 @@ async function selectRoad(id) {
       exports.append(link);
     }
     detail.append(exports,text('p','Export this road track or a PDF with a road sketch and section directions. No navigation to the start is included.'));
-    window.sweeplineBeamExport?.(detail,data,{profile:activeProfile,favoriteId:road._snapshot?data.favorite_id:null});
+    window.sweeplineBeamExport?.(exports,data,{profile:activeProfile,favoriteId:road._snapshot?data.favorite_id:null});
     Object.entries(data.dimensions).forEach(([key,value])=>{const row=text('div','','dimension');row.append(text('span',key),text('strong',`${Math.round(value*100)}/100`));detail.append(row);});
     detail.append(text('p','Elevation unavailable. Score dimensions are weighted for the selected profile. Completeness measures mapped attributes, not certainty that every control is present.'));
   } catch(e) { if(selected===id) detail.append(text('p',e.message)); }

@@ -1,6 +1,7 @@
 <?php
 // Synthetic rasters and planar road geometry are explicit offline test fixtures.
 use SweepLine\{BeamPlan,BeamLanes,BeamRaster,BeamPng,BeamMap,BeamJobs};
+check(BeamPlan::options([])['resolution']===2048,'BeamNG default terrain resolution is 2048');
 check(BeamPlan::options([])['padding_miles']===0.5,'BeamNG defaults to half-mile padding');
 foreach([['padding_miles'=>0],['padding_miles'=>6],['resolution'=>1536]] as $invalid)check(rejects(fn()=>BeamPlan::options($invalid)),'Invalid BeamNG options rejected');
 $square=BeamPlan::square([[10,20],[1010,320]],100);
@@ -82,7 +83,7 @@ try {
     $profiles=array_fill(0,count($roadPoints),BeamLanes::infer(['lanes'=>'2'],'secondary',0));
     $oneEnd=BeamMap::spawn($roadPoints,$profiles,true,true);$twoEnd=BeamMap::spawn($roadPoints,$profiles,true,false);
     $forward=$oneEnd['rotationMatrix'];$back=$twoEnd['rotationMatrix'];
-    check(abs($forward[1]+$back[1])<0.00001 && abs($forward[4]+$back[4])<0.00001,'One-way End spawn never points against traffic');
+    check(abs($forward[1]-$back[1])<0.00001 && abs($forward[4]-$back[4])<0.00001,'Finish spawn always faces back toward Start in simulation');
     $terrain=$archive->getFromName($base.'theTerrain.ter');$size=unpack('V',substr($terrain,1,4))[1];$offset=5+3*$size*$size;$count=unpack('V',substr($terrain,$offset,4))[1];$offset+=4;
     $terrainMaterials=json_decode($archive->getFromName($base.'art/terrains/main.materials.json'),true,512,JSON_THROW_ON_ERROR);
     check(ord($terrain[0])===9 && $size===$n && $count===5,'Terrain binary v9 header and arrays are valid');
@@ -147,7 +148,7 @@ try{
         $ground=unpack('v',substr($binary,5+($y*$n+$x)*2,2))[1]/65536*$terrainObject['maxHeight'];
         $gap=$point[2]-$ground;$maxGap=max($maxGap,$gap);$minGap=min($minGap,$gap);
     }
-    check($minGap>=0 && $maxGap<0.04,'Serialized road surface meets terrain within 4 cm including height quantization');
-    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.03)<0.001,'Road uses ground elevation with only anti-flicker clearance');
+    check($minGap>=0 && $maxGap<0.09,'Serialized road surface meets terrain within 9 cm including height quantization');
+    check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.08)<0.001,'Road uses ground elevation with only anti-flicker clearance');
     $flatZip->close();
 }finally{unlink($flatFile);}
