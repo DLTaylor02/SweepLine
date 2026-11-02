@@ -65,6 +65,20 @@ ensure_system_user() {
     fi
 }
 
+cron_entry() {
+    printf '%s\n' "$SCHEDULE $SYSTEM_USER cd '$APP_DIR' && $(command -v php) -d memory_limit=$PHP_MEMORY_LIMIT -d max_execution_time=0 -d max_input_time=0 '$SCHEDULED_SCRIPT_RELATIVE' >> '$APP_DIR/$SCHEDULE_LOG_RELATIVE' 2>&1"
+}
+validate_cron_entry() {
+    local file="$1"
+    [[ ! -L "$file" ]] || die "Refusing a symlinked cron entry $file."
+    [[ -e "$file" ]] || return 0
+    [[ -f "$file" ]] || die "Refusing non-file cron entry $file."
+    # Older releases emitted exactly one unmarked task line.
+    if [[ "$(cat "$file")" == "$(cron_entry)" ]]; then return 0; fi
+    grep -Fxq '# Managed by SweepLine installer' "$file" ||
+        die "Refusing to overwrite unowned cron entry $file."
+}
+
 project_provision_superadmin() {
     local probe_status
     if as_user "$SYSTEM_USER" "${PHP_CLI[@]}" bin/superadmin.php --exists; then
@@ -204,7 +218,7 @@ fi
 for managed in "/etc/nginx/sites-available/$APP_SLUG" /etc/php/*/fpm/pool.d/"$APP_SLUG".conf "/etc/systemd/system/$APP_SLUG-worker.service"; do
     [[ ! -e "$managed" ]] || grep -Fq "Managed by SweepLine installer" "$managed" || die "Refusing to overwrite unowned configuration $managed."
 done
-[[ ! -e "/etc/cron.d/$APP_SLUG" ]] || die "An unexpected cron entry already uses the application name."
+validate_cron_entry "/etc/cron.d/$APP_SLUG"
 if [[ -e "/etc/nginx/sites-enabled/$APP_SLUG" || -L "/etc/nginx/sites-enabled/$APP_SLUG" ]]; then
     [[ -L "/etc/nginx/sites-enabled/$APP_SLUG" && "$(readlink -f "/etc/nginx/sites-enabled/$APP_SLUG")" == "/etc/nginx/sites-available/$APP_SLUG" ]] || die "Unrelated enabled site uses application name."
 fi
@@ -406,7 +420,8 @@ if [[ -n "$SCHEDULED_SCRIPT_RELATIVE" ]]; then
     schedule_log="$APP_DIR/$SCHEDULE_LOG_RELATIVE"
     install -d -o "$SYSTEM_USER" -g "$SYSTEM_USER" -m 0750 "$(dirname "$schedule_log")"
     new_temp cron_tmp
-    printf '%s\n' "$SCHEDULE $SYSTEM_USER cd '$APP_DIR' && $(command -v php) -d memory_limit=$PHP_MEMORY_LIMIT -d max_execution_time=0 -d max_input_time=0 '$SCHEDULED_SCRIPT_RELATIVE' >> '$schedule_log' 2>&1" > "$cron_tmp"
+    validate_cron_entry "/etc/cron.d/$APP_SLUG"
+    { printf '%s\n' '# Managed by SweepLine installer'; cron_entry; } > "$cron_tmp"
     install -m 0644 "$cron_tmp" "/etc/cron.d/$APP_SLUG"
 fi
 
