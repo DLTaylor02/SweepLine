@@ -4,18 +4,25 @@ namespace SweepLine;
 use ZipArchive;
 final class BeamMap
 {
+    public const ROAD_CLEARANCE_M=0.01;
     private static function json(mixed $value): string {return json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);}
-    private static function rotation(float $dx,float $dy): array
-    {
-        $l=hypot($dx,$dy)?:1;$dx/=$l;$dy/=$l;return [$dy,$dx,0,-$dx,$dy,0,0,0,1];
-    }
     public static function spawn(array $road,array $profiles,bool $end,bool $oneway): array
     {
-        $i=$end?max(1,count($road)-3):min(2,count($road)-2);$p=$road[$i];$a=$road[$i-1];$b=$road[$i+1];
-        $dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$len=hypot($dx,$dy)?:1;$reverse=$end&&!$oneway;
-        $offset=$profiles[$i]['lanes']>1?max(0,$profiles[$i]['width_m']/2-2.25):0;if($reverse)$offset=-$offset;
-        return ['class'=>'SpawnSphere','name'=>$end?'spawns_end':'spawns_start','__parent'=>'MissionGroup','position'=>[$p[0]+$dy/$len*$offset,$p[1]-$dx/$len*$offset,$p[2]+1.2],
-            'rotationMatrix'=>self::rotation($reverse?-$dx:$dx,$reverse?-$dy:$dy),'scale'=>[1,1,1],'dataBlock'=>'SpawnSphereMarker','autoplaceOnSpawn'=>false];
+        // Move about 30 m inward to leave clearance from the mesh endpoint.
+        $i=$end?count($road)-2:1;$distance=0.0;
+        while(($end?$i>1:$i<count($road)-2) && $distance<30){$j=$i+($end?-1:1);$distance+=hypot($road[$j][0]-$road[$i][0],$road[$j][1]-$road[$i][1]);$i=$j;}
+        $p=$road[$i];$a=$road[$i-1];$b=$road[$i+1];$profile=$profiles[$i];$reverse=$end&&!$oneway;
+        $dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy)?:1;$dz=($b[2]-$a[2])/$length;
+        $dx/=$length;$dy/=$length;
+        $laneWidth=$profile['width_m']/$profile['lanes'];
+        $offset=$profile['lanes']>1?$profile['width_m']/2-$laneWidth/2:0;
+        if($reverse){$offset=-$offset;$dx=-$dx;$dy=-$dy;$dz=-$dz;}
+        // Lane position uses original road direction; frame +Y follows travel.
+        $ox=($b[1]-$a[1])/$length*$offset;$oy=-($b[0]-$a[0])/$length*$offset;
+        $norm=sqrt(1+$dz*$dz);$fx=$dx/$norm;$fy=$dy/$norm;$fz=$dz/$norm;
+        $right=[$dy,-$dx,0];$up=[-$dx*$fz,-$dy*$fz,1/$norm];
+        return ['class'=>'SpawnSphere','name'=>$end?'spawns_end':'spawns_start','__parent'=>'MissionGroup','position'=>[$p[0]+$ox,$p[1]+$oy,$p[2]+0.8],
+            'rotationMatrix'=>[$right[0],$fx,$up[0],$right[1],$fy,$up[1],0,$fz,$up[2]],'scale'=>[1,1,1],'dataBlock'=>'SpawnSphereMarker','autoplaceOnSpawn'=>false];
     }
     public static function build(array $plan,BeamRaster $raster,string $id,string $zipPath,callable $progress): array
     {
@@ -38,8 +45,8 @@ final class BeamMap
             $left=$i;while($left>0 && $chain[$i]-$chain[$left-1]<40)$left--;
             for($j=$left;$j<count($points) && $chain[$j]-$chain[$i]<40;$j++){$weight=exp(-0.5*(($chain[$j]-$chain[$i])/12)**2);$sum+=$rawHeights[$j]*$weight;$weights+=$weight;}
             $z=$sum/$weights;
-            if($i>0 && abs($z-($road[$i-1][2]+$origin-0.25))/max(0.01,hypot($p[0]-$points[$i-1][0],$p[1]-$points[$i-1][1]))>0.35)throw new \RuntimeException('The sampled elevation creates an unsupported road grade. Higher-quality road elevation is required for this stretch.');
-            $road[]=[$p[0],$p[1],$z-$origin+0.25];if($profiles[$i]['estimated_lanes'])$estimated++;
+            if($i>0 && abs($z-($road[$i-1][2]+$origin-self::ROAD_CLEARANCE_M))/max(0.01,hypot($p[0]-$points[$i-1][0],$p[1]-$points[$i-1][1]))>0.35)throw new \RuntimeException('The sampled elevation creates an unsupported road grade. Higher-quality road elevation is required for this stretch.');
+            $road[]=[$p[0],$p[1],$z-$origin+self::ROAD_CLEARANCE_M];if($profiles[$i]['estimated_lanes'])$estimated++;
         }
         $progress('Shaping the road corridor while preserving surrounding terrain');
         $nearest=str_repeat(pack('g',INF),$n*$n);$corridor=str_repeat("\0",$n*$n);
@@ -53,7 +60,7 @@ final class BeamMap
                 $offset=($y*$n+$x)*4;$best=unpack('g',substr($nearest,$offset,4))[1];if($distance>=$best)continue;
                 $bytes=pack('g',$distance);for($j=0;$j<4;$j++)$nearest[$offset+$j]=$bytes[$j];
                 $fade=max(0,min(1,($distance-$width/2-$step)/max(1,$step)));
-                $raster->put($x,$y,($p[2]+$origin-0.6)*(1-$fade)+$raster->cell($x,$y)*$fade);
+                $raster->put($x,$y,($p[2]+$origin-self::ROAD_CLEARANCE_M)*(1-$fade)+$raster->cell($x,$y)*$fade);
                 if($distance<$width/2+$step)$corridor[$y*$n+$x]="\1";
             }
         }
@@ -83,7 +90,7 @@ final class BeamMap
             $put('art/terrains/detail.color.png',BeamPng::rgb(64,64,static fn($x,$y)=>[128+(($x*17+$y*23)%17)-8,128+(($x*17+$y*23)%17)-8,128+(($x*17+$y*23)%17)-8]));
             $put('art/terrains/aerial.color.png',BeamPng::rgb($n,$n,static fn($x,$y)=>$raster->rgb($x,$n-1-$y)));
             $objects=[['class'=>'LevelInfo','name'=>'theLevelInfo','__parent'=>'MissionGroup','levelName'=>$plan['name']],
-                ['class'=>'ScatterSky','name'=>'theSky','__parent'=>'MissionGroup','sunSize'=>1,'skyBrightness'=>40,'exposure'=>1],
+                ['class'=>'ScatterSky','name'=>'theSky','__parent'=>'MissionGroup','sunSize'=>1,'skyBrightness'=>40,'exposure'=>1,'elevation'=>50,'azimuth'=>180,'ambientScale'=>[1,1,1,1],'sunScale'=>[1,1,1,1],'ambientScaleGradientFile'=>'art/sky_gradients/default/gradient_ambient.png','sunScaleGradientFile'=>'art/sky_gradients/default/gradient_sunscale.png','colorizeGradientFile'=>'art/sky_gradients/default/gradient_colorize.png'],
                 ['class'=>'TimeOfDay','name'=>'timeOfDay','__parent'=>'MissionGroup','time'=>0.35,'play'=>false],
                 ['class'=>'TerrainBlock','name'=>'theTerrain','__parent'=>'MissionGroup','position'=>[0,0,0],'terrainFile'=>$path.'theTerrain.ter','squareSize'=>$step,'maxHeight'=>$maxHeight,'baseTexSize'=>1024,'castShadows'=>true,'materialTextureSet'=>$prefix.'_terrain_set']];
             $roadMaterials=[];$chunks=[];$last=null;
@@ -104,7 +111,26 @@ final class BeamMap
                 $objects[]=['class'=>'MeshRoad','name'=>'road_'.$i,'__parent'=>'MissionGroup','topMaterial'=>$mat,'bottomMaterial'=>$mat,'sideMaterial'=>$mat,'textureLength'=>12,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>$chunk['nodes']];
             }
             $put('art/roads/main.materials.json',self::json(array_combine(array_column($roadMaterials,'name'),array_values($roadMaterials))));
-            $objects[]=self::spawn($road,$profiles,false,$plan['oneway']);$objects[]=self::spawn($road,$profiles,true,$plan['oneway']);
+            $start=self::spawn($road,$profiles,false,$plan['oneway']);$end=self::spawn($road,$profiles,true,$plan['oneway']);$objects[]=$start;$objects[]=$end;
+            $archMaterials=[];
+            foreach([['start',$start,'START',[0.08,0.35,0.8,1]],['finish',$end,'FINISH',[0.15,0.18,0.23,1]]] as [$archName,$spawn,$label,$color]){
+                $best=INF;$index=0;foreach($road as $i=>$point){$d=hypot($point[0]-$spawn['position'][0],$point[1]-$spawn['position'][1]);if($d<$best){$best=$d;$index=$i;}}
+                $point=$road[$index];$span=$profiles[$index]['width_m']+4;
+                $m=$spawn['rotationMatrix'];$len=hypot($m[1],$m[4])?:1;$dx=$m[1]/$len;$dy=$m[4]/$len;
+                foreach(['arch','arch-label'] as $kind){
+                    $mat=$prefix.'_'.$archName.'_'.$kind;$file='art/shapes/'.$archName.'-'.$kind.'.dae';
+                    $archMaterials[$mat]=['class'=>'Material','name'=>$mat,'mapTo'=>$mat,'version'=>1,'Stages'=>[['diffuseColor'=>$kind==='arch'?$color:[1,1,1,1]]]];
+                    $put($file,BeamAssets::shape($mat,$kind,$span,$label));
+                    $objects[]=['class'=>'TSStatic','name'=>$archName.'_'.$kind,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>$point,'rotationMatrix'=>[$dy,$dx,0,-$dx,$dy,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>$kind==='arch'?'Visible Mesh Final':'None','decalType'=>'None'];
+                }
+            }
+            $put('art/shapes/arches.materials.json',self::json($archMaterials));
+            $segments=[];
+            foreach($road as $i=>$point){
+                $objects[]=['class'=>'BeamNGWaypoint','name'=>'sl_nav_'.$i,'__parent'=>'MissionGroup','position'=>$point,'scale'=>array_fill(0,3,$profiles[$i]['width_m']/2)];
+                if($i>0)$segments['road_'.$i]=['nodes'=>['sl_nav_'.($i-1),'sl_nav_'.$i],'drivability'=>1,'oneWay'=>$plan['oneway'],'autoLanes'=>false,'lanesLeft'=>$profiles[$i]['backward'],'lanesRight'=>$profiles[$i]['forward'],'autoJunction'=>false,'hiddenInNavi'=>false];
+            }
+            $put('map.json',self::json(['segments'=>$segments]));
             $progress('Placing regional scenery clear of the driving corridor');
             $seed=(int)hexdec(substr($id,0,7));$count=0;$sceneryMaterials=[];
             foreach(['tree'=>[0.16,0.29,0.12,1],'rock'=>[0.38,0.35,0.29,1],'building'=>[0.55,0.48,0.38,1]] as $kind=>$color) {
@@ -127,11 +153,13 @@ final class BeamMap
             $items='';foreach($objects as $object)$items.=json_encode($object,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES)."\n";
             $put('main/items.level.json',json_encode(['class'=>'SimGroup','name'=>'MissionGroup','persistentId'=>substr($id,0,8).'-'.substr($id,8,4).'-4'.substr($id,13,3).'-8'.substr($id,17,3).'-'.substr($id,20,12)],JSON_THROW_ON_ERROR)."\n");
             $put('main/MissionGroup/items.level.json',$items);
-            $put('info.json',self::json(['title'=>$plan['name'].' — SweepLine','description'=>'Generated real-scale road recreation. '.implode('; ',$plan['alternate_names']).' Target: BeamNG.drive v0.40. Scenery and missing lane attributes are estimates.','authors'=>'SweepLine; OpenStreetMap contributors; USGS; USDA','size'=>[$side,$side],'defaultSpawnPointName'=>'spawns_start','spawnPoints'=>[['translationId'=>'Start','objectname'=>'spawns_start','description'=>'Default road start'],['translationId'=>'End','objectname'=>'spawns_end','description'=>$plan['oneway']?'Near road end, facing legal traffic direction':'Road end, facing back along the road']],'previews'=>['preview.png']]));
-            $put('preview.png',BeamPng::rgb(256,256,static fn($x,$y)=>$raster->rgb((int)($x/256*$n),$n-1-(int)($y/256*$n))));
+            $put('info.json',self::json(['title'=>$plan['name'].' — SweepLine','description'=>'Generated real-scale road recreation. '.implode('; ',$plan['alternate_names']).' Target: BeamNG.drive v0.40. Scenery and missing lane attributes are estimates.','authors'=>'SweepLine; OpenStreetMap contributors; USGS; USDA','size'=>[$side,$side],'defaultSpawnPointName'=>'spawns_start','spawnPoints'=>[['translationId'=>'Start','objectname'=>'spawns_start','preview'=>'spawn-start.png','description'=>'Default road start'],['translationId'=>'End','objectname'=>'spawns_end','preview'=>'spawn-end.png','description'=>$plan['oneway']?'Near road end, facing legal traffic direction':'Road end, facing back along the road']],'previews'=>['preview.png']]));
+            $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
+            $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
+            $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
             $report=['target'=>'BeamNG.drive v0.40','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
-                'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Mapped bridges and tunnels are refused. Unmapped structures may be inaccurate.','No navigation AI/traffic graph is generated.','Requires in-game v0.40 validation.']];
+                'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Mapped bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation graph covers only the selected road; traffic behavior requires in-game validation.','Requires in-game v0.40 validation.']];
             $put('sweepline-report.json',self::json($report));
             $zip->addFromString('INSTALL.txt',"SweepLine BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." — SweepLine, then Start or End.\nStart is the default spawn. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nNo BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
             $progress('Finalizing the map ZIP');

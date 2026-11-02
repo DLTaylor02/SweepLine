@@ -3,10 +3,27 @@ declare(strict_types=1);
 namespace SweepLine;
 final class BeamAssets
 {
-    public static function shape(string $material,string $kind): string
+    public static function shape(string $material,string $kind,float $span=12,string $label='START'): string
     {
         $vertices=[];$triangles=[];
-        if($kind==='tree') {
+        $box=static function(float $x,float $y,float $z,float $w,float $d,float $h)use(&$vertices,&$triangles): void {
+            $base=count($vertices);
+            foreach([[$x,$y,$z],[$x+$w,$y,$z],[$x+$w,$y+$d,$z],[$x,$y+$d,$z],[$x,$y,$z+$h],[$x+$w,$y,$z+$h],[$x+$w,$y+$d,$z+$h],[$x,$y+$d,$z+$h]] as $v)$vertices[]=$v;
+            foreach([[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]] as $t)$triangles[]=array_map(static fn($i)=>$i+$base,$t);
+        };
+        if($kind==='arch') {
+            $box(-$span/2-0.6,-0.35,-2,0.6,0.7,9);
+            $box($span/2,-0.35,-2,0.6,0.7,9);
+            $box(-$span/2-0.6,-0.35,6, $span+1.2,0.7,1);
+        } elseif($kind==='arch-label') {
+            // Raised white bitmap lettering on both faces, generated locally.
+            $font=5;$w=imagefontwidth($font)*strlen($label);$h=imagefontheight($font);$image=imagecreatetruecolor($w,$h);
+            imagestring($image,$font,0,0,$label,imagecolorallocate($image,255,255,255));$pixel=min(0.05,($span-1)/$w);
+            for($y=0;$y<$h;$y++)for($x=0;$x<$w;$x++)if((imagecolorat($image,$x,$y)&0xffffff)!==0){
+                $box(($x-$w/2)*$pixel,-0.39,6.1+($h-1-$y)*$pixel,$pixel,0.04,$pixel);
+                $box(($w/2-1-$x)*$pixel,0.35,6.1+($h-1-$y)*$pixel,$pixel,0.04,$pixel);
+            }
+        } elseif($kind==='tree') {
             $vertices=[[0,0,10],[-3,-3,3],[3,-3,3],[3,3,3],[-3,3,3],[0,0,0]];
             $triangles=[[0,1,2],[0,2,3],[0,3,4],[0,4,1],[5,2,1],[5,3,2],[5,4,3],[5,1,4]];
         } elseif($kind==='rock') {

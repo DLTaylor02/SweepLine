@@ -51,6 +51,7 @@ final class BeamSources
         foreach(['dem'=>'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage',
                  'aerial'=>'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage'] as $kind=>$url) {
             $progress($kind==='dem'?'Downloading real USGS elevation':'Downloading NAIP aerial colors');
+            if($kind==='aerial')$common['renderingRule']=json_encode(['rasterFunction'=>'NaturalColor']);
             $params=$common+($kind==='dem'?['pixelType'=>'F32']:['pixelType'=>'U8','bandIds'=>'0,1,2']);
             $this->downloadRaster($url.'?'.http_build_query($params),$dir.'/'.$kind.'.tif',$kind==='dem'?'USGS elevation':'NAIP aerial imagery',$progress);
             $progress('Aligning '.$kind.' raster to the square map');

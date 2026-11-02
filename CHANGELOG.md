@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added generated START/FINISH arches at BeamNG spawn locations, with two-sided raised lettering, supports outside the roadway and six-meter overhead clearance. New exports bypass older cached packages.
+
+- Removed the 0.6 m terrain recess beneath exported BeamNG roads. Road tops now use a 1 cm anti-flicker clearance above the shaped corridor; added serialized-terrain clearance checks and invalidated reuse of older export ZIPs.
+
+- Added BeamNG minimap navigation, labeled SweepLine/road previews and separate Start/End thumbnails. Added PHP GD provisioning, explicit natural-color imagery and daylight settings, plus lane-centered, grade-aligned endpoint spawns. Versioned export reuse so previous ZIPs are regenerated.
+
 - BeamNG raster downloads now retry transient provider/network failures up to three times with cancellable backoff and visible source-specific progress/errors. Permanent failures are not retried; missing data is never replaced with synthetic terrain.
 
 - Fixed repeat installations rejecting SweepLine''s own cleanup cron entry. Added ownership markers, exact legacy-entry recognition and cron upgrade safety tests.

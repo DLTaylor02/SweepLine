@@ -171,8 +171,8 @@ if [[ "$DEPLOYED" != "1" ]]; then
     packages=(postgresql postgresql-contrib nginx cron curl unzip openssl rsync ca-certificates iproute2 osmium-tool gdal-bin)
     if command -v php >/dev/null 2>&1; then
         installed_php="$(php -r 'echo PHP_MAJOR_VERSION,".",PHP_MINOR_VERSION;')"
-        packages+=("php$installed_php-cli" "php$installed_php-fpm" "php$installed_php-pgsql" "php$installed_php-mbstring" "php$installed_php-xml" "php$installed_php-curl" "php$installed_php-zip")
-    else packages+=(php-cli php-fpm php-pgsql php-mbstring php-xml php-curl php-zip); fi
+        packages+=("php$installed_php-cli" "php$installed_php-fpm" "php$installed_php-pgsql" "php$installed_php-mbstring" "php$installed_php-xml" "php$installed_php-curl" "php$installed_php-zip" "php$installed_php-gd")
+    else packages+=(php-cli php-fpm php-pgsql php-mbstring php-xml php-curl php-zip php-gd); fi
     command -v composer >/dev/null 2>&1 || packages+=(composer)
     missing=()
     for package in "${packages[@]}"; do
