@@ -28,7 +28,11 @@ final class Download
         ]);
         if ($post!==null) { curl_setopt($curl,CURLOPT_POST,true); curl_setopt($curl,CURLOPT_POSTFIELDS,$post); }
         try {
-            if (!curl_exec($curl)) { throw new \RuntimeException($tooLarge?'Extract exceeds the safe download limit.':'Data provider unavailable: '.curl_error($curl)); }
+            if (!curl_exec($curl)) {
+                $http=(int)curl_getinfo($curl,CURLINFO_HTTP_CODE);
+                $transient=!$tooLarge && (in_array($http,[408,429,500,502,503,504],true) || in_array(curl_errno($curl),[CURLE_COULDNT_RESOLVE_HOST,CURLE_COULDNT_CONNECT,CURLE_OPERATION_TIMEDOUT,CURLE_RECV_ERROR,CURLE_SEND_ERROR],true));
+                throw new DownloadFailure($tooLarge?'Extract exceeds the safe download limit.':'Data provider unavailable: '.curl_error($curl),$transient);
+            }
             if (curl_getinfo($curl,CURLINFO_HTTP_CODE)!==200 || $bytes===0) { throw new \RuntimeException('Data provider returned an empty or unsuccessful response.'); }
             fclose($f); $f=null;
             if (!rename($path.'.part',$path)) { throw new \RuntimeException('Cannot finalize download.'); }

@@ -70,3 +70,18 @@ try {
     $archive->close();
 }finally{unlink($file);}
 
+
+// Provider retry tests use injected failures; no remote requests or sleeping.
+$attempts=0;$waits=0;$messages=[];
+$source=new SweepLine\BeamSources(function()use(&$attempts){if(++$attempts<3)throw new SweepLine\DownloadFailure('HTTP 504',true);});
+$source->downloadRaster('https://example.invalid','unused','USGS elevation',function($message)use(&$messages){$messages[]=$message;},function()use(&$waits){$waits++;});
+check($attempts===3 && $waits===15,'Transient raster failures retry with bounded backoff');
+check(count(array_filter($messages,fn($m)=>is_string($m)&&str_contains($m,'retrying')))===2,'Provider retry progress is visible');
+$attempts=0;
+$source=new SweepLine\BeamSources(function()use(&$attempts){$attempts++;throw new SweepLine\DownloadFailure('HTTP 404',false);});
+try{$source->downloadRaster('https://example.invalid','unused','NAIP aerial imagery',fn($m)=>null,fn()=>null);check(false,'Permanent failure rejected');}catch(RuntimeException $e){check($attempts===1 && str_contains($e->getMessage(),'NAIP aerial imagery'),'Permanent failure identifies provider without retrying');}
+$attempts=0;
+$source=new SweepLine\BeamSources(function()use(&$attempts){$attempts++;throw new SweepLine\DownloadFailure('HTTP 504',true);});
+try{$source->downloadRaster('https://example.invalid','unused','USGS elevation',fn($m)=>null,fn()=>null);check(false,'Retry exhaustion rejected');}catch(RuntimeException $e){check($attempts===3 && str_contains($e->getMessage(),'after 3 attempts'),'Raster retries terminate with actionable error');}
+$attempts=0;
+try{$source->downloadRaster('https://example.invalid','unused','USGS elevation',function($m){if($m===null)throw new SweepLine\JobCancelled('Cancelled');},fn()=>null);check(false,'Retry wait cancellation propagated');}catch(SweepLine\JobCancelled $e){check($attempts===1,'Cancellation interrupts provider backoff immediately');}

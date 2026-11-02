@@ -4,6 +4,22 @@ namespace SweepLine;
 final class BeamSources
 {
     public function __construct(private ?\Closure $download=null) {}
+    public function downloadRaster(string $url,string $path,string $label,callable $progress,?callable $sleep=null): void
+    {
+        $sleep??=static fn()=>usleep(1000000);
+        for($attempt=1;$attempt<=3;$attempt++) {
+            $progress($label.': downloading (attempt '.$attempt.'/3)');
+            try {
+                ($this->download??[Download::class,'file'])($url,$path,67108864,null,static fn($message)=>$progress($label.': '.$message));
+                return;
+            } catch(DownloadFailure $e) {
+                if(!$e->retryable || $attempt===3)throw new \RuntimeException($label.': '.$e->getMessage().($e->retryable?' after 3 attempts. Try generating again later.':''),0,$e);
+                $seconds=$attempt*5;
+                $progress($label.': provider temporarily unavailable; retrying in '.$seconds.' seconds (attempt '.($attempt+1).'/3)');
+                for($i=0;$i<$seconds;$i++){$progress(null);$sleep();}
+            }
+        }
+    }
     public static function run(array $command,callable $checkpoint,int $timeout=180): string
     {
         $pipes=[];$process=proc_open($command,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,null,null,['bypass_shell'=>true]);
@@ -36,7 +52,7 @@ final class BeamSources
                  'aerial'=>'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage'] as $kind=>$url) {
             $progress($kind==='dem'?'Downloading real USGS elevation':'Downloading NAIP aerial colors');
             $params=$common+($kind==='dem'?['pixelType'=>'F32']:['pixelType'=>'U8','bandIds'=>'0,1,2']);
-            ($this->download??[Download::class,'file'])($url.'?'.http_build_query($params),$dir.'/'.$kind.'.tif',67108864,null,static fn($message)=>$progress($message));
+            $this->downloadRaster($url.'?'.http_build_query($params),$dir.'/'.$kind.'.tif',$kind==='dem'?'USGS elevation':'NAIP aerial imagery',$progress);
             $progress('Aligning '.$kind.' raster to the square map');
             self::run(['gdalwarp','-q','-overwrite','-t_srs','EPSG:'.$plan['epsg'],'-te',...(array_map('strval',$bbox)),'-ts',(string)$n,(string)$n,'-r','bilinear','-dstnodata',$kind==='dem'?'-9999':'0',$dir.'/'.$kind.'.tif',$dir.'/'.$kind.'-aligned.tif'],static fn()=>$progress(null));
             $args=['gdal_translate','-q','-of','ENVI','-ot',$kind==='dem'?'Float32':'Byte','-co','INTERLEAVE=BSQ'];
