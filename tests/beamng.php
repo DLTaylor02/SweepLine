@@ -172,7 +172,7 @@ try{
     foreach([[17,27],[83,101],[110,40]] as [$gx,$gy]){
         $tu=($gx+0.5)/$mat['baseColorBaseTexSize'];$tv=1-($gy+0.5)/$mat['baseColorBaseTexSize'];
         $px=min($n-1,(int)floor($tu*$n));$py=min($n-1,(int)floor($tv*$n));
-        $actual=imagecolorat($aerial,$px,$py);$expected=$flatRaster->rgb($gx,$gy);
+        $actual=imagecolorat($aerial,$px,$py);$expected=BeamRaster::saturated($flatRaster->rgb($gx,$gy));
         check([($actual>>16)&255,($actual>>8)&255,$actual&255]===$expected,'Terrain shader samples the correct asymmetric aerial landmark');
     }
     check($mat['baseColorBaseTexSize']===$n && $side!==$n,'Aerial texture spans full grid even when world spacing is not one meter');
@@ -260,3 +260,28 @@ $materials=array_unique(array_column(SweepLine\BeamVegetation::CATALOG,'material
 $materialRefsValid=true;foreach($materials as $path)if(substr_count($assetsFiles['mainLevel.lua'],$path)!==1)$materialRefsValid=false;
 check($materialRefsValid,'Each used stock material library loads once despite shared variants');
 check(count(SweepLine\BeamVegetation::used($multiPlacements))===7,'Export report identifies actual stock dependencies');
+
+$taperPoints=[];$taperProfiles=[];for($i=0;$i<=20;$i++){$taperPoints[]=[$i*10,0,100];$taperProfiles[]=BeamLanes::infer(['lanes'=>$i<10?'2':'4','width'=>$i<10?'8':'15'],'secondary',0);}
+$taper=SweepLine\BeamRoadSurface::taper($taperPoints,$taperProfiles);
+check(abs($taper[0]['width_m']-8)<0.001 && abs($taper[20]['width_m']-15)<0.001,'Taper leaves pavement widths outside transition unchanged');
+check(abs($taper[10]['width_m']-11.5)<0.001 && $taper[8]['width_m']>8 && $taper[12]['width_m']<15,'Lane width tapers on both sides of mapped transition');
+check($taper[10]['transition'] && !$taper[4]['transition'],'Transition region uses simplified markings only within taper');
+check(BeamRaster::saturated([130,130,130])===[130,130,130],'Saturation preserves neutral terrain colors');
+$boosted=BeamRaster::saturated([100,140,100]);check($boosted[1]-$boosted[0]>40 && max($boosted)<=255,'Terrain saturation increases color separation without overflow');
+$spikeRaster=new BeamRaster(16,160,str_repeat(pack('g',200),256),str_repeat(chr(80),768));
+$spikeRoad=[[20,80,100],[140,80,100]];$spikeProfiles=array_fill(0,2,BeamLanes::infer(['lanes'=>'2','width'=>'8'],'secondary',0));
+$correction=SweepLine\BeamRoadSurface::clearTerrain($spikeRoad,$spikeProfiles,$spikeRaster,0,fn($m)=>null);
+check($correction['lowered_vertices']>0 && $spikeRaster->height(75,80)<100,'Overlap pass removes terrain above road between geometry nodes');
+check($spikeRaster->height(80,10)===200.0,'Overlap correction leaves distant terrain unchanged');
+$footprint=['points'=>[[480,625],[490,625],[490,635],[480,635],[480,625]],'tags'=>['building'=>'house','building:levels'=>'2']];
+$placedBuildings=SweepLine\BeamBuildings::place([$footprint],$testRoad,$testProfiles,$flatSceneryRaster);
+check(count($placedBuildings['objects'])===1 && $placedBuildings['objects'][0]['mapped'],'Mapped roadside footprint creates a building');
+$badFootprint=$footprint;$badFootprint['points']=[[480,598],[490,598],[490,608],[480,608],[480,598]];
+check(SweepLine\BeamBuildings::place([$badFootprint],$testRoad,$testProfiles,$flatSceneryRaster)['objects']===[],'Building overlapping pavement is rejected');
+$building=$placedBuildings['objects'][0];check(simplexml_load_string(SweepLine\BeamAssets::shape('test_mapped','mapped-building',12,'START',$building['points'],$building['height']),SimpleXMLElement::class,LIBXML_NONET)!==false,'Mapped building extrusion is valid COLLADA');
+$polyVegetation=false;foreach(array_keys($assetsFiles) as $path)if(preg_match('~art/shapes/(tree|bush).*\\.dae$~',$path))$polyVegetation=true;
+check(!$polyVegetation && str_contains($assetsFiles['mainLevel.lua'],'FS:fileExists(shape)'),'Vegetation packaging contains stock references and missing-asset diagnostics without generated plants');
+
+$sharedMaterials=SweepLine\BeamVegetation::materialLibraries(array_values(SweepLine\BeamVegetation::CATALOG));
+check(count(array_filter($sharedMaterials,fn($p)=>str_ends_with($p,'/trees/main.materials.json')))===4,'Every used stock map includes parent vegetation material dependencies');
+check(strpos($assetsFiles['mainLevel.lua'],'/levels/Utah/art/shapes/trees/main.materials.json')<strpos($assetsFiles['mainLevel.lua'],SweepLine\BeamVegetation::MATERIALS),'Shared vegetation materials load before species libraries');

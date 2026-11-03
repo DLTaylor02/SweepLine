@@ -45,6 +45,11 @@ final class BeamRaster
         $x=max(0,min($this->size-1,$x));$y=max(0,min($this->size-1,$y));$offset=($this->size-1-$y)*$this->size+$x;$plane=$this->size*$this->size;
         return [ord($this->colors[$offset]),ord($this->colors[$plane+$offset]),ord($this->colors[2*$plane+$offset])];
     }
+    public static function saturated(array $rgb,float $factor=1.2): array
+    {
+        $gray=0.2126*$rgb[0]+0.7152*$rgb[1]+0.0722*$rgb[2];
+        return array_map(static fn($c)=>max(0,min(255,(int)round($gray+($c-$gray)*$factor))),$rgb);
+    }
     public static function cover(array $rgb): int
     {
         [$r,$g,$b]=$rgb;

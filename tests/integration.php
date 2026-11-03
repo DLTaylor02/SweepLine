@@ -23,6 +23,15 @@ $sourceId=$data['results'][0]['id'];
 $beamPlan=SweepLine\BeamPlan::project($db,$api->exportRoad($data['results'][0]['id'],'open'),SweepLine\BeamPlan::options([]));
 check($beamPlan['epsg']===32611 && $beamPlan['points'][0][0]>100000 && $beamPlan['points'][0][0]<900000,'BeamNG native prepared projection uses numeric UTM SRID');
 check(abs(($beamPlan['bounds'][2]-$beamPlan['bounds'][0])-($beamPlan['bounds'][3]-$beamPlan['bounds'][1]))<0.001,'Database-projected BeamNG footprint remains square');
+$buildingTestDir=sys_get_temp_dir().'/sl-buildings-'.bin2hex(random_bytes(6));mkdir($buildingTestDir,0700);
+try{
+    $buildingDownload=static function($url,$file){file_put_contents($file,json_encode(['elements'=>[['type'=>'way','tags'=>['building'=>'house'],'geometry'=>[['lon'=>-119.8001,'lat'=>39.5201],['lon'=>-119.8000,'lat'=>39.5201],['lon'=>-119.8000,'lat'=>39.5202],['lon'=>-119.8001,'lat'=>39.5202],['lon'=>-119.8001,'lat'=>39.5201]]]]],JSON_THROW_ON_ERROR));};
+    $buildingResult=SweepLine\BeamBuildings::fetch($db,$beamPlan,$buildingTestDir,fn($m)=>null,$buildingDownload);
+    check(count($buildingResult['footprints'])===1 && !isset($buildingResult['warning']),'Building corridor query and footprint projection work with native PDO/PostGIS');
+    $buildingFailure=SweepLine\BeamBuildings::fetch($db,$beamPlan,$buildingTestDir,fn($m)=>null,static function(){throw new RuntimeException('Synthetic provider failure');});
+    check($buildingFailure['footprints']===[] && isset($buildingFailure['warning']),'Unavailable building provider is reported without fabricated buildings');
+}finally{if(is_file($buildingTestDir.'/buildings.json'))unlink($buildingTestDir.'/buildings.json');rmdir($buildingTestDir);}
+
 
 $clone=$db->prepare("INSERT INTO road_candidates(job_id,name,ref,highway,surface_known_paved,length_m,mandatory_stops,uncertain_controls,speed_mph,metrics,geom,geometry_key,surface_status,alternate_names)
     SELECT job_id,'Synthetic Alternate Road',ref,highway,surface_known_paved,length_m,mandatory_stops,uncertain_controls,speed_mph,metrics,geom,geometry_key,surface_status,'[]'::jsonb FROM road_candidates WHERE id=? RETURNING id");

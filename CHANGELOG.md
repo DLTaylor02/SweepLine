@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fixed incomplete stock vegetation material loading: exports now load each used map''s parent tree material library before species libraries, including leaves_strong/leaves_thin. Confirmed missing leaves_strong mappings in the local game log for the supplied affected export. Expanded stock verification to inspect each DAE material mapping rather than only checking file existence.
+
+- Restored buildings from fresh mapped OSM footprints with conservative size, slope, roadside and overlap checks; added generic footprint extrusions and provider-availability warnings.
+- Added 100-foot pavement-width tapers on both sides of lane changes, edge-only transition markings, a 20% terrain saturation boost and a bounded terrain-overlap lowering pass.
+- Added stock-vegetation asset diagnostics without procedural fallback. Close-up appearance still requires an affected ZIP/in-game investigation. Added offline tests and disposable PostGIS building-query coverage.
+
 - Expanded native BeamNG vegetation to a seven-asset stock catalog across Utah, West Coast USA, East Coast USA and Johnson Valley. Added regional/elevation-based variants, asset-aware footprints, per-export dependency reporting and deduplicated material loading. Added optional read-only installed-asset verification.
 
 - Set BeamNG level visibility to 8 km with lighter fog; replaced generated trees/bushes with references to installed Utah juniper assets via native Forest placements and stock materials. Enlarged placement footprints for those assets without redistributing game art.

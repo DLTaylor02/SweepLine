@@ -33,13 +33,14 @@ final class BeamScenery
         if($asset!==null)return BeamVegetation::CATALOG[$asset]['radius']*$scale;
         return match($kind){"tree"=>7.0,"building"=>sqrt(41),"bush"=>1.2,default=>2.0}*$scale;
     }
-    public static function place(array $road,array $profiles,BeamRaster $raster,int $seed,callable $progress,array $center=[-119,39]): array
+    public static function place(array $road,array $profiles,BeamRaster $raster,int $seed,callable $progress,array $center=[-119,39],array $reserved=[]): array
     {
         $geometry=new self($road,$profiles);$chain=[0.0];
         for($i=1;$i<count($road);$i++)$chain[]=$chain[$i-1]+hypot($road[$i][0]-$road[$i-1][0],$road[$i][1]-$road[$i-1][1]);
         $length=$chain[count($chain)-1];$target=min(12000,max(400,(int)ceil($length/1000*250)));$limit=min(200000,$target*25);
         $random=static function()use(&$seed): float {$seed=($seed*1664525+1013904223)&0xFFFFFFFF;return $seed/4294967296;};
         $out=[];$occupied=[];$types=["tree"=>0,"bush"=>0,"rock"=>0,"building"=>0];$skipped=["water"=>0,"footprint"=>0,"slope"=>0,"spacing"=>0,"bounds"=>0];
+        foreach($reserved as $building){[$x,$y]=$building['position'];$occupied[(int)floor($x/20).':'.(int)floor($y/20)][]=[$x,$y,$building['radius']];}
         for($attempt=0;$attempt<$limit && count($out)<$target;$attempt++){
             if($attempt%100===0)$progress(null);
             $distance=$random()*$length;$lo=1;$hi=count($chain)-1;
@@ -59,7 +60,7 @@ final class BeamScenery
             foreach([[$radius,0],[-$radius,0],[0,$radius],[0,-$radius]] as [$dx,$dy])$slope=max($slope,abs($raster->height($x+$dx,$y+$dy)-$h)/$radius);
             if($slope>($kind==="building"?0.15:0.7)){$skipped["slope"]++;continue;}
             $cx=(int)floor($x/20);$cy=(int)floor($y/20);$overlap=false;
-            for($ix=$cx-1;$ix<=$cx+1;$ix++)for($iy=$cy-1;$iy<=$cy+1;$iy++)foreach($occupied[$ix.":".$iy]??[] as $other)if(hypot($x-$other[0],$y-$other[1])<$radius+$other[2])$overlap=true;
+            for($ix=$cx-2;$ix<=$cx+2;$ix++)for($iy=$cy-2;$iy<=$cy+2;$iy++)foreach($occupied[$ix.":".$iy]??[] as $other)if(hypot($x-$other[0],$y-$other[1])<$radius+$other[2])$overlap=true;
             if($overlap){$skipped["spacing"]++;continue;}
             $occupied[$cx.":".$cy][]=[$x,$y,$radius];$types[$kind]++;
             $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale,"asset"=>$asset];

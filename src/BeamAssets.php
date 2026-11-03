@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace SweepLine;
 final class BeamAssets
 {
-    public static function shape(string $material,string $kind,float $span=12,string $label='START'): string
+    public static function shape(string $material,string $kind,float $span=12,string $label='START',array $footprint=[],float $height=6): string
     {
         $vertices=[];$triangles=[];
         $box=static function(float $x,float $y,float $z,float $w,float $d,float $h)use(&$vertices,&$triangles): void {
@@ -11,7 +11,12 @@ final class BeamAssets
             foreach([[$x,$y,$z],[$x+$w,$y,$z],[$x+$w,$y+$d,$z],[$x,$y+$d,$z],[$x,$y,$z+$h],[$x+$w,$y,$z+$h],[$x+$w,$y+$d,$z+$h],[$x,$y+$d,$z+$h]] as $v)$vertices[]=$v;
             foreach([[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]] as $t)$triangles[]=array_map(static fn($i)=>$i+$base,$t);
         };
-        if($kind==='bridge-pier') {
+        if($kind==='mapped-building') {
+            $area=0.0;foreach($footprint as $i=>$p){$next=$footprint[($i+1)%count($footprint)];$area+=$p[0]*$next[1]-$next[0]*$p[1];}if($area<0)$footprint=array_reverse($footprint);
+            $n=count($footprint);foreach([0,$height] as $z)foreach($footprint as $p)$vertices[]=[$p[0],$p[1],$z];
+            for($i=1;$i<$n-1;$i++){$triangles[]=[0,$i+1,$i];$triangles[]=[$n,$n+$i,$n+$i+1];}
+            for($i=0;$i<$n;$i++){$j=($i+1)%$n;$triangles[]=[$i,$j,$n+$j];$triangles[]=[$i,$n+$j,$n+$i];}
+        } elseif($kind==='bridge-pier') {
             $box(-0.5,-0.5,0,1,1,1);
         } elseif($kind==='arch') {
             $box(-$span/2-0.6,-0.35,-2,0.6,0.7,9);

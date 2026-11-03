@@ -27,9 +27,18 @@ final class BeamVegetation
     {
         $used=[];foreach($placements as $p){$id=$p["asset"]??match($p["kind"]){"tree"=>"juniper_tree","bush"=>"juniper_bush",default=>null};if($id!==null)$used[$id]=self::CATALOG[$id];}return $used;
     }
+    public static function materialLibraries(array $assets): array
+    {
+        $paths=[];
+        // Shared parent materials include leaves_strong/leaves_thin, which are
+        // referenced by stock shapes but absent from species-specific libraries.
+        foreach($assets as $asset)$paths['/levels/'.$asset['map'].'/art/shapes/trees/main.materials.json']=true;
+        foreach($assets as $asset)$paths[$asset['materials']]=true;
+        return array_keys($paths);
+    }
     public static function write(array $placements,string $prefix,float $origin,callable $put): int
     {
-        $definitions=[];$count=0;$used=self::used($placements);$materials=[];
+        $definitions=[];$count=0;$used=self::used($placements);$materials=array_fill_keys(self::materialLibraries($used),true);
         foreach($used as $id=>$asset){
             $type=$prefix."_".$id;$materials[$asset["materials"]]=true;
             $definitions[$type]=["name"=>$type,"internalName"=>$type,"class"=>"TSForestItemData","shapeFile"=>$asset["shape"],"windScale"=>0.4];$lines="";
@@ -40,7 +49,8 @@ final class BeamVegetation
         }
         $put("art/forest/managedItemData.json",json_encode((object)$definitions,JSON_THROW_ON_ERROR|JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));
         $paths=implode(",\n",array_map(static fn($s)=>json_encode($s,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES),array_keys($materials)));
-        $put("mainLevel.lua","local M = {}\nfunction M.onClientPreStartMission()\n  local sources = {".$paths."}\n  for _, materials in ipairs(sources) do\n    if FS:fileExists(materials) then\n      loadJsonMaterialsFile(materials)\n    else\n      log(\"E\", \"SweepLine\", \"Stock vegetation materials are missing: \" .. materials)\n    end\n  end\nend\nreturn M\n");
+        $shapes=implode(",\n",array_map(static fn($asset)=>json_encode($asset["shape"],JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES),array_values($used)));
+        $put("mainLevel.lua","local M = {}\nfunction M.onClientPreStartMission()\n  local sources = {".$paths."}\n  local shapes = {".$shapes."}\n  local missing = false\n  for _, materials in ipairs(sources) do\n    if FS:fileExists(materials) then loadJsonMaterialsFile(materials) else missing = true; log(\"E\", \"SweepLine\", \"Missing stock materials: \" .. materials) end\n  end\n  for _, shape in ipairs(shapes) do\n    if not FS:fileExists(shape) then missing = true; log(\"E\", \"SweepLine\", \"Missing stock vegetation: \" .. shape) end\n  end\n  if missing then guihooks.trigger(\"toastrMsg\", {type=\"error\", title=\"SweepLine vegetation\", msg=\"Required stock meshes or materials are missing. Check the game log and export report.\"}) end\nend\nreturn M\n");
         return $count;
     }
 }
