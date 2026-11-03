@@ -43,24 +43,44 @@ final class BeamRoadSurface
             'inner_margin_m'=>$inner,'blend_width_m'=>$blend,'changed_vertices'=>$count,'maximum_height_change_m'=>$maxChange];
     }
 
-    /** Lower all vertices of any terrain cell touched by a sampled road ribbon. */
+    /** Correct interpolated road contact heights without flattening graded cells. */
     public static function clearTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,callable $progress,string $protected=""): array
     {
-        $step=$raster->side/$raster->size;$targets=[];$checks=0;
-        for($i=1;$i<count($road);$i++){$a=$road[$i-1];$b=$road[$i];$len=hypot($b[0]-$a[0],$b[1]-$a[1]);if($len<0.001)continue;
+        $step=$raster->side/$raster->size;$checked=[];$lowered=[];$cut=0.0;$checks=0;
+        for($i=1;$i<count($road);$i++){
+            $a=$road[$i-1];$b=$road[$i];$len=hypot($b[0]-$a[0],$b[1]-$a[1]);if($len<0.001)continue;
             $steps=max(1,(int)ceil($len/min(1.0,$step/2)));
-            for($j=0;$j<=$steps;$j++){$t=$j/$steps;$x=$a[0]+$t*($b[0]-$a[0]);$y=$a[1]+$t*($b[1]-$a[1]);$z=$a[2]+$t*($b[2]-$a[2]);$half=($profiles[$i-1]["width_m"]*(1-$t)+$profiles[$i]["width_m"]*$t)/2+0.25;
-                $across=max(1,(int)ceil(2*$half/min(1.0,$step/2)));
-                for($k=0;$k<=$across;$k++){$offset=-$half+2*$half*$k/$across;$gx=($x+($b[1]-$a[1])/$len*$offset)/$step;$gy=($y-($b[0]-$a[0])/$len*$offset)/$step;
-                    $cx=(int)floor($gx);$cy=(int)floor($gy);$target=$z+$origin-0.05;
-                    for($yy=$cy;$yy<=$cy+1;$yy++)for($xx=$cx;$xx<=$cx+1;$xx++)if($xx>=0&&$yy>=0&&$xx<$raster->size&&$yy<$raster->size){$key=$yy*$raster->size+$xx;if(($protected[$key]??"\0")==="\0")$targets[$key]=min($targets[$key]??INF,$target);}
+            for($j=0;$j<=$steps;$j++){
+                $t=$j/$steps;$x=$a[0]+$t*($b[0]-$a[0]);$y=$a[1]+$t*($b[1]-$a[1]);$z=$a[2]+$t*($b[2]-$a[2]);
+                $half=($profiles[$i-1]["width_m"]*(1-$t)+$profiles[$i]["width_m"]*$t)/2+0.25;$across=max(1,(int)ceil(2*$half/min(1.0,$step/2)));
+                for($k=0;$k<=$across;$k++){
+                    $offset=-$half+2*$half*$k/$across;$gx=($x+($b[1]-$a[1])/$len*$offset)/$step;$gy=($y-($b[0]-$a[0])/$len*$offset)/$step;
+                    $cx=(int)floor($gx);$cy=(int)floor($gy);
+                    if($cx<0||$cy<0||$cx+1>=$raster->size||$cy+1>=$raster->size)continue;
+                    $ids=[$cy*$raster->size+$cx,$cy*$raster->size+$cx+1,($cy+1)*$raster->size+$cx,($cy+1)*$raster->size+$cx+1];
+                    foreach($ids as $id)if(($protected[$id]??"\0")!=="\0")continue 2;
+                    $u=$gx-$cx;$v=$gy-$cy;
+                    // Check both possible native terrain triangle diagonals, plus bilinear sampling.
+                    $weights=[[(1-$u)*(1-$v),$u*(1-$v),(1-$u)*$v,$u*$v],
+                        $u+$v<=1?[1-$u-$v,$u,$v,0]:[0,1-$v,1-$u,$u+$v-1],
+                        $u>=$v?[1-$u,$u-$v,0,$v]:[1-$v,0,$v-$u,$u]];
+                    foreach($weights as $w){
+                        $height=0.0;$norm=0.0;
+                        foreach($ids as $n=>$id){$height+=$raster->cell($id%$raster->size,intdiv($id,$raster->size))*$w[$n];$norm+=$w[$n]*$w[$n];$checked[$id]=true;}
+                        $excess=$height-($z+$origin-0.05);
+                        if($excess<=0.0001)continue;
+                        foreach($ids as $n=>$id)if($w[$n]>0){
+                            $xx=$id%$raster->size;$yy=intdiv($id,$raster->size);$delta=$excess*$w[$n]/$norm;
+                            $raster->put($xx,$yy,$raster->cell($xx,$yy)-$delta);
+                            $lowered[$id]=($lowered[$id]??0)+$delta;$cut=max($cut,$lowered[$id]);
+                        }
+                    }
                 }
                 if(++$checks%100===0)$progress(null);
-                if(count($targets)>1500000)throw new \RuntimeException("Road terrain-overlap check exceeds the safe cell limit.");
+                if(count($checked)>1500000)throw new \RuntimeException("Road terrain-overlap check exceeds the safe cell limit.");
             }
         }
-        $lowered=0;$cut=0.0;$processed=0;
-        foreach($targets as $key=>$target){$x=$key%$raster->size;$y=intdiv($key,$raster->size);$before=$raster->cell($x,$y);if($before>$target){$raster->put($x,$y,$target);$lowered++;$cut=max($cut,$before-$target);}if(++$processed%1000===0)$progress(null);}
-        return ["checked_vertices"=>count($targets),"lowered_vertices"=>$lowered,"maximum_cut_m"=>$cut,"clearance_m"=>0.05];
+        return ["checked_vertices"=>count($checked),"lowered_vertices"=>count($lowered),"maximum_cut_m"=>$cut,"clearance_m"=>0.05,
+            "method"=>"Interpolated contact correction; preserve graded terrain cells"];
     }
 }

@@ -447,3 +447,13 @@ $downRoad=array_map(static fn($p)=>[$p[0],$p[1],8],$blendRoad);
 SweepLine\BeamRoadSurface::blendTerrain($downRoad,$blendProfiles,$downRaster,0,str_repeat("\0",4096),fn($m)=>null);
 check(abs($downRaster->cell(30,30)-7.95)<0.0001&&$downRaster->cell(30,38)>7.95,'Native terrain can lower uphill ground with the same gradual transition');
 check(str_contains($blendResult['method'],'Native terrain only')&&$blendResult['blend_width_m']>=6,'Export reports the native terrain approach and transition width');
+
+$gradeSize=32;$gradeStep=3.5207388128021364;$gradeHeights='';
+for($y=0;$y<$gradeSize;$y++)for($x=0;$x<$gradeSize;$x++)$gradeHeights.=pack('g',100+0.1*$x*$gradeStep+0.2);
+$gradeRaster=new BeamRaster($gradeSize,$gradeSize*$gradeStep,$gradeHeights,str_repeat(chr(100),$gradeSize*$gradeSize*3));
+$gradeRoad=[[4*$gradeStep,16.25*$gradeStep,100+0.4*$gradeStep+0.25],[28*$gradeStep,16.25*$gradeStep,100+2.8*$gradeStep+0.25]];
+$gradeProfiles=array_fill(0,2,['width_m'=>8]);$beforeGrade=$gradeRaster->heights;
+$gradeCorrection=SweepLine\BeamRoadSurface::clearTerrain($gradeRoad,$gradeProfiles,$gradeRaster,0,fn($m)=>null);
+check($gradeRaster->heights===$beforeGrade&&$gradeCorrection['lowered_vertices']===0,'Clipping pass preserves a correctly graded shoulder instead of lowering each cell to its lowest road sample');
+$gap=100+0.1*(10.6*$gradeStep)+0.25-$gradeRaster->height(10.6*$gradeStep,16.25*$gradeStep+4);
+check(abs($gap-0.05)<0.001,'Five-centimeter road-edge clearance survives clipping on a ten-percent grade at real export grid spacing');
