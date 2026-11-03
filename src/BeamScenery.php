@@ -30,7 +30,7 @@ final class BeamScenery
     }
     public static function radius(string $kind,float $scale): float
     {
-        return match($kind){"tree"=>sqrt(18),"building"=>sqrt(41),"bush"=>sqrt(2),default=>2.0}*$scale;
+        return match($kind){"tree"=>7.0,"building"=>sqrt(41),"bush"=>1.2,default=>2.0}*$scale;
     }
     public static function place(array $road,array $profiles,BeamRaster $raster,int $seed,callable $progress): array
     {
@@ -49,7 +49,7 @@ final class BeamScenery
             if($x<0||$y<0||$x>=$raster->side||$y>=$raster->side){$skipped["bounds"]++;continue;}
             $cover=BeamRaster::cover($raster->rgb((int)($x/$raster->side*$raster->size),(int)($y/$raster->side*$raster->size)));
             if($cover===4){$skipped["water"]++;continue;}
-            $pick=$random();$kind=$cover===0?($pick<0.7?"tree":"bush"):($cover===3&&$pick<0.6?"building":($pick<0.65?"bush":"rock"));
+            $pick=$random();$kind=$cover===0?($pick<0.7?"tree":"bush"):($pick<0.65?"bush":"rock");
             $scale=0.7+$random()*0.6;$radius=self::radius($kind,$scale);
             if(!$geometry->allows($x,$y,$radius)){$skipped["footprint"]++;continue;}
             if($x<$radius||$y<$radius||$x+$radius>=$raster->side||$y+$radius>=$raster->side){$skipped["bounds"]++;continue;}
@@ -62,6 +62,6 @@ final class BeamScenery
             $occupied[$cx.":".$cy][]=[$x,$y,$radius];$types[$kind]++;
             $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale];
         }
-        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200];
+        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
     }
 }

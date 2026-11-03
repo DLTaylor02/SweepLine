@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Set BeamNG level visibility to 8 km with lighter fog; replaced generated trees/bushes with references to installed Utah juniper assets via native Forest placements and stock materials. Enlarged placement footprints for those assets without redistributing game art.
+- Reduced road-to-terrain recess from 60 cm to 30 cm while retaining 1024 elevation sampling and corridor shaping. Disabled false-positive buildings inferred solely from gray aerial colors; mapped footprint support is still pending.
+
 - Concentrated BeamNG scenery within 200 feet of road edges, using full object footprints to avoid pavement and nearby road sections without a broad exclusion zone. Added bushes, a bounded road-length density budget, object spacing checks and per-type/rejection reporting.
 
 - Added bounded simple-bridge BeamNG exports with approach-derived estimated decks, protected under-bridge terrain, generic piers and collision guardrails, and visible approximation warnings. Structure rejection now checks actual selected-road overlap; tunnels and unsupported bridges retain specific rejection reasons. Added overlap and synthetic-valley package tests.

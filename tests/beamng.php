@@ -50,6 +50,20 @@ try {
     $objects=array_map(static fn($line)=>json_decode($line,true,512,JSON_THROW_ON_ERROR),explode("\n",trim($archive->getFromName($base.'main/MissionGroup/items.level.json'))));
     $spawns=array_values(array_filter($objects,static fn($o)=>$o['class']==='SpawnSphere'));
     check(count($spawns)===2 && $spawns[0]['position']!==$spawns[1]['position'],'Endpoint spawn objects are distinct');
+    $levelInfo=array_values(array_filter($objects,fn($o)=>$o['class']==='LevelInfo'))[0];
+    check($levelInfo['visibleDistance']===8000 && $levelInfo['fogDensity']<0.0001,'Generated level explicitly sets long draw distance and light fog');
+    check(count(array_filter($objects,fn($o)=>$o['class']==='Forest'))===1,'Stock vegetation uses native Forest rendering');
+    $forestDefs=json_decode($archive->getFromName($base.'art/forest/managedItemData.json'),true);
+    $forestCount=0;
+    foreach($forestDefs as $type=>$definition){
+        check(in_array($definition['shapeFile'],SweepLine\BeamVegetation::SHAPES,true)&&$definition['class']==='TSForestItemData','Forest references verified stock Utah mesh path');
+        $forestLines=trim($archive->getFromName($base.'forest/'.$type.'.forest4.json'));
+        if($forestLines!=='')foreach(explode("\n",$forestLines) as $line){$instance=json_decode($line,true,512,JSON_THROW_ON_ERROR);if($instance['type']!==$type)throw new RuntimeException('Forest type mismatch');$forestCount++;}
+        check($archive->locateName(ltrim($definition['shapeFile'],'/'))===false,'Stock mesh is referenced without redistributing game assets');
+    }
+    check($forestCount===$report['scenery_placement']['counts']['tree']+$report['scenery_placement']['counts']['bush'],'All vegetation placements are serialized into native forest files');
+    check(str_contains($archive->getFromName($base.'mainLevel.lua'),SweepLine\BeamVegetation::MATERIALS),'Map pre-start hook loads installed vegetation material definitions');
+
     $roads=array_values(array_filter($objects,static fn($o)=>$o['class']==='MeshRoad'));
     check(count($roads)>=2,'Lane changes create correctly textured road sections');
     $arches=array_values(array_filter($objects,fn($o)=>in_array($o['name']??'',['start_arch','finish_arch'],true)));
@@ -149,7 +163,7 @@ try{
         $ground=unpack('v',substr($binary,5+($y*$n+$x)*2,2))[1]/65536*$terrainObject['maxHeight'];
         $gap=$point[2]-$ground;$maxGap=max($maxGap,$gap);$minGap=min($minGap,$gap);
     }
-    check($minGap>=0 && $minGap>0.59 && $maxGap<0.61,'Original 60 cm terrain recess beneath road is restored');
+    check($minGap>=0 && $minGap>0.29 && $maxGap<0.31,'Terrain recess is reduced to 30 cm without changing elevation sampling');
     check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.25)<0.001,'Original road surface offset is 25 cm above sampled elevation');
     $mats=json_decode($flatZip->getFromName($flatBase.'art/terrains/main.materials.json'),true);
     $aerial=imagecreatefromstring($flatZip->getFromName($flatBase.'art/terrains/aerial.color.png'));
@@ -227,3 +241,8 @@ check(count($placements['objects'])>100 && $allAllowed,'Generated vegetation sta
 check($placements['counts']['tree']>0 && $placements['counts']['bush']>0,'Vegetated corridor includes trees and bushes');
 check(array_sum($placements['counts'])===count($placements['objects']) && $sceneryCheckpoints>0,'Scenery reports category counts and checks cancellation during placement');
 check(simplexml_load_string(SweepLine\BeamAssets::shape('test_bush','bush'),SimpleXMLElement::class,LIBXML_NONET)!==false,'Generated bush asset is valid COLLADA');
+
+$grayRaster=new BeamRaster($n,$side,str_repeat(pack('g',100),$n*$n),str_repeat(chr(170),3*$n*$n));
+$grayPlacement=SweepLine\BeamScenery::place($testRoad,$testProfiles,$grayRaster,6789,fn($m)=>null);
+check($grayPlacement['counts']['building']===0,'Gray rock or pavement never produces guessed buildings');
+check(SweepLine\BeamScenery::radius('tree',1)>=7 && SweepLine\BeamScenery::radius('bush',1)>=1.1,'Road clearance accounts for stock vegetation mesh footprints');
