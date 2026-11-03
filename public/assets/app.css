@@ -49,3 +49,24 @@
 #road-detail button.primary-road-name{float:none;background:transparent;padding:0;color:var(--ink);font:inherit;text-align:left}#road-detail .road-name-picker{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}#road-detail button.road-name-choice{float:none;padding:7px 10px;font-size:12px;color:var(--ink);border:1px solid var(--line)}#road-detail button.road-name-choice[aria-pressed=true]{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 .road-exports .beam-status{order:3}
+
+/* Compact selected-road card; camera padding reserves its occupied map area. */
+#road-detail{top:60px;right:16px;left:auto;bottom:auto;width:350px;max-width:calc(100% - 32px);max-height:calc(100% - 115px);padding:14px;border-radius:10px}
+#road-detail h2{font-size:17px;line-height:1.4;margin:0 54px 8px 0}
+#road-detail .road-detail-close{position:absolute;right:10px;top:12px;font-size:11px;padding:6px 8px;float:none}
+#road-detail p{font-size:11px;line-height:1.45;margin:6px 0}
+#road-detail .road-name-picker{gap:4px;margin:4px 0 8px}
+#road-detail .road-name-picker:empty,#road-detail .road-feedback:empty{display:none}
+#road-detail button.road-name-choice{padding:4px 7px;font-size:11px}
+#road-detail .road-direction{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+#road-detail .road-direction button{float:none;margin:0;padding:7px 9px!important;font-size:12px;min-height:32px}
+#road-detail .road-exports{gap:5px;margin:8px 0}
+#road-detail .road-exports a{padding:7px 9px;font-size:12px;min-height:32px}
+#road-detail .beam-status{padding:7px 9px;font-size:11px}
+#road-detail .road-breakdown{border-top:1px solid var(--line);padding-top:9px;margin-top:10px}
+#road-detail .road-breakdown summary{font-size:12px;padding:0}
+#road-detail .road-breakdown[open] summary{padding-bottom:8px}
+#road-detail .road-dimensions{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+#road-detail .dimension{gap:8px;font-size:10px;padding:5px 0;align-items:center}
+#road-detail .dimension strong{white-space:nowrap}
+#road-detail.road-detail-bottom{top:auto;bottom:36px;left:12px;right:12px;width:auto;max-width:none;max-height:45%;padding:10px 12px}

@@ -191,21 +191,43 @@ function drawRoadEndpoints(road,orientation){
     roadEndpointMarkers.push(new window.maplibregl.Marker({element:pin,anchor:'bottom'}).setLngLat(coordinate).addTo(map));
   }
 }
+
+function roadViewportPadding(width,height,panelWidth,panelHeight,bottom){
+  return bottom
+    ? {top:45,bottom:Math.min(Math.ceil(panelHeight)+36,Math.max(45,height-100)),left:30,right:30}
+    : {top:65,bottom:65,left:40,right:Math.min(Math.ceil(panelWidth)+40,Math.max(40,width-120))};
+}
+function fitSelectedRoad(){
+  const detail=$('road-detail'),container=$('map');
+  if(!map||detail.hidden||!roadEndpointSelection||!container.getBoundingClientRect)return;
+  const area=container.getBoundingClientRect();if(!area.width||!area.height)return;
+  const bottom=area.width<700;detail.classList.toggle('road-detail-bottom',bottom);
+  const panel=detail.getBoundingClientRect();
+  map.fitBounds(bounds(roadEndpointSelection.road.geometry.coordinates),{padding:roadViewportPadding(area.width,area.height,panel.width,panel.height,bottom),maxZoom:13,duration:350,retainPadding:false});
+}
+let roadFitTimer;
+function scheduleRoadFit(){clearTimeout(roadFitTimer);roadFitTimer=setTimeout(fitSelectedRoad,80);}
+if(window.ResizeObserver&&road-detail&&map){
+  const observer=new window.ResizeObserver(scheduleRoadFit);
+  observer.observe($('road-detail'));observer.observe($('map'));
+}
+window.addEventListener('resize',scheduleRoadFit);
+
 async function selectRoad(id) {
   window.sweeplineBeamStop?.();
   selected=id;clearRoadEndpoints();
   document.querySelectorAll('.road').forEach(e=>e.classList.toggle('selected',Number(e.dataset.id)===id));
   const road=roads.find(r=>r.id===id); if (!road) return;
-  if(map && map.getLayer('selected')) { map.setFilter('selected',['==',['get','id'],id]); map.fitBounds(bounds(road.geometry.coordinates),{padding:65,maxZoom:13}); }
+  if(map && map.getLayer('selected')) { map.setFilter('selected',['==',['get','id'],id]); scheduleRoadFit(); }
   drawRoadEndpoints(road,savedRoadDirection(road));
   const detail=$('road-detail'); detail.replaceChildren(); detail.hidden=false;
-  const close=text('button','Close');close.onclick=()=>{detail.hidden=true;clearRoadEndpoints();window.sweeplineBeamStop?.();};
+  const close=text('button','Close','road-detail-close');close.onclick=()=>{detail.hidden=true;clearRoadEndpoints();window.sweeplineBeamStop?.();};
   detail.append(close,text('h2',road.name),text('p','Loading score breakdown…'));
   try {
     const data=road._snapshot?road:await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}${memberQuery(road)}`);
     if(selected!==id) return;
     detail.replaceChildren(close,text('h2',`${data.name} · ${data.score}/100`));
-    if(alternateLabel(data))detail.append(text('p',alternateLabel(data),'road-aliases'));
+
     const nameChoices=[...new Set([data.name,...(data.alternate_names||[])])];
     const nameKey=roadDirectionKey(data)+':name';
     if(nameChoices.includes(data.preferred_name))data.name=data.preferred_name;
@@ -229,18 +251,19 @@ async function selectRoad(id) {
       } catch(e){favoriteStatus.textContent=e.message;}
       finally {heart.disabled=false;}
     };
-    detail.append(heart,favoriteStatus);
+    favoriteStatus.className='road-feedback';
     let orientation=savedRoadDirection(data);
     const direction=text('div','','road-direction');
-    const swap=text('button','Swap Start / Finish');swap.type='button';swap.className='road-direction-swap';
+    const swap=text('button','Swap ends');swap.type='button';swap.className='road-direction-swap';
     const directionStatus=text('p','');directionStatus.setAttribute('role','status');
-    direction.append(swap,directionStatus);
+    swap.title='Swap Start and Finish for favorites and exports';direction.append(heart,swap);
     const exports=text('div','','road-exports');
     const paintExports=()=>{
       drawRoadEndpoints(data,orientation);exports.replaceChildren();
       swap.setAttribute('aria-pressed',String(orientation==='reverse'));
       directionStatus.textContent=orientation==='reverse'&&(Number(data.travel_direction)||0)!==0?'Selected orientation opposes mapped one-way travel. Verify signs and access before driving.':'Start and Finish pins show the direction used by all exports.';
-      for(const [format,label] of [['gpx','GPX'],['kmz','KMZ'],['pdf','Printable PDF']]){
+      directionStatus.hidden=!(orientation==='reverse'&&(Number(data.travel_direction)||0)!==0);
+      for(const [format,label] of [['gpx','GPX'],['kmz','KMZ'],['pdf','PDF']]){
         const link=text('a',label);const query='&orientation='+orientation+'&preferred_name='+encodeURIComponent(data.name);
         link.href=road._snapshot?`/api/favorites/${data.favorite_id}/export?format=${format}${query}`:`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}${memberQuery(data)}${query}`;
         if(format==='pdf'){link.target='_blank';link.rel='noopener';link.setAttribute('aria-label','Preview PDF in a new tab');link.onclick=markPdfPreview;}else link.setAttribute('download','');
@@ -260,17 +283,19 @@ async function selectRoad(id) {
       data.alternate_names=nameChoices.filter(name=>name!==data.name);namePicker.replaceChildren();
       const title=detail.children[1];title.replaceChildren();const primary=text('button',data.name,'primary-road-name');primary.type='button';primary.setAttribute('aria-pressed','true');primary.onclick=()=>chooseName(data.name);title.append(primary,text('span',` · ${data.score}/100`));
       const alias=Array.from(detail.children).find(n=>n.className==='road-aliases');if(alias)alias.textContent=alternateLabel(data);
-      for(const name of nameChoices){const choice=text('button',name,'road-name-choice');choice.type='button';choice.setAttribute('aria-pressed',String(name===data.name));choice.onclick=()=>chooseName(name);namePicker.append(choice);}
+      for(const name of nameChoices.filter(name=>name!==data.name)){const choice=text('button',name,'road-name-choice');choice.type='button';choice.setAttribute('aria-pressed',String(name===data.name));choice.onclick=()=>chooseName(name);namePicker.append(choice);}
     };
     const chooseName=name=>{
       data.name=name;try{window.sessionStorage?.setItem(nameKey,name);}catch(_){}
       road.name=name;road.alternate_names=nameChoices.filter(n=>n!==name);paintNames();paintExports();render();savePreferences();
     };
     swap.onclick=()=>{orientation=orientation==='forward'?'reverse':'forward';try{window.sessionStorage?.setItem(roadDirectionKey(data),orientation);}catch(_){}paintExports();savePreferences();};
-    detail.append(direction,exports,text('p','Export this road track or a PDF roadbook in the selected direction. No navigation to the start is included.'));
+    detail.append(direction,favoriteStatus,directionStatus,exports);
     paintNames();paintExports();
-    Object.entries(data.dimensions).forEach(([key,value])=>{const row=text('div','','dimension');row.append(text('span',key),text('strong',`${Math.round(value*100)}/100`));detail.append(row);});
-    detail.append(text('p','Elevation unavailable. Score dimensions are weighted for the selected profile. Completeness measures mapped attributes, not certainty that every control is present.'));
+    const breakdown=text('details','','road-breakdown');breakdown.append(text('summary','Score breakdown & details'));const metrics=text('div','','road-dimensions');breakdown.append(metrics);
+    Object.entries(data.dimensions).forEach(([key,value])=>{const row=text('div','','dimension');row.append(text('span',key),text('strong',`${Math.round(value*100)}/100`));metrics.append(row);});
+    breakdown.append(text('p','Elevation unavailable. Score dimensions are weighted for the selected profile. Completeness measures mapped attributes, not certainty that every control is present.'));
+    breakdown.append(text('p','Exports follow the selected direction; no navigation to the start is included.'));detail.append(breakdown);scheduleRoadFit();
   } catch(e) { if(selected===id) detail.append(text('p',e.message)); }
 }
 
@@ -362,7 +387,7 @@ async function openFavorite(id) {
       map.getSource('roads').setData({type:'FeatureCollection',features:[{type:'Feature',geometry:road.geometry,properties:{id:road.id,score:road.score}}]});
       map.getSource('radius').setData(empty());
       map.setFilter('selected',['==',['get','id'],road.id]);
-      map.fitBounds(bounds(road.geometry.coordinates),{padding:65,maxZoom:13});
+      scheduleRoadFit();
     });
   } catch(e){if(sequence===request)setStatus(e.message);}
 }

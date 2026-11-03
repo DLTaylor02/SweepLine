@@ -107,13 +107,23 @@ async function testFrontend(sources) {
   check(get('search-progress').value===1,'Progress advances with completed areas');
   check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).min_curve_density_score===4.5,'User-defined fractional density is submitted');
   get('results').children[0].onclick();await flush();
-  check(get('road-detail').children.some(n=>n.textContent==='Also known as: Other Road Name'),'Road details display alternate names');
+  check(get('road-detail').children.find(n=>n.className==='road-name-picker').children.some(n=>n.textContent==='Other Road Name'),'Road details display clickable alternate names without duplicate text');
+
+  const paddingSource=sources['app.js'].match(/function roadViewportPadding\([\s\S]*?\n\}/)[0];
+  const padding=new Function(paddingSource+';return roadViewportPadding;')();
+  const desktopPadding=padding(1100,700,350,250,false);
+  check(desktopPadding.right>=390&&1100-desktopPadding.left-desktopPadding.right>=600,'Desktop camera reserves the road card width and leaves map space');
+  const mobilePadding=padding(390,400,366,180,true);
+  check(mobilePadding.bottom>=216&&400-mobilePadding.top-mobilePadding.bottom>=100,'Narrow camera reserves the bottom card and endpoint clearance');
+  const scoreDetails=get('road-detail').children.find(n=>n.className==='road-breakdown');
+  check(scoreDetails&&scoreDetails.children[0].textContent.includes('Score breakdown')&&!scoreDetails.open,'Score details are expandable and collapsed initially');
+
   const exportLinks=get('road-detail').children.find(node=>node.className==='road-exports').children;
-  check(exportLinks.length===3&&exportLinks[2].textContent==='Printable PDF','Selected road offers GPX, KMZ and PDF exports');
+  check(exportLinks.length===3&&exportLinks[2].textContent==='PDF','Selected road offers GPX, KMZ and PDF exports');
   check(exportLinks[2].target==='_blank'&&exportLinks[2].rel==='noopener'&&!('download' in exportLinks[2]),'PDF opens a new preview tab without a forced download');
   check('download' in exportLinks[0]&&'download' in exportLinks[1],'GPX and KMZ remain downloads');
   check(exportLinks[0].href==='/api/roads/1/export?format=gpx&profile=twisty&orientation=forward&preferred_name=Test%20road','Export targets selected road and active profile');
-  const swapDirection=get('road-detail').children.find(n=>n.className==='road-direction').children[0];
+  const swapDirection=get('road-detail').children.find(n=>n.className==='road-direction').children.find(n=>n.className==='road-direction-swap');
   swapDirection.onclick();
   check(get('road-detail').children.find(n=>n.className==='road-exports').children.every(n=>n.href.includes('orientation=reverse')),'Swapping endpoints updates all export formats');
   check(swapDirection['aria-pressed']==='true','Swap direction exposes accessible selected state');
@@ -123,7 +133,7 @@ async function testFrontend(sources) {
   check(get('road-detail').children[1].children[0].textContent==='Other Road Name','Clicking alias changes displayed primary name');
   check(get('road-detail').children.find(n=>n.className==='road-exports').children.every(n=>n.href.includes('preferred_name=Other%20Road%20Name')),'Selected alias propagates to each export link');
   nameChoices.children.find(n=>n.textContent==='Test road').onclick();
-  const heart=get('road-detail').children.find(node=>node.className==='favorite-heart');
+  const heart=get('road-detail').children.find(node=>node.className==='road-direction').children.find(node=>node.className==='favorite-heart');
   await heart.onclick();await flush();
   check(heart['aria-pressed']==='true'&&heart.textContent.includes('Favorited'),'Heart saves selected road');
   const favoriteRequest=requests.find(r=>r.path==='/api/favorites'&&r.method==='POST');
@@ -357,7 +367,7 @@ async function testFrontend(sources) {
   check(compositeRequested.includes('members=11%2C12'),'Composite details retain complete member geometry');
   const compositeExports=get('road-detail').children.find(n=>n.className==='road-exports').children;
   check(compositeExports.every(n=>n.href.includes('members=11%2C12')),'All composite exports carry the same selected member IDs');
-  await get('road-detail').children.find(n=>n.className==='favorite-heart').onclick();
+  await get('road-detail').children.find(n=>n.className==='road-direction').children.find(n=>n.className==='favorite-heart').onclick();
   check(compositeSaved.member_ids.join(',')==='11,12','Favoriting preserves complete consolidated road');
   logged=true;mustChange=true;
   const forcedWindow={...window,location:{pathname:'/',replace:p=>redirectTarget=p}};

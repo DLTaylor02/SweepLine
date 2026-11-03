@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Compact the selected-road card with inline Favorite/Swap controls, smaller export buttons, nonduplicated alternate names and expandable score details. Frame selected roads beside the measured card (above it on narrow maps), including Favorites and panel/viewport size changes.
+
 - Reduced BeamNG road-to-terrain corridor clearance from 15 cm to 10 cm, retaining the elevation sampling method and terrain-overlap correction.
 
 - Corrected steep and muted forest terrain being classified as stone/rock. Replaced stony forest ground with grass blades, and changed dry soil and exposed-rock stock materials after inspecting export (15).
