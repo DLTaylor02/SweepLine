@@ -330,14 +330,14 @@ try{
     $stockReport=BeamMap::build($stockPlan,$stockRaster,str_repeat('d',32),$stockFile,fn($m)=>null);
     $stockZip=new ZipArchive();$stockZip->open($stockFile);$stockBase='levels/sweepline_dddddddddddddddd/';
     $stockTer=$stockZip->getFromName($stockBase.'theTerrain.ter');$offset=5+3*$n*$n;
-    check(unpack('V',substr($stockTer,$offset,4))[1]===6,'Stock terrain writes five physical classes plus aerial fallback');
+    check(unpack('V',substr($stockTer,$offset,4))[1]===8,'Stock terrain writes seven physical classes plus aerial fallback');
     $stockMaterials=json_decode($stockZip->getFromName($stockBase.'art/terrains/main.materials.json'),true);
     $stockLayer=$stockMaterials['sl_dddddddddddd_terrain_0'];$stockFallback=$stockMaterials['sl_dddddddddddd_terrain_5'];
     check(str_starts_with($stockLayer['baseColorBaseTex'],'/assets/materials/terrain/') && $stockFallback['baseColorBaseTexSize']===$n,'Stock layers reference shared assets while fallback spans whole map');
     $fallbackImage=getimagesizefromstring($stockZip->getFromName($stockBase.'art/terrains/fallback.color.png'));
     check($fallbackImage[0]===1024 && $fallbackImage[1]===1024,'Fallback base texture matches stock texture array dimensions');
     check(array_sum($stockReport['terrain_classification']['counts'])===$n*$n && $stockReport['terrain_style']==='stock','Report accounts for every terrain cell and chosen style');
-    check(count($stockReport['stock_terrain_assets'])===25 && $stockZip->locateName(ltrim($stockLayer['baseColorBaseTex'],'/'))===false,'Stock terrain references all PBR channels without copying game assets');
+    check(count($stockReport['stock_terrain_assets'])===35 && $stockZip->locateName(ltrim($stockLayer['baseColorBaseTex'],'/'))===false,'Stock terrain references all PBR channels without copying game assets');
     $stockZip->close();
 }finally{unlink($stockFile);}
 
@@ -349,3 +349,13 @@ $detailHeartbeats=0;$detailClasses=SweepLine\BeamTerrain::classify($detailRaster
 check($detailClasses['analysis_resolution']===512 && strlen($detailClasses['layers'])===512*512,'Terrain classification uses full source resolution above old 256 cap');
 check(ord($detailClasses['layers'][200*512+101])===2 && ord($detailClasses['layers'][200*512+100])===0 && ord($detailClasses['layers'][200*512+102])===0,'Single-pixel material feature survives without enlarging adjacent pixels');
 check($detailHeartbeats>100 && abs($detailClasses['cell_spacing_m']-1)<0.000001,'Full-resolution classification retains cancellation progress and reports spacing');
+
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[200,180,140]),0.02,[-119,39],1800)===7,'Warm pale sandy ground receives stock sand instead of aerial fallback');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[210,208,200]),0.1,[-119,39],1800)===6,'Pale exposed stone receives stock stone instead of snow fallback');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[70,69,65]),0.35,[-119,39],2200)===6,'Shaded neutral mineral slopes receive stone rather than false forest floor');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[70,69,65]),0.65,[-119,39],2200)===4,'Steeper shaded mineral slopes receive rock');
+check(str_contains(SweepLine\BeamTerrain::PALETTE[1]['prefix'],'t_dirt_dry_grassy')&&str_contains(SweepLine\BeamTerrain::PALETTE[2]['prefix'],'dirt_crumbly'),'Forest floor and soil use replacement stock textures');
+
+$roofRaster=new BeamRaster(16,16,str_repeat(pack('g',500),256),str_repeat(chr(50),256).str_repeat(chr(160),256).str_repeat(chr(20),256));
+$roofClasses=SweepLine\BeamTerrain::classify($roofRaster,[-119,39],[['points'=>[[3,3],[10,3],[10,10],[3,10],[3,3]]]],static function($m){});
+check(ord($roofClasses['layers'][6*16+6])===5 && ord($roofClasses['layers'][1*16+1])===0,'Mapped roof interiors retain aerial fallback without replacing surrounding grass');

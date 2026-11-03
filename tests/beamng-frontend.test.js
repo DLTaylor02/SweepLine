@@ -4,15 +4,12 @@ async function testBeamControls(source){
   const requests=[],tasks=[],window={SweepLineAccount:{user:{id:1}},sessionStorage:{getItem:()=>null,setItem:()=>{}},sweeplineRequest:async(path,options)=>{requests.push({path,options});return options?{id:"a".repeat(32),status:"queued",progress:"Queued"}:{status:"complete",download_url:"/private.zip",progress:"Ready"};}};
   new Function("window","document","setTimeout","clearTimeout",source)(window,{createElement:t=>new Element(t)},fn=>{tasks.push(fn);return tasks.length;},()=>{});
   const row=new Element("div");window.sweeplineBeamExport(row,{id:42},{orientation:"reverse",preferredName:"Chosen Alias"});
-  check(row.children.length===3&&row.children[0].tag==="a","Single inline export action");
+  check(row.children.length===2&&row.children[0].tag==="a","Single inline export action");
   const action=row.children[0];await action.onclick({preventDefault(){}});
   const payload=JSON.parse(requests[0].options.body);check(payload.resolution===2048&&payload.padding_miles===0.5&&payload.orientation==="reverse"&&payload.preferred_name==="Chosen Alias"&&payload.terrain_style==="stock","Fixed high-detail defaults");
   check(action.textContent.includes("Generating")&&action.attrs["aria-disabled"]==="true","Busy state visible");
   await tasks.shift()();check(action.textContent==="Download BeamNG"&&action.href==="/private.zip"&&action["beam-ready"],"Ready action becomes orange download");
   let prevented=false;await action.onclick({preventDefault(){prevented=true;}});check(!prevented&&requests.length===2,"Ready click uses native download without requeue");
-  const terrain=row.children[2].children[0];terrain.value="aerial";terrain.onchange();
-  check(action.textContent==="Generate BeamNG"&&!action["beam-ready"],"Changing terrain style resets download to Generate");
-  await action.onclick({preventDefault(){}});check(JSON.parse(requests.at(-1).options.body).terrain_style==="aerial","Aerial selection reaches export API");
   const notices=new Map();window.sessionStorage={getItem:k=>notices.get(k)||null,setItem:(k,v)=>notices.set(k,v),removeItem:k=>notices.delete(k)};
   window.sweeplineRequest=async()=>{throw new Error("This stretch contains a mapped bridge or tunnel.");};
   const rejected=new Element("div");window.sweeplineBeamExport(rejected,{id:91});await rejected.children[0].onclick({preventDefault(){}});

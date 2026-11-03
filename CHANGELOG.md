@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added distinct sand and stone terrain classes and broadened mineral recognition for pale/shaded slopes while retaining uncertain-water/snow/pavement and mapped-roof fallback.
+- Replaced moss-heavy forest floor, grass and dark soil textures with alternate stock PBR sets; verified all replacement channels. Removed the web terrain-style dropdown and always requests Stock materials, ignoring obsolete Aerial preferences.
+
 - Removed the 256-square stock terrain classification cap and nearest-neighbor enlargement that produced large material blocks. Classification now uses full imagery/terrain resolution with one-pixel neighborhood sampling and an isolated-speckle filter that preserves thin features. Added a 512-square pixel-boundary regression test and resolution/spacing reporting.
 
 - Fixed BeamNG menu names displaying Unicode escape text such as u2014. Map titles use a plain hyphen before SweepLine, and level JSON writes non-ASCII road names directly as UTF-8 rather than Unicode escape sequences.
