@@ -53,9 +53,9 @@ final class BeamBuildings
         throw new \LogicException('Building retry loop did not finish.');
     }
 
-    public static function place(array $footprints,array $road,array $profiles,BeamRaster $raster): array
+    public static function place(array $footprints,array $road,array $profiles,BeamRaster $raster,array $exclusions=[]): array
     {
-        $geometry=new BeamScenery($road,$profiles);$out=[];$rejected=0;
+        $geometry=new BeamScenery($road,$profiles,$exclusions);$out=[];$rejected=0;
         foreach($footprints as $footprint){$points=$footprint["points"];array_pop($points);if(count($points)<3||count($points)>50){$rejected++;continue;}
             $cx=array_sum(array_column($points,0))/count($points);$cy=array_sum(array_column($points,1))/count($points);$radius=0.0;$area=0.0;$sign=0;$convex=true;
             foreach($points as $i=>$p){$b=$points[($i+1)%count($points)];$c=$points[($i+2)%count($points)];$cross=($b[0]-$p[0])*($c[1]-$b[1])-($b[1]-$p[1])*($c[0]-$b[0]);if(abs($cross)>0.001){$s=$cross>0?1:-1;if($sign&&$s!==$sign)$convex=false;$sign=$s;}$area+=$p[0]*$b[1]-$b[0]*$p[1];$radius=max($radius,hypot($p[0]-$cx,$p[1]-$cy));}

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Include up to 300 feet of connected side-road context from locally imported OSM shared-node junctions in BeamNG exports, using terrain decals and keeping scenery clear. Report coverage/truncation and context failures.
+- Restrict Utah boulders to bare western terrain with low canopy evidence. Add a bounded tree-only pass targeting twice the initial tree count, with partial crown overlap, retained road/building clearance, and actual-count reporting.
+
 - Display selected-road length in miles and endpoint terrain elevations in feet for discovery, custom and favorite roads. Load USGS point elevations asynchronously, cache successful samples for 90 days and unavailable samples for five minutes, and swap values with Start/Finish orientation.
 
 - Retry temporary BeamNG building-provider failures up to three attempts with 5/10-second cancellable backoff. Retry Overpass timeout responses, avoid retrying permanent/processing failures, and report provider exhaustion separately from processing failures.

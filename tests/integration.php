@@ -211,3 +211,8 @@ check((int)$remaining->fetchColumn()===0,'Stopped cancelled import is removed af
 $db->exec("INSERT INTO endpoint_elevations(point_key,elevation_m,expires_at) VALUES ('-119.800000,39.500000',304.8,now()+interval '1 day'),('-119.700000,39.600000',NULL,now()+interval '5 minutes') ON CONFLICT(point_key) DO UPDATE SET elevation_m=excluded.elevation_m,expires_at=excluded.expires_at");
 $endpointCache=SweepLine\EndpointElevation::load($db,['points'=>[[-119.8,39.5],[-119.7,39.6]]]);
 check($endpointCache['elevations_m']===[304.8,null],'Elevation cache returns successful and unavailable samples without provider calls');
+
+$intersectionPlan=SweepLine\BeamPlan::project($db,$api->exportRoad((int)$sourceId,'twisty'),SweepLine\BeamPlan::options([]));
+$intersectionContext=SweepLine\BeamIntersections::fetch($db,$intersectionPlan,static fn($m)=>null);
+check(count($intersectionContext['branches'])>=1,'Shared-node local topology supplies the synthetic side road to BeamNG context');
+foreach($intersectionContext['branches'] as $arm){$length=0;for($i=1;$i<count($arm['points']);$i++)$length+=hypot($arm['points'][$i][0]-$arm['points'][$i-1][0],$arm['points'][$i][1]-$arm['points'][$i-1][1]);check($length<=91.44001,'Database context branches stop at 300 feet');}

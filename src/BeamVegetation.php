@@ -17,7 +17,11 @@ final class BeamVegetation
     ];
     public static function choose(string $kind,array $center,float $elevation,int $cover,float $variation,?array $biome=null): ?string
     {
-        if($kind==="rock")return "utah_rock";
+        if($kind==="rock"){
+            $western=($center[0]??-119)<=-103;
+            $bare=in_array($cover,[1,2,3],true);
+            return $western&&$bare&&($biome===null||($biome['canopy_evidence']<0.4&&$biome['tree_probability']<0.3))?'utah_rock':null;
+        }
         if(!isset(self::SHAPES[$kind]))return null;
         if($kind==="tree" && $biome!==null && $biome["montane"]>0.35)return $variation<$biome["pine_probability"]?"coastal_pine":(($center[0]??-119)<=-103?"juniper_tree":"beech_b");
         $east=($center[0]??-119)>-103;

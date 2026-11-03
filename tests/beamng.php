@@ -247,6 +247,8 @@ check(!$parallelGeometry->allows(500,615,2),'Placement avoids adjacent road sect
 $flatSceneryRaster=new BeamRaster($n,$side,str_repeat(pack('g',100),$n*$n),$colors);
 $sceneryCheckpoints=0;$placements=SweepLine\BeamScenery::place($testRoad,$testProfiles,$flatSceneryRaster,12345,function($m)use(&$sceneryCheckpoints){$sceneryCheckpoints++;});
 $allAllowed=true;foreach($placements['objects'] as $object){[$x,$y]=$object['position'];if(!$sceneryGeometry->allows($x,$y,SweepLine\BeamScenery::radius($object['kind'],$object['scale'],$object['asset']??null)))$allAllowed=false;}
+check($placements['additional_tree_target']>0&&$placements['additional_trees_placed']>0,'Tree-bearing corridors receive an additional tree-only placement pass');
+check($placements['counts']['tree']>=$placements['additional_tree_target']&&$placements['counts']['tree']<=$placements['additional_tree_target']*2,'Additional pass aims for double trees with a bounded placement budget');
 check(count($placements['objects'])>100 && $allAllowed,'Generated vegetation stays beside road without footprint overlap or distant objects');
 check($placements['counts']['tree']>0 && $placements['counts']['bush']>0,'Vegetated corridor includes trees and bushes');
 check(array_sum($placements['counts'])===count($placements['objects']) && $sceneryCheckpoints>0,'Scenery reports category counts and checks cancellation during placement');
@@ -296,7 +298,7 @@ $sharedMaterials=SweepLine\BeamVegetation::materialLibraries(array_values(SweepL
 check(count(array_filter($sharedMaterials,fn($p)=>str_ends_with($p,'/trees/main.materials.json')))===4,'Every used stock map includes parent vegetation material dependencies');
 check(strpos($assetsFiles['mainLevel.lua'],'/levels/Utah/art/shapes/trees/main.materials.json')<strpos($assetsFiles['mainLevel.lua'],SweepLine\BeamVegetation::MATERIALS),'Shared vegetation materials load before species libraries');
 
-check(SweepLine\BeamVegetation::choose('rock',[-119,39],1800,1,0.5)==='utah_rock','Rock scatter always selects a stock model');
+check(SweepLine\BeamVegetation::choose('rock',[-119,39],1800,1,0.5)==='utah_rock','Eligible western rock scatter selects a stock model');
 check(SweepLine\BeamVegetation::CATALOG['utah_rock']['radius']>=1.4,'Stock rock footprint conservatively covers installed mesh bounds');
 
 check(BeamRaster::TERRAIN_SATURATION===1.25 && BeamRaster::saturated([100,140,100])[1]-BeamRaster::saturated([100,140,100])[0]>BeamRaster::saturated([100,140,100],1.2)[1]-BeamRaster::saturated([100,140,100],1.2)[0],'Reduced aerial boost retains modest color enhancement');
@@ -332,9 +334,13 @@ check(SweepLine\BeamTerrain::category(array_fill(0,5,[20,70,140]),0.1,[-119,39],
 $stockFile=tempnam(sys_get_temp_dir(),'sl-stock-terrain-');
 try{
     $stockPlan=$plan;$stockPlan['terrain_style']='stock';
+    $stockPlan['intersection_data']=['branches'=>[['points'=>[[1900,2400],[2100,2400]],'width_m'=>8]],'truncated'=>false,'limit_ft'=>300];
     $stockRaster=new BeamRaster($n,$side,$heights,$colors);
     $stockReport=BeamMap::build($stockPlan,$stockRaster,str_repeat('d',32),$stockFile,fn($m)=>null);
     $stockZip=new ZipArchive();$stockZip->open($stockFile);$stockBase='levels/sweepline_dddddddddddddddd/';
+    check($stockReport['intersection_context']['rendered_branches']===1,'Generated ZIP report includes the connected side-road context');
+    $contextScene=$stockZip->getFromName($stockBase.'main/MissionGroup/items.level.json');
+    check(str_contains($contextScene,'"class":"DecalRoad"')&&str_contains($contextScene,'intersection_context_0'),'Generated level instantiates the native context road decal');
     $stockTer=$stockZip->getFromName($stockBase.'theTerrain.ter');$offset=5+3*$n*$n;
     check(unpack('V',substr($stockTer,$offset,4))[1]===8,'Stock terrain writes seven physical classes plus aerial fallback');
     $stockMaterials=json_decode($stockZip->getFromName($stockBase.'art/terrains/main.materials.json'),true);

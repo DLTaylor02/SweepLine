@@ -4,9 +4,10 @@ namespace SweepLine;
 final class BeamScenery
 {
     public const RANGE_M=60.96; // 200 feet from the road edge, including object footprint.
-    private array $segments=[],$index=[];
-    public function __construct(array $road,array $profiles)
+    private array $segments=[],$index=[],$exclusions=[];
+    public function __construct(array $road,array $profiles,array $exclusions=[])
     {
+        foreach($exclusions as $branch)$this->exclusions[]=new self($branch['points'],array_fill(0,count($branch['points']),['width_m'=>$branch['width_m']]));
         for($i=1;$i<count($road);$i++){
             $a=$road[$i-1];$b=$road[$i];$half=max($profiles[$i-1]["width_m"],$profiles[$i]["width_m"])/2;
             $id=count($this->segments);$this->segments[]=[$a,$b,$half];
@@ -25,6 +26,7 @@ final class BeamScenery
     }
     public function allows(float $x,float $y,float $radius): bool
     {
+        foreach($this->exclusions as $branch)if($branch->edgeDistance($x,$y)<$radius)return false;
         $distance=$this->edgeDistance($x,$y);
         return $distance+1e-8>=$radius && $distance+$radius<=self::RANGE_M+1e-8;
     }
@@ -33,11 +35,11 @@ final class BeamScenery
         if($asset!==null)return BeamVegetation::CATALOG[$asset]['radius']*$scale;
         return match($kind){"tree"=>7.0,"building"=>sqrt(41),"bush"=>1.2,default=>2.0}*$scale;
     }
-    public static function place(array $road,array $profiles,BeamRaster $raster,int $seed,callable $progress,array $center=[-119,39],array $reserved=[]): array
+    public static function place(array $road,array $profiles,BeamRaster $raster,int $seed,callable $progress,array $center=[-119,39],array $reserved=[],array $exclusions=[]): array
     {
-        $geometry=new self($road,$profiles);$chain=[0.0];
+        $geometry=new self($road,$profiles,$exclusions);$chain=[0.0];
         for($i=1;$i<count($road);$i++)$chain[]=$chain[$i-1]+hypot($road[$i][0]-$road[$i-1][0],$road[$i][1]-$road[$i-1][1]);
-        $length=$chain[count($chain)-1];$target=min(12000,max(400,(int)ceil($length/1000*250)));$limit=min(200000,$target*25);
+        $length=$chain[count($chain)-1];$target=min(12000,max(400,(int)ceil($length/1000*250)));$baseTarget=$target;$extraTreeTarget=0;$limit=min(400000,$target*50);
         $random=static function()use(&$seed): float {$seed=($seed*1664525+1013904223)&0xFFFFFFFF;return $seed/4294967296;};
         $out=[];$occupied=[];$types=["tree"=>0,"bush"=>0,"rock"=>0,"building"=>0];$zones=[];$variants=[];$skipped=["water"=>0,"footprint"=>0,"slope"=>0,"spacing"=>0,"bounds"=>0];
         foreach($reserved as $building){[$x,$y]=$building['position'];$occupied[(int)floor($x/20).':'.(int)floor($y/20)][]=[$x,$y,$building['radius']];}
@@ -54,6 +56,8 @@ final class BeamScenery
             if($biome['water']){$skipped["water"]++;continue;}
             $pick=$random();$kind=$pick<$biome['tree_probability']?'tree':($random()<0.65?'bush':'rock');
             $asset=BeamVegetation::choose($kind,$center,$raster->roadHeight($x,$y),$cover,$random(),$biome);
+            $extra=count($out)>=$baseTarget;
+            if($asset===null||($extra&&$kind!=='tree'))continue;
             $scale=0.7+$random()*0.6;$radius=self::radius($kind,$scale,$asset);
             if(!$geometry->allows($x,$y,$radius)){$skipped["footprint"]++;continue;}
             if($x<$radius||$y<$radius||$x+$radius>=$raster->side||$y+$radius>=$raster->side){$skipped["bounds"]++;continue;}
@@ -61,12 +65,13 @@ final class BeamScenery
             foreach([[$radius,0],[-$radius,0],[0,$radius],[0,-$radius]] as [$dx,$dy])$slope=max($slope,abs($raster->height($x+$dx,$y+$dy)-$h)/$radius);
             if($slope>($kind==="building"?0.15:0.7)){$skipped["slope"]++;continue;}
             $cx=(int)floor($x/20);$cy=(int)floor($y/20);$overlap=false;
-            for($ix=$cx-2;$ix<=$cx+2;$ix++)for($iy=$cy-2;$iy<=$cy+2;$iy++)foreach($occupied[$ix.":".$iy]??[] as $other)if(hypot($x-$other[0],$y-$other[1])<$radius+$other[2])$overlap=true;
+            for($ix=$cx-2;$ix<=$cx+2;$ix++)for($iy=$cy-2;$iy<=$cy+2;$iy++)foreach($occupied[$ix.":".$iy]??[] as $other)if(hypot($x-$other[0],$y-$other[1])<($radius+$other[2])*(($extra&&$kind==='tree'&&($other[3]??'')==='tree')?0.7:1))$overlap=true;
             if($overlap){$skipped["spacing"]++;continue;}
-            $occupied[$cx.":".$cy][]=[$x,$y,$radius];$types[$kind]++;
+            $occupied[$cx.":".$cy][]=[$x,$y,$radius,$kind];$types[$kind]++;
             $zones[$biome['zone']]=($zones[$biome['zone']]??0)+1;if($asset!==null)$variants[$asset]=($variants[$asset]??0)+1;
             $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale,"asset"=>$asset];
+            if(count($out)===$baseTarget){$extraTreeTarget=$types['tree'];$target=min(24000,$baseTarget+$extraTreeTarget);}
         }
-        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"biome_counts"=>$zones,"asset_counts"=>$variants,"biome_method"=>"Regional elevation prior plus nine raw aerial-color samples; heuristic, not surveyed land cover.","building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
+        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"tree_density_multiplier"=>2,"additional_tree_target"=>$extraTreeTarget,"additional_trees_placed"=>max(0,count($out)-$baseTarget),"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"biome_counts"=>$zones,"asset_counts"=>$variants,"biome_method"=>"Regional elevation prior plus nine raw aerial-color samples; heuristic, not surveyed land cover.","building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
     }
 }
