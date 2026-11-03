@@ -104,7 +104,7 @@ final class BeamMap
         unset($nearest);
         $progress('Checking and removing terrain intersections beneath the road');
         $terrainCorrection=BeamRoadSurface::clearTerrain($road,$profiles,$raster,$origin,$progress,$bridgeMask);
-        $shoulders=BeamRoadSurface::shoulders($road,$profiles,$raster,$origin,$bridgeMask,$progress);
+        $shoulders=BeamRoadSurface::shoulders($road,$profiles,$raster,$origin,$bridgeMask,$progress,$categories);
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
         $put=static function($file,$bytes)use($zip,$base){if(!$zip->addFromString($base.$file,$bytes))throw new \RuntimeException('Could not write BeamNG archive.');};
         try {
@@ -188,11 +188,25 @@ final class BeamMap
                 $mat=$prefix.'_road_'.$chunk['key'];
                 $objects[]=['class'=>'MeshRoad','name'=>'road_'.$i,'__parent'=>'MissionGroup','topMaterial'=>$mat,'bottomMaterial'=>$mat,'sideMaterial'=>$mat,'textureLength'=>BeamPng::ROAD_TEXTURE_LENGTH_M,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>$chunk['nodes']];
             }
-            $shoulderMat=$prefix.'_shoulder';
-            $roadMaterials['shoulder']=['class'=>'Material','name'=>$shoulderMat,'mapTo'=>$shoulderMat,'version'=>1,'groundType'=>'DIRT','Stages'=>[['diffuseMap'=>$path.'art/roads/shoulder.color.png','diffuseColor'=>[1,1,1,1],'specularPower'=>1,'useAnisotropic'=>true]]];
-            $put('art/roads/shoulder.color.png',BeamPng::rgb(64,64,static function($x,$y){$noise=(($x*17+$y*31)%19)-9;return [142+$noise,130+$noise,108+$noise];}));
+            $shoulderGrounds=$terrainStyle==='stock'?array_column(BeamTerrain::PALETTE,'ground'):['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
+            foreach($shoulderGrounds as $surface=>$groundModel){
+                $mat=$prefix.'_shoulder_'.$surface;
+                $tint=$terrainStyle==='stock'?(BeamTerrain::PALETTE[$surface]['color']??[142,130,108]):[142,130,108];
+                $texture='art/roads/shoulder-'.$surface.'.color.png';
+                $roadMaterials['shoulder_'.$surface]=['class'=>'Material','name'=>$mat,'mapTo'=>$mat,'version'=>1,'groundType'=>$groundModel,'Stages'=>[['diffuseMap'=>$path.$texture,'diffuseColor'=>[1,1,1,1],'specularPower'=>1,'useAnisotropic'=>true]]];
+                $put($texture,BeamPng::rgb(64,64,static function($x,$y)use($tint){$noise=(($x*17+$y*31)%11)-5;return array_map(static fn($c)=>$c+$noise,$tint);}));
+            }
             foreach($shoulders['runs'] as $runIndex=>$run)foreach(['bed','left','right'] as $strip){
-                $objects[]=['class'=>'MeshRoad','name'=>'shoulder_'.$runIndex.'_'.$strip,'__parent'=>'MissionGroup','topMaterial'=>$shoulderMat,'bottomMaterial'=>$shoulderMat,'sideMaterial'=>$shoulderMat,'textureLength'=>4,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>array_column($run,$strip)];
+                $chunks=[];$lastSurface=null;
+                foreach($run as $i=>$section){
+                    $surface=$section[$strip.'_surface'];
+                    if($lastSurface!==$surface){$chunks[]=['surface'=>$surface,'nodes'=>$i>0?[$run[$i-1][$strip]]:[]];$lastSurface=$surface;}
+                    $chunks[count($chunks)-1]['nodes'][]=$section[$strip];
+                }
+                foreach($chunks as $chunkIndex=>$chunk)if(count($chunk['nodes'])>1){
+                    $mat=$prefix.'_shoulder_'.$chunk['surface'];
+                    $objects[]=['class'=>'MeshRoad','name'=>'shoulder_'.$runIndex.'_'.$strip.'_'.$chunkIndex,'__parent'=>'MissionGroup','topMaterial'=>$mat,'bottomMaterial'=>$mat,'sideMaterial'=>$mat,'textureLength'=>4,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>$chunk['nodes']];
+                }
             }
             unset($shoulders['runs']);
 

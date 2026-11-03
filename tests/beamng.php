@@ -71,6 +71,13 @@ try {
     $roads=array_values(array_filter($objects,static fn($o)=>$o['class']==='MeshRoad'&&str_starts_with($o['name'],'road_')));
     check(count($roads)>=2,'Lane changes create correctly textured road sections');
     check($archive->locateName($base.'art/roads/transition.color.png')===false,'Lane transitions no longer substitute edge-only unmarked road textures');
+
+    $shoulderMaterials=json_decode($archive->getFromName($base.'art/roads/main.materials.json'),true);
+    foreach(['GRASS','DIRT','ROCK','CONCRETE','DIRT'] as $surface=>$model){
+        $matching=array_values(array_filter($shoulderMaterials,static fn($m)=>str_ends_with($m['name'],'_shoulder_'.$surface)));
+        check(count($matching)===1&&$matching[0]['groundType']===$model,'Aerial shoulder material matches terrain ground model '.$surface);
+    }
+
     $arches=array_values(array_filter($objects,fn($o)=>in_array($o['name']??'',['start_arch','finish_arch'],true)));
     check(count($arches)===2,'Start and Finish each have one physical arch');
     foreach($arches as $arch){
@@ -433,7 +440,7 @@ $shoulderResult=SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProf
 check(count($shoulderResult['runs'])===1&&count($shoulderResult['runs'][0])===5,'Ordinary road receives connected shoulder and roadbed strips');
 $section=$shoulderResult['runs'][0][2];
 check(abs($section['bed'][2]-10.03)<0.00001&&$shoulderResult['roadbed_clearance_m']<=0.10,'Roadbed surface stays five centimeters below pavement');
-check(abs($section['left'][2]-10.04)<0.001&&$section['left'][7]>0.99,'Shoulder smoothly joins pavement edge to final terrain');
+check(abs($section['left'][2]-9.9625)<0.001&&$section['left'][7]>0.99,'Shoulder smoothly joins pavement edge to final terrain');
 $protected=str_repeat("\1",4096);$before=$shoulderRaster->heights;
 $protectedCorrection=SweepLine\BeamRoadSurface::clearTerrain($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,fn($m)=>null,$protected);
 check($before===$shoulderRaster->heights&&$protectedCorrection['checked_vertices']===0,'Bridge-protected terrain remains unchanged during overlap correction');
@@ -445,3 +452,12 @@ check($wideShoulder['runs'][0][2]['left'][3]>5.7,'Shoulder widens on larger drop
 $partialMask=str_repeat("\0",4096);for($y=0;$y<64;$y++)for($x=28;$x<=32;$x++)$partialMask[$y*64+$x]="\1";
 $splitShoulders=SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,$partialMask,fn($m)=>null);
 check(count($splitShoulders['runs'])===2&&$splitShoulders['runs'][0][1]['bed'][0]===20&&$splitShoulders['runs'][1][0]['bed'][0]===40,'Shoulder strips stop and restart without bridging a protected span');
+
+$categoryGrid=str_repeat(chr(0),4096);
+for($y=0;$y<64;$y++)for($x=0;$x<64;$x++)if($y>30)$categoryGrid[$y*64+$x]=chr(3);
+$typedShoulder=SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,str_repeat("\0",4096),fn($m)=>null,$categoryGrid);
+$typedSection=$typedShoulder['runs'][0][2];
+check($typedSection['left_surface']===3&&$typedSection['right_surface']===0,'Each shoulder side samples its underlying terrain category independently');
+check($typedSection['left'][3]*$typedSection['left'][7]>=2.249,'Shoulder extends at least three quarters of a meter beyond its previous edge');
+$outerHeight=$typedSection['left'][2]-sqrt(max(0,$typedSection['left'][3]**2-(2.25**2)))/2;
+check(abs($outerHeight-9.85)<0.001,'Outer shoulder edge is embedded fifteen centimeters into flat terrain instead of floating above it');

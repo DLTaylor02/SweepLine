@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Assign BeamNG shoulder/roadbed materials from each side's underlying terrain category instead of forcing DIRT everywhere; match stock palette colors and split strips when surface types change. Extend outer shoulders by 0.75 m and embed edges 0.15 m into final terrain to hide seams, preserving bridge exclusions.
+
 - Add dirt/gravel shoulder ribbons joining road edges to final shaped terrain, widening from 1.5 to 6 meters when needed, with a supporting surface 5 cm below pavement. Target 5 cm terrain clearance and apply bridge protection to both shaping/overlap correction and all shoulder/roadbed meshes. Preserve road elevation sampling.
 
 - Keep lane and opposing-traffic markings in BeamNG pavement transition sections instead of substituting an edge-only texture. Space dashed dividers at one 3-meter dash and 9-meter gap per 12-meter repeat; preserve existing width tapers.
