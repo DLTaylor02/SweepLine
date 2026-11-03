@@ -55,6 +55,7 @@ final class BeamScenery
             $biome=BeamBiome::sample($raster,$x,$y,$center);
             if($biome['water']){$skipped["water"]++;continue;}
             $pick=$random();$kind=$pick<$biome['tree_probability']?'tree':($random()<0.65?'bush':'rock');
+            $biome['edge_distance_m']=max(0,abs($offset)-max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2);
             $asset=BeamVegetation::choose($kind,$center,$raster->roadHeight($x,$y),$cover,$random(),$biome);
             $extra=count($out)>=$baseTarget;
             if($asset===null||($extra&&$kind!=='tree'))continue;
@@ -72,6 +73,6 @@ final class BeamScenery
             $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale,"asset"=>$asset];
             if(count($out)===$baseTarget){$extraTreeTarget=$types['tree'];$target=min(24000,$baseTarget+$extraTreeTarget);}
         }
-        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"tree_density_multiplier"=>2,"additional_tree_target"=>$extraTreeTarget,"additional_trees_placed"=>max(0,count($out)-$baseTarget),"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"biome_counts"=>$zones,"asset_counts"=>$variants,"biome_method"=>"Regional elevation prior plus nine raw aerial-color samples; heuristic, not surveyed land cover.","building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
+        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"forest_asset_policy"=>"Eastern dense-canopy interiors use stock beech forest/group LOD assets; road edges retain individual trees.","tree_density_multiplier"=>2,"additional_tree_target"=>$extraTreeTarget,"additional_trees_placed"=>max(0,count($out)-$baseTarget),"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"biome_counts"=>$zones,"asset_counts"=>$variants,"biome_method"=>"Regional elevation prior plus nine raw aerial-color samples; heuristic, not surveyed land cover.","building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
     }
 }

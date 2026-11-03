@@ -334,14 +334,14 @@ check(SweepLine\BeamTerrain::category(array_fill(0,5,[20,70,140]),0.1,[-119,39],
 $stockFile=tempnam(sys_get_temp_dir(),'sl-stock-terrain-');
 try{
     $stockPlan=$plan;$stockPlan['terrain_style']='stock';
-    $stockPlan['intersection_data']=['branches'=>[['points'=>[[1900,2400],[2100,2400]],'width_m'=>8]],'truncated'=>false,'limit_ft'=>300];
+    $stockPlan['intersection_data']=['branches'=>[['points'=>[[1900,2400],[2100,2400]],'width_m'=>8]],'truncated'=>false,'limit_ft'=>600];
     $stockRaster=new BeamRaster($n,$side,$heights,$colors);
     $stockReport=BeamMap::build($stockPlan,$stockRaster,str_repeat('d',32),$stockFile,fn($m)=>null);
     $stockZip=new ZipArchive();$stockZip->open($stockFile);$stockBase='levels/sweepline_dddddddddddddddd/';
     check(isset($stockReport['shadow_correction']['corrected_pixels'])&&$stockReport['shadow_correction']['corrected_pixels']===0,'Generated export records shadow correction while leaving well-lit fixture colors intact');
     check($stockReport['intersection_context']['rendered_branches']===1,'Generated ZIP report includes the connected side-road context');
     $contextScene=$stockZip->getFromName($stockBase.'main/MissionGroup/items.level.json');
-    check(str_contains($contextScene,'"class":"DecalRoad"')&&str_contains($contextScene,'intersection_context_0'),'Generated level instantiates the native context road decal');
+    check(str_contains($contextScene,'"class":"MeshRoad","name":"intersection_context_0_')&&str_contains($contextScene,'intersection_apron_0'),'Generated level includes a real side-road mesh and its terrain junction apron');
     $stockTer=$stockZip->getFromName($stockBase.'theTerrain.ter');$offset=5+3*$n*$n;
     check(unpack('V',substr($stockTer,$offset,4))[1]===8,'Stock terrain writes seven physical classes plus aerial fallback');
     $stockMaterials=json_decode($stockZip->getFromName($stockBase.'art/terrains/main.materials.json'),true);

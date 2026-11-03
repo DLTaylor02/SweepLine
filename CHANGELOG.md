@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Upgrade BeamNG side roads to lane-aware MeshRoad surfaces with matched entrance elevations, native terrain shoulders and clearance correction; extend the cap to 600 feet. Suppress main/side-road markings at junctions and join angled entrances with native terrain aprons, avoiding overlapping collision meshes and bridge interiors.
+- Use verified East Coast beech forest/group meshes with built-in detail levels in dense eastern woodland interiors; retain individual trees at road edges and existing regional conifer choices.
+
 - Correct likely aerial shadows before BeamNG terrain material classification and base-color blending. Use nearby lit vegetation/dry-ground evidence and muted regional fallback palettes; preserve ambiguous flat blue neighborhoods and missing imagery. Apply the corrected colors to aerial/fallback textures too, and report correction counts without changing raw scenery evidence or terrain geometry.
 
 - Include up to 300 feet of connected side-road context from locally imported OSM shared-node junctions in BeamNG exports, using terrain decals and keeping scenery clear. Report coverage/truncation and context failures.

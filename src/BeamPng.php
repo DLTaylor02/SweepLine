@@ -16,6 +16,7 @@ final class BeamPng
     {
         return self::rgb(256,256,static function($x,$y)use($profile) {
             $noise=(($x*17+$y*31)%11)-5;$color=[62+$noise,63+$noise,65+$noise];
+            if(!empty($profile['unmarked']))return $color;
             if($x<5 || $x>250)return [235,235,225];
             for($lane=1;$lane<$profile['lanes'];$lane++) {
                 $line=(int)round($lane/$profile['lanes']*255);
