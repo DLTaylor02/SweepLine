@@ -27,6 +27,27 @@ final class BeamMap
         return ['class'=>'SpawnSphere','name'=>$end?'spawns_end':'spawns_start','__parent'=>'MissionGroup','position'=>[$p[0]+$ox,$p[1]+$oy,$p[2]+0.8],
             'rotationMatrix'=>[-$right[0],-$right[1],0,-$fx,-$fy,-$fz,$up[0],$up[1],$up[2]],'scale'=>[1,1,1],'dataBlock'=>'SpawnSphereMarker','autoplaceOnSpawn'=>false];
     }
+    /** Follow road chainage from a spawn, not a straight offset across bends. */
+    public static function archAnchor(array $road,array $profiles,array $spawn,bool $end,float $distance=30.48): array
+    {
+        $best=INF;$index=0;
+        foreach($road as $i=>$point){$d=hypot($point[0]-$spawn['position'][0],$point[1]-$spawn['position'][1]);if($d<$best){$best=$d;$index=$i;}}
+        $direction=$end?-1:1;$remaining=$distance;
+        while(isset($road[$index+$direction])){
+            $next=$index+$direction;$a=$road[$index];$b=$road[$next];$length=hypot($b[0]-$a[0],$b[1]-$a[1]);
+            if($length>0.000001&&$remaining<=$length){
+                $t=$remaining/$length;
+                return ['point'=>[$a[0]+($b[0]-$a[0])*$t,$a[1]+($b[1]-$a[1])*$t,$a[2]+($b[2]-$a[2])*$t],
+                    'width'=>$profiles[$index]['width_m']*(1-$t)+$profiles[$next]['width_m']*$t,
+                    'dx'=>($b[0]-$a[0])/$length,'dy'=>($b[1]-$a[1])/$length];
+            }
+            $remaining-=$length;$index=$next;
+        }
+        // Short stretches stop at their endpoint rather than placing an arch off-road.
+        $other=max(0,min(count($road)-1,$index-$direction));$dx=$road[$index][0]-$road[$other][0];$dy=$road[$index][1]-$road[$other][1];$length=hypot($dx,$dy)?:1;
+        return ['point'=>$road[$index],'width'=>$profiles[$index]['width_m'],'dx'=>$dx/$length,'dy'=>$dy/$length];
+    }
+
     public static function build(array $plan,BeamRaster $raster,string $id,string $zipPath,callable $progress): array
     {
         $name='sweepline_'.substr($id,0,16);$base='levels/'.$name.'/';$path='/'.$base;$n=$raster->size;$side=$raster->side;$step=$side/$n;
@@ -115,7 +136,18 @@ final class BeamMap
                 $put('art/terrains/neutral.normal.png',BeamPng::rgb(64,64,static fn()=>[128,128,255]));
                 $put('art/terrains/neutral.data.png',BeamPng::rgb(64,64,static fn()=>[128,128,128]));
             }
-            if($terrainStyle==='stock')foreach(BeamTerrain::PALETTE as $layerId=>$layer)if(isset($layer['color']))$put('art/terrains/palette-'.$layerId.'.color.png',BeamPng::rgb(1024,1024,static fn()=>$layer['color']));
+            if($terrainStyle==='stock'){
+                $progress('Blending bounded aerial colors into stock terrain materials');
+                $tints=BeamTerrain::tintPixels($raster,$progress);
+                foreach(BeamTerrain::PALETTE as $layerId=>$layer)if(isset($layer['color'])){
+                    $put('art/terrains/palette-'.$layerId.'.color.png',BeamPng::rgb(1024,1024,static function($x,$y)use($tints,$layerId,$progress){
+                        if($x===0&&$y%32===0)$progress(null);
+                        $offset=($y*1024+$x)*3;
+                        return BeamTerrain::blendedColor($layerId,[ord($tints[$offset]),ord($tints[$offset+1]),ord($tints[$offset+2])]);
+                    }));
+                }
+                unset($tints);
+            }
             if($terrainStyle==='stock')$put('art/terrains/fallback.color.png',BeamPng::rgb(1024,1024,static fn($x,$y)=>BeamRaster::saturated($raster->rgb((int)($x/1024*$n),$n-1-(int)($y/1024*$n)))));
             $objects=[['class'=>'LevelInfo','name'=>'theLevelInfo','__parent'=>'MissionGroup','levelName'=>$plan['name'],'visibleDistance'=>16000,'fogDensity'=>0.000015,'fogAtmosphereHeight'=>2000],
                 ['class'=>'ScatterSky','name'=>'theSky','__parent'=>'MissionGroup','sunSize'=>1,'skyBrightness'=>40,'exposure'=>1,'elevation'=>50,'azimuth'=>180,'ambientScale'=>[1,1,1,1],'sunScale'=>[1,1,1,1],'ambientScaleGradientFile'=>'art/sky_gradients/default/gradient_ambient.png','sunScaleGradientFile'=>'art/sky_gradients/default/gradient_sunscale.png','colorizeGradientFile'=>'art/sky_gradients/default/gradient_colorize.png'],
@@ -159,9 +191,8 @@ final class BeamMap
             $start=self::spawn($road,$profiles,false,$plan['oneway']);$end=self::spawn($road,$profiles,true,$plan['oneway']);$objects[]=$start;$objects[]=$end;
             $archMaterials=[];
             foreach([['start',$start,'START',[0.08,0.35,0.8,1]],['finish',$end,'FINISH',[0.15,0.18,0.23,1]]] as [$archName,$spawn,$label,$color]){
-                $best=INF;$index=0;foreach($road as $i=>$point){$d=hypot($point[0]-$spawn['position'][0],$point[1]-$spawn['position'][1]);if($d<$best){$best=$d;$index=$i;}}
-                $point=$road[$index];$span=$profiles[$index]['width_m']+4;
-                $m=$spawn['rotationMatrix'];$len=hypot($m[3],$m[4])?:1;$dx=-$m[3]/$len;$dy=-$m[4]/$len;
+                $anchor=self::archAnchor($road,$profiles,$spawn,$archName==='finish');
+                $point=$anchor['point'];$span=$anchor['width']+4;$dx=$anchor['dx'];$dy=$anchor['dy'];
                 foreach(['arch','arch-label'] as $kind){
                     $mat=$prefix.'_'.$archName.'_'.$kind;$file='art/shapes/'.$archName.'-'.$kind.'.dae';
                     $archMaterials[$mat]=['class'=>'Material','name'=>$mat,'mapTo'=>$mat,'version'=>1,'Stages'=>[['diffuseColor'=>$kind==='arch'?$color:[1,1,1,1]]]];
@@ -206,7 +237,7 @@ final class BeamMap
             $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
-            $report=['target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes only for trees, bushes and rocks; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Explicit palette base colors plus additive stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,
+            $report=['target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes only for trees, bushes and rocks; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Short simple bridges use estimated approach-derived decks. Complex bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation graph covers only the selected road; traffic behavior requires in-game validation.','Requires in-game v0.40 validation.']];
             $put('sweepline-report.json',self::json($report));

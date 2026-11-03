@@ -14,6 +14,38 @@ final class BeamTerrain
         ["name"=>"stone","prefix"=>"/assets/materials/terrain/rock/t_pebbles/t_pebbles","ground"=>"ROCK","color"=>[177,171,158]],
         ["name"=>"sand","prefix"=>"/assets/materials/terrain/sand/t_sand/t_sand","ground"=>"SAND","color"=>[204,185,141]],
     ];
+    /** Bounded aerial color variation, independent of material classification and collision. */
+    public static function blendedColor(int $id,array $rgb): array
+    {
+        $base=self::PALETTE[$id]["color"];
+        [$r,$g,$b]=$rgb;$light=($r+$g+$b)/3;
+        if($light<15||($light>225&&max($rgb)-min($rgb)<20)||($b>$r*1.2&&$b>$g*1.15))return $base;
+        // Limit exposure influence: photographed shadows must not become black ground.
+        $exposure=max(-15,min(15,($light-128)*0.18));$out=[];
+        foreach($base as $channel=>$value){
+            $tint=max(-24,min(24,$rgb[$channel]-$light))*0.35;
+            $out[]=max((int)round($value*0.9),min(255,(int)round($value+$exposure+$tint)));
+        }
+        if($id<2)$out[1]=max($out[1],$out[0]+16,$out[2]+16);
+        return $out;
+    }
+    /** North-up, gently filtered imagery shared by all material base textures. */
+    public static function tintPixels(BeamRaster $raster,callable $progress): string
+    {
+        $size=self::TEXTURE_SIZE;$pixels="";
+        for($y=0;$y<$size;$y++){
+            if($y%16===0)$progress(null);
+            for($x=0;$x<$size;$x++){
+                $sx=(int)($x/$size*$raster->size);$sy=$raster->size-1-(int)($y/$size*$raster->size);$rgb=[0,0,0];
+                foreach([[0,0],[-1,0],[1,0],[0,-1],[0,1]] as [$dx,$dy]){
+                    $sample=$raster->rgb($sx+$dx,$sy+$dy);foreach($sample as $channel=>$value)$rgb[$channel]+=$value;
+                }
+                foreach($rgb as $value)$pixels.=chr((int)round($value/5));
+            }
+        }
+        return $pixels;
+    }
+
     public static function paths(): array
     {
         $paths=[];foreach(self::PALETTE as $entry)if($entry["prefix"]!==null)foreach(["_b.png","_nm.png","_r.png","_ao.png","_h.png"] as $suffix)$paths[]=$entry["prefix"].$suffix;return $paths;

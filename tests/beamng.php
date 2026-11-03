@@ -344,7 +344,7 @@ try{
         $layerMaterial=$stockMaterials['sl_dddddddddddd_terrain_'.$layerId];
         $image=imagecreatefromstring($stockZip->getFromName($stockBase.'art/terrains/palette-'.$layerId.'.color.png'));
         $color=imagecolorat($image,400,400);$rgb=[($color>>16)&255,($color>>8)&255,$color&255];
-        check($rgb===$layer['color']&&imagesx($image)===1024,'Generated base color for '.$layer['name'].' matches explicit palette');
+        check(count(array_filter($rgb,static fn($c,$channel)=>$c>=round($layer['color'][$channel]*0.9)&&$c<=$layer['color'][$channel]+24,ARRAY_FILTER_USE_BOTH))===3&&imagesx($image)===1024,'Generated base color for '.$layer['name'].' stays within bounded aerial/palette blend');
         unset($image);
         check(str_starts_with($layerMaterial['baseColorDetailTex'],$layer['prefix'])&&$layerMaterial['baseColorDetailStrength'][0]>0,'Stock '.$layer['name'].' is a detail layer over the generated base');
         // v0.40 terrain.h.hlsl calculateValue: base + (2*detail-1)*strength.
@@ -359,7 +359,7 @@ try{
         }
         check($layerMaterial['heightDetailStrength']===[0,0],'Detail height cannot move '.$layer['name'].' material borders with camera distance');
 
-        if($layerId===2)check(min($rendered)>0.4&&$rendered[0]>$rendered[2],'Neutral soil detail preserves lighter warm brown instead of gray/dark base');
+        if($layerId===2)check(min($rendered)>0.35&&$rendered[0]>$rendered[2],'Neutral soil detail preserves lighter warm brown instead of gray/dark base');
     }
 
     $stockZip->close();
@@ -389,3 +389,27 @@ check(SweepLine\BeamTerrain::category(array_fill(0,5,[65,68,75]),0.35,[-119,39],
 check(SweepLine\BeamTerrain::category(array_fill(0,5,[110,114,105]),0.7,[-119,39],500)===0,'Subtle green grass on steep terrain stays vegetation');
 check(SweepLine\BeamTerrain::category([[65,68,75],[65,68,75],[65,68,75],[65,68,75],[100,100,95]],0.35,[-119,39],2200)===1,'Mixed canopy neighborhood retains vegetation despite a bare pixel');
 check(str_contains(SweepLine\BeamTerrain::PALETTE[1]['prefix'],'/grass/ind_grass/') && str_contains(SweepLine\BeamTerrain::PALETTE[4]['prefix'],'terrain_dirt_rocky_large'),'Forest uses grass blades and exposed rock uses a lighter replacement');
+
+$archRoad=[[0,0,0],[20,0,2],[20,40,6]];
+$archProfiles=array_fill(0,3,['width_m'=>6]);
+$startAnchor=BeamMap::archAnchor($archRoad,$archProfiles,['position'=>[0,-1,0]],false);
+$finishAnchor=BeamMap::archAnchor($archRoad,$archProfiles,['position'=>[21,40,6]],true);
+check(abs($startAnchor['point'][0]-20)<0.001&&abs($startAnchor['point'][1]-10.48)<0.001,'START arch follows 100 feet of curved road from the start spawn');
+check(abs($finishAnchor['point'][1]-9.52)<0.001&&$finishAnchor['dy']===-1.0,'FINISH arch moves 100 feet inward in the finish spawn travel direction');
+check(abs($startAnchor['point'][2]-3.048)<0.001&&$startAnchor['dy']===1.0,'Moved arch uses the new road elevation and tangent');
+$shortAnchor=BeamMap::archAnchor([[0,0,0],[5,0,1]],array_fill(0,2,['width_m'=>6]),['position'=>[0,0,0]],false);
+check($shortAnchor['point']===[5,0,1],'Short-road arch movement clamps at the endpoint');
+
+foreach([0,1,2,3,4,6,7] as $id){
+    $base=SweepLine\BeamTerrain::PALETTE[$id]['color'];
+    check(SweepLine\BeamTerrain::blendedColor($id,[0,0,0])===$base&&SweepLine\BeamTerrain::blendedColor($id,[240,240,240])===$base&&SweepLine\BeamTerrain::blendedColor($id,[20,60,150])===$base,'Black, snow and water-like aerial samples retain '.$id.' palette');
+    $dark=SweepLine\BeamTerrain::blendedColor($id,[45,50,40]);$light=SweepLine\BeamTerrain::blendedColor($id,[180,170,140]);
+    check($dark!==$light&&min($dark)>=min($base)*0.89,'Aerial brightness varies '.$id.' while limiting shadow darkening');
+}
+foreach([0,1] as $id)foreach([[70,60,30],[50,80,40],[170,150,120]] as $sample){
+    $rgb=SweepLine\BeamTerrain::blendedColor($id,$sample);
+    check($rgb[1]-max($rgb[0],$rgb[2])>=16,'Aerial vegetation tint retains enough green to survive close-up detail');
+}
+$tintRaster=new BeamRaster(2,2,str_repeat(pack('g',100),4),chr(180).chr(180).chr(50).chr(50).chr(160).chr(160).chr(70).chr(70).chr(120).chr(120).chr(40).chr(40));
+$tintField=SweepLine\BeamTerrain::tintPixels($tintRaster,static function($m){});
+check(strlen($tintField)===1024*1024*3&&ord($tintField[0])>ord($tintField[(1023*1024)*3]),'Blended aerial field retains north-up orientation and full base resolution');

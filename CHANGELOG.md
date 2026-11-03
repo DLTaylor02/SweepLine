@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Blend filtered aerial colors into stock terrain base palettes with bounded exposure/chroma, vegetation-green protection and conservative fallback for black/snow/water-like samples. Reuse a north-up tint field, preserve close-up PBR settings and report cancellable worker progress; add color-bound and orientation regressions.
+
+- Place BeamNG START/FINISH arches 100 feet ahead of each spawn along its inward driving direction, following bends, grade and road width; keep vehicle spawns unchanged and clamp short stretches at their endpoint.
+
 - Preserve vegetation color up close: limit vegetation color-detail tint to 0.02, soften its normal/AO detail, and disable detail-height blending for stock terrain so category borders do not change with viewing distance. Add worst-case near-detail color regressions.
 
 - Double BeamNG level draw distance from 8 km to 16 km and halve fog density to keep distant terrain clearer. New exports include the updated visibility settings.
