@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add dirt/gravel shoulder ribbons joining road edges to final shaped terrain, widening from 1.5 to 6 meters when needed, with a supporting surface 5 cm below pavement. Target 5 cm terrain clearance and apply bridge protection to both shaping/overlap correction and all shoulder/roadbed meshes. Preserve road elevation sampling.
+
 - Keep lane and opposing-traffic markings in BeamNG pavement transition sections instead of substituting an edge-only texture. Space dashed dividers at one 3-meter dash and 9-meter gap per 12-meter repeat; preserve existing width tapers.
 
 - Jump to search progress when a search starts, scrolling only the left panel on desktop and the page on mobile. Background polls do not reposition the view.

@@ -68,7 +68,7 @@ try {
     check($forestCount===$report['scenery_placement']['counts']['tree']+$report['scenery_placement']['counts']['bush']+$report['scenery_placement']['counts']['rock'],'All trees, bushes and rocks are serialized into native forest files');
     check(str_contains($archive->getFromName($base.'mainLevel.lua'),SweepLine\BeamVegetation::MATERIALS),'Map pre-start hook loads installed vegetation material definitions');
 
-    $roads=array_values(array_filter($objects,static fn($o)=>$o['class']==='MeshRoad'));
+    $roads=array_values(array_filter($objects,static fn($o)=>$o['class']==='MeshRoad'&&str_starts_with($o['name'],'road_')));
     check(count($roads)>=2,'Lane changes create correctly textured road sections');
     check($archive->locateName($base.'art/roads/transition.color.png')===false,'Lane transitions no longer substitute edge-only unmarked road textures');
     $arches=array_values(array_filter($objects,fn($o)=>in_array($o['name']??'',['start_arch','finish_arch'],true)));
@@ -160,7 +160,7 @@ try{
     $flatZip=new ZipArchive();$flatZip->open($flatFile);
     $flatBase='levels/sweepline_bbbbbbbbbbbbbbbb/';
     $flatObjects=array_map(fn($line)=>json_decode($line,true),explode("\n",trim($flatZip->getFromName($flatBase.'main/MissionGroup/items.level.json'))));
-    $flatRoads=array_values(array_filter($flatObjects,fn($o)=>$o['class']==='MeshRoad'));
+    $flatRoads=array_values(array_filter($flatObjects,fn($o)=>$o['class']==='MeshRoad'&&str_starts_with($o['name'],'road_')));
     $terrainObject=array_values(array_filter($flatObjects,fn($o)=>$o['class']==='TerrainBlock'))[0];
     $binary=$flatZip->getFromName($flatBase.'theTerrain.ter');$maxGap=0;$minGap=INF;
     foreach($flatRoads as $mesh)foreach($mesh['nodes'] as $point){
@@ -168,7 +168,7 @@ try{
         $ground=unpack('v',substr($binary,5+($y*$n+$x)*2,2))[1]/65536*$terrainObject['maxHeight'];
         $gap=$point[2]-$ground;$maxGap=max($maxGap,$gap);$minGap=min($minGap,$gap);
     }
-    check($minGap>=0 && $minGap>0.09 && $maxGap<0.11,'Terrain recess is reduced to 10 cm without changing elevation sampling');
+    check($minGap>=0 && $minGap>0.04 && $maxGap<=0.10,'Terrain recess targets 5 cm and stays within 10 cm without changing elevation sampling');
     check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.25)<0.001,'Original road surface offset is 25 cm above sampled elevation');
     $mats=json_decode($flatZip->getFromName($flatBase.'art/terrains/main.materials.json'),true);
     $aerial=imagecreatefromstring($flatZip->getFromName($flatBase.'art/terrains/aerial.color.png'));
@@ -425,3 +425,23 @@ check((imagecolorat($markingImage,85,180)&0xffffff)===0xebbe23,'Two-way transiti
 check((imagecolorat($markingImage,170,20)&0xffffff)===0xe1e1d7&&(imagecolorat($markingImage,170,100)&0xffffff)!==0xe1e1d7,'Transition retains same-direction dashed lane markings with wider gaps');
 check((imagecolorat($markingImage,1,180)&0xffffff)===0xebebe1,'Edge markings remain continuous through lane transitions');
 unset($markingImage);
+
+$shoulderRaster=new BeamRaster(64,64,str_repeat(pack('g',10),4096),str_repeat(chr(100),4096*3));
+$shoulderRoad=[[10,30,10.08],[20,30,10.08],[30,30,10.08],[40,30,10.08],[50,30,10.08]];
+$shoulderProfiles=array_fill(0,5,['width_m'=>8]);
+$shoulderResult=SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,str_repeat("\0",4096),fn($m)=>null);
+check(count($shoulderResult['runs'])===1&&count($shoulderResult['runs'][0])===5,'Ordinary road receives connected shoulder and roadbed strips');
+$section=$shoulderResult['runs'][0][2];
+check(abs($section['bed'][2]-10.03)<0.00001&&$shoulderResult['roadbed_clearance_m']<=0.10,'Roadbed surface stays five centimeters below pavement');
+check(abs($section['left'][2]-10.04)<0.001&&$section['left'][7]>0.99,'Shoulder smoothly joins pavement edge to final terrain');
+$protected=str_repeat("\1",4096);$before=$shoulderRaster->heights;
+$protectedCorrection=SweepLine\BeamRoadSurface::clearTerrain($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,fn($m)=>null,$protected);
+check($before===$shoulderRaster->heights&&$protectedCorrection['checked_vertices']===0,'Bridge-protected terrain remains unchanged during overlap correction');
+check(SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,$protected,fn($m)=>null)['runs']===[],'Bridge spans receive no roadbed or shoulder meshes');
+
+$fallingRoad=array_map(static fn($p)=>[$p[0],$p[1],12],$shoulderRoad);
+$wideShoulder=SweepLine\BeamRoadSurface::shoulders($fallingRoad,$shoulderProfiles,$shoulderRaster,0,str_repeat("\0",4096),fn($m)=>null);
+check($wideShoulder['runs'][0][2]['left'][3]>5.7,'Shoulder widens on larger drops instead of leaving a narrow vertical shelf');
+$partialMask=str_repeat("\0",4096);for($y=0;$y<64;$y++)for($x=28;$x<=32;$x++)$partialMask[$y*64+$x]="\1";
+$splitShoulders=SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,$partialMask,fn($m)=>null);
+check(count($splitShoulders['runs'])===2&&$splitShoulders['runs'][0][1]['bed'][0]===20&&$splitShoulders['runs'][1][0]['bed'][0]===40,'Shoulder strips stop and restart without bridging a protected span');

@@ -5,7 +5,7 @@ use ZipArchive;
 final class BeamMap
 {
     public const ROAD_ELEVATION_OFFSET_M=0.25;
-    public const ROAD_CLEARANCE_M=0.10;
+    public const ROAD_CLEARANCE_M=0.05;
     private static function json(mixed $value): string {return json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT);}
     public static function spawn(array $road,array $profiles,bool $end,bool $oneway): array
     {
@@ -103,7 +103,8 @@ final class BeamMap
         }
         unset($nearest);
         $progress('Checking and removing terrain intersections beneath the road');
-        $terrainCorrection=BeamRoadSurface::clearTerrain($road,$profiles,$raster,$origin,$progress);
+        $terrainCorrection=BeamRoadSurface::clearTerrain($road,$profiles,$raster,$origin,$progress,$bridgeMask);
+        $shoulders=BeamRoadSurface::shoulders($road,$profiles,$raster,$origin,$bridgeMask,$progress);
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
         $put=static function($file,$bytes)use($zip,$base){if(!$zip->addFromString($base.$file,$bytes))throw new \RuntimeException('Could not write BeamNG archive.');};
         try {
@@ -187,6 +188,14 @@ final class BeamMap
                 $mat=$prefix.'_road_'.$chunk['key'];
                 $objects[]=['class'=>'MeshRoad','name'=>'road_'.$i,'__parent'=>'MissionGroup','topMaterial'=>$mat,'bottomMaterial'=>$mat,'sideMaterial'=>$mat,'textureLength'=>BeamPng::ROAD_TEXTURE_LENGTH_M,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>$chunk['nodes']];
             }
+            $shoulderMat=$prefix.'_shoulder';
+            $roadMaterials['shoulder']=['class'=>'Material','name'=>$shoulderMat,'mapTo'=>$shoulderMat,'version'=>1,'groundType'=>'DIRT','Stages'=>[['diffuseMap'=>$path.'art/roads/shoulder.color.png','diffuseColor'=>[1,1,1,1],'specularPower'=>1,'useAnisotropic'=>true]]];
+            $put('art/roads/shoulder.color.png',BeamPng::rgb(64,64,static function($x,$y){$noise=(($x*17+$y*31)%19)-9;return [142+$noise,130+$noise,108+$noise];}));
+            foreach($shoulders['runs'] as $runIndex=>$run)foreach(['bed','left','right'] as $strip){
+                $objects[]=['class'=>'MeshRoad','name'=>'shoulder_'.$runIndex.'_'.$strip,'__parent'=>'MissionGroup','topMaterial'=>$shoulderMat,'bottomMaterial'=>$shoulderMat,'sideMaterial'=>$shoulderMat,'textureLength'=>4,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>array_column($run,$strip)];
+            }
+            unset($shoulders['runs']);
+
             $put('art/roads/main.materials.json',self::json(array_combine(array_column($roadMaterials,'name'),array_values($roadMaterials))));
             $start=self::spawn($road,$profiles,false,$plan['oneway']);$end=self::spawn($road,$profiles,true,$plan['oneway']);$objects[]=$start;$objects[]=$end;
             $archMaterials=[];
@@ -237,7 +246,7 @@ final class BeamMap
             $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
-            $report=['target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes only for trees, bushes and rocks; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,
+            $report=['target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes only for trees, bushes and rocks; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,'shoulder_transition'=>$shoulders,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Short simple bridges use estimated approach-derived decks. Complex bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation graph covers only the selected road; traffic behavior requires in-game validation.','Requires in-game v0.40 validation.']];
             $put('sweepline-report.json',self::json($report));
