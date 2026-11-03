@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Correct likely aerial shadows before BeamNG terrain material classification and base-color blending. Use nearby lit vegetation/dry-ground evidence and muted regional fallback palettes; preserve ambiguous flat blue neighborhoods and missing imagery. Apply the corrected colors to aerial/fallback textures too, and report correction counts without changing raw scenery evidence or terrain geometry.
+
 - Include up to 300 feet of connected side-road context from locally imported OSM shared-node junctions in BeamNG exports, using terrain decals and keeping scenery clear. Report coverage/truncation and context failures.
 - Restrict Utah boulders to bare western terrain with low canopy evidence. Add a bounded tree-only pass targeting twice the initial tree count, with partial crown overlap, retained road/building clearance, and actual-count reporting.
 

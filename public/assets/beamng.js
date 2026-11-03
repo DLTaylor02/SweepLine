@@ -9,7 +9,7 @@
       [/Writing collision|Blending bounded aerial/i,6],
       [/Shaping the road|Checking and removing terrain/i,5],
       [/Classifying grass/i,4],
-      [/Preparing terrain|Validating elevation|building|intersecting road/i,3],
+      [/Preparing terrain|Validating elevation|building|intersecting road|aerial shadows/i,3],
       [/NAIP|aerial|Aligning aerial/i,2],[/USGS elevation|Aligning dem/i,1]
     ];
     return stages.find(([pattern])=>pattern.test(message))?.[1]??0;
