@@ -70,6 +70,7 @@ try {
 
     $roads=array_values(array_filter($objects,static fn($o)=>$o['class']==='MeshRoad'));
     check(count($roads)>=2,'Lane changes create correctly textured road sections');
+    check($archive->locateName($base.'art/roads/transition.color.png')===false,'Lane transitions no longer substitute edge-only unmarked road textures');
     $arches=array_values(array_filter($objects,fn($o)=>in_array($o['name']??'',['start_arch','finish_arch'],true)));
     check(count($arches)===2,'Start and Finish each have one physical arch');
     foreach($arches as $arch){
@@ -269,7 +270,7 @@ $taperPoints=[];$taperProfiles=[];for($i=0;$i<=20;$i++){$taperPoints[]=[$i*10,0,
 $taper=SweepLine\BeamRoadSurface::taper($taperPoints,$taperProfiles);
 check(abs($taper[0]['width_m']-8)<0.001 && abs($taper[20]['width_m']-15)<0.001,'Taper leaves pavement widths outside transition unchanged');
 check(abs($taper[10]['width_m']-11.5)<0.001 && $taper[8]['width_m']>8 && $taper[12]['width_m']<15,'Lane width tapers on both sides of mapped transition');
-check($taper[10]['transition'] && !$taper[4]['transition'],'Transition region uses simplified markings only within taper');
+check($taper[10]['transition'] && !$taper[4]['transition'],'Transition flag remains bounded to the pavement taper');
 check(BeamRaster::saturated([130,130,130])===[130,130,130],'Saturation preserves neutral terrain colors');
 $boosted=BeamRaster::saturated([100,140,100]);check($boosted[1]-$boosted[0]>40 && max($boosted)<=255,'Terrain saturation increases color separation without overflow');
 $spikeRaster=new BeamRaster(16,160,str_repeat(pack('g',200),256),str_repeat(chr(80),768));
@@ -416,3 +417,11 @@ check(strlen($tintField)===1024*1024*3&&ord($tintField[0])>ord($tintField[(1023*
 
 $strongTint=SweepLine\BeamTerrain::blendedColor(4,[180,170,140]);
 check($strongTint[0]-SweepLine\BeamTerrain::PALETTE[4]['color'][0]>20,'Warm aerial highlights produce stronger local color variation than the original blend');
+
+$markingImage=imagecreatefromstring(SweepLine\BeamPng::road(['lanes'=>3,'backward'=>1,'oneway'=>false,'transition'=>true]));
+$dashRows=0;for($y=0;$y<256;$y++)if((imagecolorat($markingImage,170,$y)&0xffffff)===0xe1e1d7)$dashRows++;
+check($dashRows===64&&SweepLine\BeamPng::ROAD_TEXTURE_LENGTH_M-SweepLine\BeamPng::ROAD_DASH_LENGTH_M===9,'Lane stripes use one 3-meter dash and 9-meter gap per 12-meter repeat');
+check((imagecolorat($markingImage,85,180)&0xffffff)===0xebbe23,'Two-way transition retains a continuous yellow opposing-traffic divider');
+check((imagecolorat($markingImage,170,20)&0xffffff)===0xe1e1d7&&(imagecolorat($markingImage,170,100)&0xffffff)!==0xe1e1d7,'Transition retains same-direction dashed lane markings with wider gaps');
+check((imagecolorat($markingImage,1,180)&0xffffff)===0xebebe1,'Edge markings remain continuous through lane transitions');
+unset($markingImage);

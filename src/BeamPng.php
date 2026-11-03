@@ -3,6 +3,8 @@ declare(strict_types=1);
 namespace SweepLine;
 final class BeamPng
 {
+    public const ROAD_TEXTURE_LENGTH_M=12;
+    public const ROAD_DASH_LENGTH_M=3;
     public static function rgb(int $width,int $height,callable $pixel): string
     {
         $raw='';
@@ -18,7 +20,7 @@ final class BeamPng
             for($lane=1;$lane<$profile['lanes'];$lane++) {
                 $line=(int)round($lane/$profile['lanes']*255);
                 $center=!$profile['oneway'] && $lane===$profile['backward'];
-                if(abs($x-$line)<=1 && ($center || $y%64<32))$color=$center?[235,190,35]:[225,225,215];
+                if(abs($x-$line)<=1 && ($center || $y<(int)round(256*self::ROAD_DASH_LENGTH_M/self::ROAD_TEXTURE_LENGTH_M)))$color=$center?[235,190,35]:[225,225,215];
             }
             return $color;
         });

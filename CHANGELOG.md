@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep lane and opposing-traffic markings in BeamNG pavement transition sections instead of substituting an edge-only texture. Space dashed dividers at one 3-meter dash and 9-meter gap per 12-meter repeat; preserve existing width tapers.
+
 - Jump to search progress when a search starts, scrolling only the left panel on desktop and the page on mobile. Background polls do not reposition the view.
 
 - Show search preparation tiles on the map with light red queued fills, pulsing yellow active fills and green ready fills, plus stronger borders and a legend. Use real task bounds including split tiles, clear overlays on completion/new searches/sign-out, and restore them after map recovery.

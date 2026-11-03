@@ -172,11 +172,11 @@ final class BeamMap
             }
             $roadMaterials=[];$chunks=[];$last=null;
             foreach($road as $i=>$p) {
-                $profile=$profiles[$i];$key=!empty($profile['transition'])?'transition':$profile['lanes'].'_'.$profile['backward'].'_'.(int)$profile['oneway'];
+                $profile=$profiles[$i];$key=$profile['lanes'].'_'.$profile['backward'].'_'.(int)$profile['oneway'];
                 if(!isset($roadMaterials[$key])) {
                     $mat=$prefix.'_road_'.$key;$texture='art/roads/'.$key.'.color.png';
                     $roadMaterials[$key]=['class'=>'Material','name'=>$mat,'mapTo'=>$mat,'version'=>1,'groundType'=>'ASPHALT','Stages'=>[['diffuseMap'=>$path.$texture,'diffuseColor'=>[1,1,1,1],'specularPower'=>8,'useAnisotropic'=>true]]];
-                    $put($texture,BeamPng::road($key==='transition'?array_replace($profile,['lanes'=>1,'backward'=>0,'oneway'=>true]):$profile));
+                    $put($texture,BeamPng::road($profile));
                 }
                 if($last!==$key) {
                     $chunks[]=['key'=>$key,'nodes'=>$i>0?[array_merge($road[$i-1],[$profiles[$i-1]['width_m'],0.5,0,0,1])]:[]];$last=$key;
@@ -185,7 +185,7 @@ final class BeamMap
             }
             foreach($chunks as $i=>$chunk)if(count($chunk['nodes'])>1) {
                 $mat=$prefix.'_road_'.$chunk['key'];
-                $objects[]=['class'=>'MeshRoad','name'=>'road_'.$i,'__parent'=>'MissionGroup','topMaterial'=>$mat,'bottomMaterial'=>$mat,'sideMaterial'=>$mat,'textureLength'=>12,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>$chunk['nodes']];
+                $objects[]=['class'=>'MeshRoad','name'=>'road_'.$i,'__parent'=>'MissionGroup','topMaterial'=>$mat,'bottomMaterial'=>$mat,'sideMaterial'=>$mat,'textureLength'=>BeamPng::ROAD_TEXTURE_LENGTH_M,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>$chunk['nodes']];
             }
             $put('art/roads/main.materials.json',self::json(array_combine(array_column($roadMaterials,'name'),array_values($roadMaterials))));
             $start=self::spawn($road,$profiles,false,$plan['oneway']);$end=self::spawn($road,$profiles,true,$plan['oneway']);$objects[]=$start;$objects[]=$end;
