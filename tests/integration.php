@@ -176,3 +176,31 @@ check($customSaved['geometry']===$custom['geometry'],'Custom favorite preserves 
 $db->prepare("UPDATE custom_roads SET created_at=now()-interval '8 days' WHERE id=?")->execute([$custom['custom_id']]);
 try{$customService->detail($customUser,$custom['custom_id']);check(false,'Custom selection expiry');}catch(OutOfBoundsException $e){check(true,'Custom selection expiry');}
 check((new SweepLine\Favorites($db))->detail($customUser,$customFavorite['id'])['road']['geometry']===$custom['geometry'],'Custom favorite survives selection expiry independently');
+
+ // A worker batch can hold its import row while cancellation updates the independent task.
+$cancelQueue=new SweepLine\DataQueue($db);
+$q=$db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage) VALUES (?,'running',?,ST_MakeEnvelope(-121,38,-118,41,4326)) RETURNING id");
+$q->execute([$region,__FILE__]);$lockedImport=(int)$q->fetchColumn();
+$cancelTask=$cancelQueue->ensure('test-cancel-locked-import','roads',[]);
+$db->prepare("UPDATE data_tasks SET status='running',import_job_id=? WHERE id=?")->execute([$lockedImport,$cancelTask['id']]);
+$holder=SweepLine\Database::connect();$holder->beginTransaction();
+$holder->prepare('SELECT id FROM import_jobs WHERE id=? FOR UPDATE')->execute([$lockedImport]);
+try{
+    $db->exec("SET lock_timeout='100ms'");
+    $cancelResult=$cancelQueue->cancel((int)$cancelTask['id']);
+    check($cancelResult['cancel_requested']===true,'Region cancellation succeeds while worker import row is locked');
+    $flag=$db->prepare('SELECT cancel_requested FROM data_tasks WHERE id=?');$flag->execute([$cancelTask['id']]);
+    check((bool)$flag->fetchColumn(),'Worker can observe task cancellation before cleanup');
+    $cancelQueue->purgeCancelled();
+    check(true,'Manage cleanup skips locked worker import without waiting');
+    $replacement=$cancelQueue->ensure('test-cancel-locked-import','roads',[]);
+    check((int)$replacement['id']!==(int)$cancelTask['id'],'Cancelling running work immediately frees its area key for a new search');
+}finally{
+    if($holder->inTransaction())$holder->rollBack();
+    $db->exec("SET lock_timeout='5s'");
+}
+$db->prepare("UPDATE import_jobs SET status='failed' WHERE id=?")->execute([$lockedImport]);
+$db->prepare("UPDATE data_tasks SET status='cancelled' WHERE id=?")->execute([$cancelTask['id']]);
+$cancelQueue->purgeCancelled();
+$remaining=$db->prepare('SELECT count(*) FROM import_jobs WHERE id=?');$remaining->execute([$lockedImport]);
+check((int)$remaining->fetchColumn()===0,'Stopped cancelled import is removed after worker releases it');

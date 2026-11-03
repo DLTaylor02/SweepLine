@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Avoid region-cancellation/status 503s caused by cleanup waiting for active import row locks. Defer running import cleanup, skip locked rows during cleanup, and retain checkpoint cancellation and immediate area-key reuse. Log SQLSTATE and code location for unexpected API errors without SQL or parameter values; add a two-connection lock regression.
+
 - Assign BeamNG shoulder/roadbed materials from each side's underlying terrain category instead of forcing DIRT everywhere; match stock palette colors and split strips when surface types change. Extend outer shoulders by 0.75 m and embed edges 0.15 m into final terrain to hide seams, preserving bridge exclusions.
 
 - Add dirt/gravel shoulder ribbons joining road edges to final shaped terrain, widening from 1.5 to 6 meters when needed, with a supporting surface 5 cm below pavement. Target 5 cm terrain clearance and apply bridge protection to both shaping/overlap correction and all shoulder/roadbed meshes. Preserve road elevation sampling.

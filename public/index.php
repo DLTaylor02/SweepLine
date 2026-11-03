@@ -168,6 +168,14 @@ try {
     $status=$e instanceof SweepLine\HttpException?$e->status:($e instanceof InvalidArgumentException?422:($e instanceof OutOfBoundsException?404:503));
     http_response_code($status);
     if ($status===429) { header('Retry-After: 900'); }
-    if ($status===503) { error_log('SweepLine API failure: '.get_class($e)); }
+    if ($status===503) {
+        $context=' at '.basename($e->getFile()).':'.$e->getLine();
+        if($e instanceof PDOException){
+            $state=(string)($e->errorInfo[0]??$e->getCode());
+            $context.=' SQLSTATE='.(preg_match('/^[A-Z0-9]{5}$/D',$state)?$state:'unknown');
+        }
+        // Do not log exception messages, SQL, parameters, passwords or request bodies.
+        error_log('SweepLine API failure: '.get_class($e).$context);
+    }
     echo json_encode(['redirect'=>$e->getMessage()==='Password change required.'?'/password':null,'error'=>$status===503?'Service unavailable. Please try again shortly.':$e->getMessage()]);
 }

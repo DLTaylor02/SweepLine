@@ -110,11 +110,23 @@ final class DataQueue
     }
     public function purgeCancelled(): void
     {
-        // Running rows remain private until the worker acknowledges cancellation.
-        $this->db->exec("UPDATE import_jobs j SET cancel_requested=true FROM data_tasks t WHERE t.import_job_id=j.id AND (t.status='cancelled' OR t.cancel_requested=true) AND j.status<>'complete'");
-        $this->db->exec("DELETE FROM data_tasks WHERE status='cancelled' OR (cancel_requested=true AND status<>'running')");
-        $this->db->exec("DELETE FROM import_jobs j WHERE cancel_requested=true AND status NOT IN ('running','complete')
-            AND NOT EXISTS(SELECT 1 FROM regions r WHERE r.active_job_id=j.id) AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id)");
+        // Workers observe the task flag at checkpoints. Never wait on an import
+        // row held by an active batch merely to acknowledge cancellation in the UI.
+        $this->db->exec("WITH idle AS (
+            SELECT j.id FROM import_jobs j WHERE j.status NOT IN ('running','complete') AND NOT j.cancel_requested
+            AND EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id AND (t.status='cancelled' OR t.cancel_requested))
+            FOR UPDATE OF j SKIP LOCKED
+        ) UPDATE import_jobs j SET cancel_requested=true FROM idle WHERE j.id=idle.id");
+        $this->db->exec("WITH stopped AS (
+            SELECT id FROM data_tasks WHERE status='cancelled' OR (cancel_requested AND status<>'running')
+            FOR UPDATE SKIP LOCKED
+        ) DELETE FROM data_tasks t USING stopped WHERE t.id=stopped.id");
+        $this->db->exec("WITH disposable AS (
+            SELECT j.id FROM import_jobs j WHERE j.cancel_requested AND j.status NOT IN ('running','complete')
+            AND NOT EXISTS(SELECT 1 FROM regions r WHERE r.active_job_id=j.id)
+            AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id)
+            FOR UPDATE OF j SKIP LOCKED
+        ) DELETE FROM import_jobs j USING disposable WHERE j.id=disposable.id");
     }
     public function cancel(int $id,bool $import=false): array
     {
