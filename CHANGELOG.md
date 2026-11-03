@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prevent artificial ridges beside simple bridges: exclude deck intervals from both native terrain-blending passes and widen bridge protection to the full shoulder influence band plus a grid guard. Preserve the landward approach correction and ordinary shoulder output. Add a regression that reproduces the old ridge and checks unchanged valley terrain.
+
 - Correct native terrain clipping through pavement just beyond bridge abutments, where the broad bridge mask previously blocked shoulder shaping. Add a landing-only shaping/contact pass that preserves deck-interior vertices and leaves ordinary-road processing unchanged. Validate offline against the supplied Frenchman Lake export; report bridge_approach_correction.
 
 - Fix terrain clipping undoing native shoulder shaping on grades. Correct interpolated contact heights rather than flattening every touched vertex to the lowest road sample; cover bilinear and both terrain triangle diagonals. ZIP (24) showed a roughly 25 cm median road-edge gap; add a graded-grid regression at its actual 3.52 m spacing.

@@ -12,15 +12,18 @@ final class BeamRoadSurface
         return $profiles;
     }
     /** Blend native terrain to pavement height without adding collision objects. */
-    public static function blendTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,string $protected,callable $progress): array
+    public static function blendTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,string $protected,callable $progress,array $bridges=[]): array
     {
         $step=$raster->side/$raster->size;$original=clone $raster;
         $nearest=str_repeat(pack('g',INF),$raster->size*$raster->size);$count=0;$maxChange=0.0;
-        $inner=max(1.5,sqrt(2)*$step);$blend=max(6,3*$step);
+        $inner=max(1.5,sqrt(2)*$step);$blend=max(6,3*$step);$chainage=0.0;
         for($i=1;$i<count($road);$i++){
             if($i%50===0)$progress(null);
             $a=$road[$i-1];$b=$road[$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length2=$dx*$dx+$dy*$dy;
             if($length2<0.000001)continue;
+            $start=$chainage;$chainage+=sqrt($length2);$deck=false;
+            foreach($bridges as $span)if($start<$span['end_m']-0.00001&&$chainage>$span['start_m']+0.00001){$deck=true;break;}
+            if($deck)continue;
             $radius=max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2+$inner+$blend;
             $loX=max(0,(int)floor((min($a[0],$b[0])-$radius)/$step));$hiX=min($raster->size-1,(int)ceil((max($a[0],$b[0])+$radius)/$step));
             $loY=max(0,(int)floor((min($a[1],$b[1])-$radius)/$step));$hiY=min($raster->size-1,(int)ceil((max($a[1],$b[1])+$radius)/$step));
@@ -54,7 +57,7 @@ final class BeamRoadSurface
                 if($chain[$i]>=$end-$margin&&$chain[$i-1]<=$end+$margin)$near=true;
             if(!$near)continue;
             $a=$road[$i-1];$b=$road[$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$l2=$dx*$dx+$dy*$dy;if($l2<0.000001)continue;
-            $radius=max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2+max(6,5*$step);
+            $radius=max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2+max(1.5,sqrt(2)*$step)+max(6,3*$step)+$step;
             for($y=max(0,(int)floor((min($a[1],$b[1])-$radius)/$step));$y<=min($raster->size-1,(int)ceil((max($a[1],$b[1])+$radius)/$step));$y++)
             for($x=max(0,(int)floor((min($a[0],$b[0])-$radius)/$step));$x<=min($raster->size-1,(int)ceil((max($a[0],$b[0])+$radius)/$step));$x++){
                 $key=$y*$raster->size+$x;

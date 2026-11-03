@@ -83,17 +83,17 @@ final class BeamMap
             for($i=$first;$i<=$last;$i++){
                 if($i%100===0)$progress(null);
                 if($profiles[$i]['width_m']>20)throw new \RuntimeException('Bridge width exceeds the 20-meter simple-bridge export limit.');
-                $p=$road[$i];$radius=$profiles[$i]['width_m']/2+2*$step;$cells=(int)ceil($radius/$step);$cx=(int)round($p[0]/$step);$cy=(int)round($p[1]/$step);
+                $p=$road[$i];$radius=$profiles[$i]['width_m']/2+max(1.5,sqrt(2)*$step)+max(6,3*$step)+$step;$cells=(int)ceil($radius/$step);$cx=(int)round($p[0]/$step);$cy=(int)round($p[1]/$step);
                 for($y=max(0,$cy-$cells);$y<=min($n-1,$cy+$cells);$y++)for($x=max(0,$cx-$cells);$x<=min($n-1,$cx+$cells);$x++)if(hypot($x*$step-$p[0],$y*$step-$p[1])<=$radius)$bridgeMask[$y*$n+$x]="\1";
             }
         }
-        $shoulders=BeamRoadSurface::blendTerrain($road,$profiles,$raster,$origin,$bridgeMask,$progress);
+        $shoulders=BeamRoadSurface::blendTerrain($road,$profiles,$raster,$origin,$bridgeMask,$progress,$bridges);
         $progress('Checking and removing terrain intersections beneath the road');
         $terrainCorrection=BeamRoadSurface::clearTerrain($road,$profiles,$raster,$origin,$progress,$bridgeMask);
         $bridgeApproachCorrection=null;
         if($bridges){
             $approachMask=BeamRoadSurface::bridgeApproachMask($road,$profiles,$chain,$bridges,$raster,$progress);
-            $approachShaping=BeamRoadSurface::blendTerrain($road,$profiles,$raster,$origin,$approachMask,$progress);
+            $approachShaping=BeamRoadSurface::blendTerrain($road,$profiles,$raster,$origin,$approachMask,$progress,$bridges);
             $bridgeApproachCorrection=BeamRoadSurface::clearTerrain($road,$profiles,$raster,$origin,$progress,$approachMask,true);
             $bridgeApproachCorrection['shaping']=$approachShaping;
             unset($approachMask);

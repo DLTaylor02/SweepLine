@@ -463,9 +463,23 @@ $abutmentRaster=new BeamRaster(40,40,$abutmentHeights,str_repeat(chr(100),40*40*
 $abutmentRoad=[[2,20,10],[12,20,10],[18,20,10],[36,20,10]];$abutmentProfiles=array_fill(0,4,['width_m'=>4]);
 $abutmentMask=SweepLine\BeamRoadSurface::bridgeApproachMask($abutmentRoad,$abutmentProfiles,[0,10,16,34],[['start_m'=>10,'end_m'=>16]],$abutmentRaster,fn($m)=>null);
 check($abutmentMask[20*40+14]==="\1"&&$abutmentMask[20*40+21]==="\0",'Bridge approach mask protects deck-interior ground while permitting landward correction');
-SweepLine\BeamRoadSurface::blendTerrain($abutmentRoad,$abutmentProfiles,$abutmentRaster,0,$abutmentMask,fn($m)=>null);
+SweepLine\BeamRoadSurface::blendTerrain($abutmentRoad,$abutmentProfiles,$abutmentRaster,0,$abutmentMask,fn($m)=>null,[['start_m'=>10,'end_m'=>16]]);
 SweepLine\BeamRoadSurface::clearTerrain($abutmentRoad,$abutmentProfiles,$abutmentRaster,0,fn($m)=>null,$abutmentMask,true);
 check($abutmentRaster->height(21,20)<10&&$abutmentRaster->cell(14,20)===8.0,'Raised terrain after a bridge is corrected without raising the valley floor beneath the deck');
 $outsideIntact=true;for($y=0;$y<40;$y++)for($x=0;$x<40;$x++)if($abutmentMask[$y*40+$x]!=="\0"&&$abutmentRaster->cell($x,$y)!==$beforeAbutment->cell($x,$y))$outsideIntact=false;
 check($outsideIntact,'Bridge approach fix leaves all terrain outside its allowed landing zones unchanged');
 check($flatReport['bridge_approach_correction']===null,'Ordinary exports do not run the bridge-approach correction');
+
+$ridgeRoad=[[20,32,20],[44,32,20]];$ridgeProfiles=array_fill(0,2,['width_m'=>8]);$ridgeHeights=str_repeat(pack('g',10),4096);
+$ridgeOriginal=new BeamRaster(64,64,$ridgeHeights,str_repeat(chr(100),4096*3));
+$narrowBridgeMask=str_repeat("\0",4096);for($y=28;$y<=36;$y++)for($x=16;$x<=48;$x++)$narrowBridgeMask[$y*64+$x]="\1";
+$ridgeControl=clone $ridgeOriginal;
+SweepLine\BeamRoadSurface::blendTerrain($ridgeRoad,$ridgeProfiles,$ridgeControl,0,$narrowBridgeMask,fn($m)=>null);
+check($ridgeControl->cell(32,39)>15,'Regression fixture reproduces an artificial ridge beyond a narrow bridge mask');
+$ridgeFixed=clone $ridgeOriginal;
+SweepLine\BeamRoadSurface::blendTerrain($ridgeRoad,$ridgeProfiles,$ridgeFixed,0,$narrowBridgeMask,fn($m)=>null,[['start_m'=>0,'end_m'=>24]]);
+check($ridgeFixed->heights===$ridgeHeights,'Elevated bridge deck samples never raise terrain beside or beneath the bridge');
+$ordinaryA=clone $ridgeOriginal;$ordinaryB=clone $ridgeOriginal;
+SweepLine\BeamRoadSurface::blendTerrain($ridgeRoad,$ridgeProfiles,$ordinaryA,0,str_repeat("\0",4096),fn($m)=>null);
+SweepLine\BeamRoadSurface::blendTerrain($ridgeRoad,$ridgeProfiles,$ordinaryB,0,str_repeat("\0",4096),fn($m)=>null,[]);
+check($ordinaryA->heights===$ordinaryB->heights,'Bridge exclusion leaves ordinary shoulder height output byte-for-byte unchanged');
