@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Expanded native BeamNG vegetation to a seven-asset stock catalog across Utah, West Coast USA, East Coast USA and Johnson Valley. Added regional/elevation-based variants, asset-aware footprints, per-export dependency reporting and deduplicated material loading. Added optional read-only installed-asset verification.
+
 - Set BeamNG level visibility to 8 km with lighter fog; replaced generated trees/bushes with references to installed Utah juniper assets via native Forest placements and stock materials. Enlarged placement footprints for those assets without redistributing game art.
 - Reduced road-to-terrain recess from 60 cm to 30 cm while retaining 1024 elevation sampling and corridor shaping. Disabled false-positive buildings inferred solely from gray aerial colors; mapped footprint support is still pending.
 

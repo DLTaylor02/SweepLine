@@ -28,11 +28,12 @@ final class BeamScenery
         $distance=$this->edgeDistance($x,$y);
         return $distance+1e-8>=$radius && $distance+$radius<=self::RANGE_M+1e-8;
     }
-    public static function radius(string $kind,float $scale): float
+    public static function radius(string $kind,float $scale,?string $asset=null): float
     {
+        if($asset!==null)return BeamVegetation::CATALOG[$asset]['radius']*$scale;
         return match($kind){"tree"=>7.0,"building"=>sqrt(41),"bush"=>1.2,default=>2.0}*$scale;
     }
-    public static function place(array $road,array $profiles,BeamRaster $raster,int $seed,callable $progress): array
+    public static function place(array $road,array $profiles,BeamRaster $raster,int $seed,callable $progress,array $center=[-119,39]): array
     {
         $geometry=new self($road,$profiles);$chain=[0.0];
         for($i=1;$i<count($road);$i++)$chain[]=$chain[$i-1]+hypot($road[$i][0]-$road[$i-1][0],$road[$i][1]-$road[$i-1][1]);
@@ -50,7 +51,8 @@ final class BeamScenery
             $cover=BeamRaster::cover($raster->rgb((int)($x/$raster->side*$raster->size),(int)($y/$raster->side*$raster->size)));
             if($cover===4){$skipped["water"]++;continue;}
             $pick=$random();$kind=$cover===0?($pick<0.7?"tree":"bush"):($pick<0.65?"bush":"rock");
-            $scale=0.7+$random()*0.6;$radius=self::radius($kind,$scale);
+            $asset=BeamVegetation::choose($kind,$center,$raster->roadHeight($x,$y),$cover,$random());
+            $scale=0.7+$random()*0.6;$radius=self::radius($kind,$scale,$asset);
             if(!$geometry->allows($x,$y,$radius)){$skipped["footprint"]++;continue;}
             if($x<$radius||$y<$radius||$x+$radius>=$raster->side||$y+$radius>=$raster->side){$skipped["bounds"]++;continue;}
             $h=$raster->height($x,$y);$slope=0.0;
@@ -60,7 +62,7 @@ final class BeamScenery
             for($ix=$cx-1;$ix<=$cx+1;$ix++)for($iy=$cy-1;$iy<=$cy+1;$iy++)foreach($occupied[$ix.":".$iy]??[] as $other)if(hypot($x-$other[0],$y-$other[1])<$radius+$other[2])$overlap=true;
             if($overlap){$skipped["spacing"]++;continue;}
             $occupied[$cx.":".$cy][]=[$x,$y,$radius];$types[$kind]++;
-            $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale];
+            $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale,"asset"=>$asset];
         }
         return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
     }

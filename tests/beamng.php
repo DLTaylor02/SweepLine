@@ -56,7 +56,7 @@ try {
     $forestDefs=json_decode($archive->getFromName($base.'art/forest/managedItemData.json'),true);
     $forestCount=0;
     foreach($forestDefs as $type=>$definition){
-        check(in_array($definition['shapeFile'],SweepLine\BeamVegetation::SHAPES,true)&&$definition['class']==='TSForestItemData','Forest references verified stock Utah mesh path');
+        check(in_array($definition['shapeFile'],array_column(SweepLine\BeamVegetation::CATALOG,'shape'),true)&&$definition['class']==='TSForestItemData','Forest references a verified stock multi-map mesh path');
         $forestLines=trim($archive->getFromName($base.'forest/'.$type.'.forest4.json'));
         if($forestLines!=='')foreach(explode("\n",$forestLines) as $line){$instance=json_decode($line,true,512,JSON_THROW_ON_ERROR);if($instance['type']!==$type)throw new RuntimeException('Forest type mismatch');$forestCount++;}
         check($archive->locateName(ltrim($definition['shapeFile'],'/'))===false,'Stock mesh is referenced without redistributing game assets');
@@ -236,7 +236,7 @@ $parallelGeometry=new SweepLine\BeamScenery($parallelRoad,array_fill(0,4,$testPr
 check(!$parallelGeometry->allows(500,615,2),'Placement avoids adjacent road sections as well as the sampled section');
 $flatSceneryRaster=new BeamRaster($n,$side,str_repeat(pack('g',100),$n*$n),$colors);
 $sceneryCheckpoints=0;$placements=SweepLine\BeamScenery::place($testRoad,$testProfiles,$flatSceneryRaster,12345,function($m)use(&$sceneryCheckpoints){$sceneryCheckpoints++;});
-$allAllowed=true;foreach($placements['objects'] as $object){[$x,$y]=$object['position'];if(!$sceneryGeometry->allows($x,$y,SweepLine\BeamScenery::radius($object['kind'],$object['scale'])))$allAllowed=false;}
+$allAllowed=true;foreach($placements['objects'] as $object){[$x,$y]=$object['position'];if(!$sceneryGeometry->allows($x,$y,SweepLine\BeamScenery::radius($object['kind'],$object['scale'],$object['asset']??null)))$allAllowed=false;}
 check(count($placements['objects'])>100 && $allAllowed,'Generated vegetation stays beside road without footprint overlap or distant objects');
 check($placements['counts']['tree']>0 && $placements['counts']['bush']>0,'Vegetated corridor includes trees and bushes');
 check(array_sum($placements['counts'])===count($placements['objects']) && $sceneryCheckpoints>0,'Scenery reports category counts and checks cancellation during placement');
@@ -246,3 +246,17 @@ $grayRaster=new BeamRaster($n,$side,str_repeat(pack('g',100),$n*$n),str_repeat(c
 $grayPlacement=SweepLine\BeamScenery::place($testRoad,$testProfiles,$grayRaster,6789,fn($m)=>null);
 check($grayPlacement['counts']['building']===0,'Gray rock or pavement never produces guessed buildings');
 check(SweepLine\BeamScenery::radius('tree',1)>=7 && SweepLine\BeamScenery::radius('bush',1)>=1.1,'Road clearance accounts for stock vegetation mesh footprints');
+
+check(SweepLine\BeamVegetation::choose('tree',[-82,40],300,0,0.1)==='beech_b' && SweepLine\BeamVegetation::choose('tree',[-82,40],300,0,0.8)==='beech_c','Eastern palette mixes stock beech variants');
+check(SweepLine\BeamVegetation::choose('tree',[-119,39],1800,0,0.1)==='coastal_pine','Western mountain palette includes pine');
+check(SweepLine\BeamVegetation::choose('bush',[-115,35],400,1,0.1)==='desert_shrub','Dry western cover includes Johnson Valley shrubs');
+check(SweepLine\BeamVegetation::choose('bush',[-82,40],300,0,0.1)==='eastern_bush','Eastern bushes come from East Coast USA');
+$assetsFiles=[];$multiPlacements=[];
+foreach(SweepLine\BeamVegetation::CATALOG as $asset=>$definition)$multiPlacements[]=['kind'=>$definition['kind'],'asset'=>$asset,'position'=>[100,200,300],'scale'=>1];
+$assetCount=SweepLine\BeamVegetation::write($multiPlacements,'sl_test',100,function($path,$bytes)use(&$assetsFiles){$assetsFiles[$path]=$bytes;});
+$multiDefs=json_decode($assetsFiles['art/forest/managedItemData.json'],true);
+check($assetCount===7 && count($multiDefs)===7,'Mixed stock variants serialize to distinct forest types');
+$materials=array_unique(array_column(SweepLine\BeamVegetation::CATALOG,'materials'));
+$materialRefsValid=true;foreach($materials as $path)if(substr_count($assetsFiles['mainLevel.lua'],$path)!==1)$materialRefsValid=false;
+check($materialRefsValid,'Each used stock material library loads once despite shared variants');
+check(count(SweepLine\BeamVegetation::used($multiPlacements))===7,'Export report identifies actual stock dependencies');

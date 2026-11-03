@@ -169,13 +169,14 @@ final class BeamMap
                 $mat=$prefix.'_'.$kind;$sceneryMaterials[$mat]=['class'=>'Material','name'=>$mat,'mapTo'=>$mat,'version'=>1,'Stages'=>[['diffuseColor'=>$color]]];
                 $put('art/shapes/'.$kind.'.dae',BeamAssets::shape($mat,$kind));
             }
-            $scenery=BeamScenery::place($road,$profiles,$raster,$seed,$progress);
+            $scenery=BeamScenery::place($road,$profiles,$raster,$seed,$progress,$plan['center']);
             $nativeVegetation=BeamVegetation::write($scenery['objects'],$prefix,$origin,$put);
             $objects[]=['class'=>'Forest','name'=>'theForest','__parent'=>'MissionGroup'];
             $count=$nativeVegetation;
             foreach($scenery['objects'] as $object){$kind=$object['kind'];if(isset(BeamVegetation::SHAPES[$kind]))continue;$p=$object['position'];$scale=$object['scale'];
                 $objects[]=['class'=>'TSStatic','name'=>'scenery_'.$count++,'__parent'=>'MissionGroup','shapeName'=>$path.'art/shapes/'.$kind.'.dae','position'=>[$p[0],$p[1],$p[2]-$origin],'scale'=>[$scale,$scale,$scale],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
             }
+            $vegetationAssets=BeamVegetation::used($scenery['objects']);
             unset($scenery['objects']);
             $put('art/shapes/main.materials.json',self::json($sceneryMaterials));
             $items='';foreach($objects as $object)$items.=json_encode($object,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES)."\n";
@@ -185,11 +186,11 @@ final class BeamMap
             $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
-            $report=['target'=>'BeamNG.drive v0.40','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>BeamVegetation::SHAPES,'visible_distance_m'=>8000,
+            $report=['target'=>'BeamNG.drive v0.40','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'visible_distance_m'=>8000,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Short simple bridges use estimated approach-derived decks. Complex bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation graph covers only the selected road; traffic behavior requires in-game validation.','Requires in-game v0.40 validation.']];
             $put('sweepline-report.json',self::json($report));
-            $zip->addFromString('INSTALL.txt',"SweepLine BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." — SweepLine, then Start or End.\nStart is the default spawn. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nUses installed BeamNG.drive 0.40 Utah juniper vegetation; stock Utah content is required. No BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
+            $zip->addFromString('INSTALL.txt',"SweepLine BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." — SweepLine, then Start or End.\nStart is the default spawn. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nUses installed BeamNG.drive 0.40 vegetation from Utah, West Coast USA, East Coast USA or Johnson Valley. Required references are listed in the report. No BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
             $progress('Finalizing the map ZIP');
         } finally {$zip->close();}
         return $report;

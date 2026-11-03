@@ -405,3 +405,11 @@ New exports reference the installed BeamNG.drive 0.40 Utah Juniper_tree_01 and J
 LevelInfo explicitly sets visibleDistance to 8,000 meters (matching stock Utah) with light fog; user graphics/LOD settings can still limit rendering. Small generated props are not forced to full detail at all distances. Road elevation sampling remains 1024 and the original corridor method is retained, with terrain recess reduced from 0.60 m to 0.30 m. The road's 0.25 m elevation offset remains unchanged.
 
 Buildings are no longer inferred from gray aerial pixels. Until mapped building footprints are imported, exports deliberately omit guessed buildings; rock and pavement colors are insufficient evidence of a roof. Counts and the building policy appear in the export report. This supersedes earlier color-based box-building behavior.
+
+### Multi-map vegetation palette
+
+Exports can reference stock vegetation from Utah (junipers), West Coast USA (small pines), East Coast USA (two small beech variants and bushes), and Johnson Valley (shrubs). Broad longitude/latitude, elevation and aerial-cover rules choose an approximate regional palette, with mixed variants and rotations. These rules are not a species survey. Asset-specific conservative footprints preserve the 200-foot roadside limit and avoid pavement/other objects.
+
+Only used forest types and material libraries are emitted; shared material libraries are loaded once. The report lists the exact referenced assets and stock maps required on the player''s BeamNG.drive 0.40 installation. No game meshes, textures or material definitions are bundled. The server still needs no game installation. Regenerate to apply the palette; future game updates may require catalog path changes.
+
+Optional read-only verification: php tests/beamng-assets.php PATH_TO_BEAMNG_INSTALL checks every catalog mesh and material file against installed stock level ZIPs. It neither copies assets nor modifies the game. Runtime material loading and appearance still require in-game verification.
