@@ -77,7 +77,7 @@ final class BeamMap
             $road[]=[$p[0],$p[1],$z-$origin+self::ROAD_ELEVATION_OFFSET_M];if($profiles[$i]['estimated_lanes'])$estimated++;
         }
         $progress('Shaping the road corridor while preserving surrounding terrain');
-        $nearest=str_repeat(pack('g',INF),$n*$n);
+
         $bridgeMask=str_repeat("\0",$n*$n);
         foreach($bridges as $bridge){[$first,$last]=BeamStructures::indices($chain,$bridge);
             for($i=$first;$i<=$last;$i++){
@@ -87,24 +87,10 @@ final class BeamMap
                 for($y=max(0,$cy-$cells);$y<=min($n-1,$cy+$cells);$y++)for($x=max(0,$cx-$cells);$x<=min($n-1,$cx+$cells);$x++)if(hypot($x*$step-$p[0],$y*$step-$p[1])<=$radius)$bridgeMask[$y*$n+$x]="\1";
             }
         }
-        foreach($road as $i=>$p) {
-            if($i%100===0)$progress(null);$width=$profiles[$i]['width_m'];$carveRadius=$width/2+max(3,2*$step);$radius=max($carveRadius,$width/2+20+2*$step);$cells=(int)ceil($radius/$step);
-            $cx=(int)round($p[0]/$step);$cy=(int)round($p[1]/$step);
-            for($y=max(0,$cy-$cells);$y<=min($n-1,$cy+$cells);$y++)for($x=max(0,$cx-$cells);$x<=min($n-1,$cx+$cells);$x++) {
-                $distance=hypot($x*$step-$p[0],$y*$step-$p[1]);if($distance>$radius)continue;
-
-                if($distance>$carveRadius || $bridgeMask[$y*$n+$x]!=="\0")continue;
-                $offset=($y*$n+$x)*4;$best=unpack('g',substr($nearest,$offset,4))[1];if($distance>=$best)continue;
-                $bytes=pack('g',$distance);for($j=0;$j<4;$j++)$nearest[$offset+$j]=$bytes[$j];
-                $fade=max(0,min(1,($distance-$width/2-$step)/max(1,$step)));
-                $raster->put($x,$y,($p[2]+$origin-self::ROAD_CLEARANCE_M)*(1-$fade)+$raster->cell($x,$y)*$fade);
-
-            }
-        }
-        unset($nearest);
+        $shoulders=BeamRoadSurface::blendTerrain($road,$profiles,$raster,$origin,$bridgeMask,$progress);
         $progress('Checking and removing terrain intersections beneath the road');
         $terrainCorrection=BeamRoadSurface::clearTerrain($road,$profiles,$raster,$origin,$progress,$bridgeMask);
-        $shoulders=BeamRoadSurface::shoulders($road,$profiles,$raster,$origin,$bridgeMask,$progress,$categories);
+
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
         $put=static function($file,$bytes)use($zip,$base){if(!$zip->addFromString($base.$file,$bytes))throw new \RuntimeException('Could not write BeamNG archive.');};
         try {
@@ -188,31 +174,6 @@ final class BeamMap
                 $mat=$prefix.'_road_'.$chunk['key'];
                 $objects[]=['class'=>'MeshRoad','name'=>'road_'.$i,'__parent'=>'MissionGroup','topMaterial'=>$mat,'bottomMaterial'=>$mat,'sideMaterial'=>$mat,'textureLength'=>BeamPng::ROAD_TEXTURE_LENGTH_M,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>$chunk['nodes']];
             }
-            $shoulderGrounds=$terrainStyle==='stock'?array_column(BeamTerrain::PALETTE,'ground'):['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
-            foreach($shoulderGrounds as $surface=>$groundModel){
-                $mat=$prefix.'_shoulder_'.$surface;
-                $tint=$terrainStyle==='stock'?(BeamTerrain::PALETTE[$surface]['color']??[142,130,108]):[142,130,108];
-                $texture='art/roads/shoulder-'.$surface.'.color.png';
-                $roadMaterials['shoulder_'.$surface]=['class'=>'Material','name'=>$mat,'mapTo'=>$mat,'version'=>1,'groundType'=>$groundModel,'Stages'=>[['diffuseMap'=>$path.$texture,'diffuseColor'=>[1,1,1,1],'specularPower'=>1,'useAnisotropic'=>true]]];
-                $put($texture,BeamPng::rgb(64,64,static function($x,$y)use($tint){$noise=(($x*17+$y*31)%11)-5;return array_map(static fn($c)=>$c+$noise,$tint);}));
-            }
-            foreach($shoulders['runs'] as $runIndex=>$run)foreach(['bed','left','right'] as $strip){
-                $surfaceNodes=BeamShoulderMesh::orientNodes(array_column($run,$strip));
-                $chunks=[];$lastSurface=null;
-                foreach($run as $i=>$section){
-                    $surface=$section[$strip.'_surface'];
-                    if($lastSurface!==$surface){$chunks[]=['surface'=>$surface,'nodes'=>$i>0?[$surfaceNodes[$i-1]]:[]];$lastSurface=$surface;}
-                    $chunks[count($chunks)-1]['nodes'][]=$surfaceNodes[$i];
-                }
-                foreach($chunks as $chunkIndex=>$chunk)if(count($chunk['nodes'])>1){
-                    $mat=$prefix.'_shoulder_'.$chunk['surface'];
-                    $shape='art/roads/shoulder-'.$runIndex.'-'.$strip.'-'.$chunkIndex.'.dae';
-                    $put($shape,BeamShoulderMesh::build($mat,$chunk['nodes']));
-                    $objects[]=['class'=>'TSStatic','name'=>'shoulder_'.$runIndex.'_'.$strip.'_'.$chunkIndex,'__parent'=>'MissionGroup','shapeName'=>$path.$shape,'position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
-                }
-            }
-            unset($shoulders['runs']);$shoulders['collision']='Top-only triangle surfaces; no side walls, undersides or end caps';
-
             $put('art/roads/main.materials.json',self::json(array_combine(array_column($roadMaterials,'name'),array_values($roadMaterials))));
             $start=self::spawn($road,$profiles,false,$plan['oneway']);$end=self::spawn($road,$profiles,true,$plan['oneway']);$objects[]=$start;$objects[]=$end;
             $archMaterials=[];

@@ -11,48 +11,36 @@ final class BeamRoadSurface
         foreach($profiles as $i=>&$profile){$width=$baseWidth;$profile["transition"]=false;foreach($changes as [$at,$delta]){if(abs($chain[$i]-$at)<30.48)$profile["transition"]=true;$t=max(0,min(1,($chain[$i]-$at+30.48)/60.96));$width+=$delta*($t*$t*(3-2*$t));}$profile["width_m"]=max(2.4,$width);}unset($profile);
         return $profiles;
     }
-    public static function shoulders(array $road,array $profiles,BeamRaster $raster,float $origin,string $protected,callable $progress,string $categories=""): array
+    /** Blend native terrain to pavement height without adding collision objects. */
+    public static function blendTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,string $protected,callable $progress): array
     {
-        $step=$raster->side/$raster->size;$runs=[];$run=[];$maxDrop=0.0;
-        foreach($road as $i=>$p){
-            if($i%100===0)$progress(null);
-            $cx=(int)floor($p[0]/$step);$cy=(int)floor($p[1]/$step);$blocked=false;
-            for($yy=$cy;$yy<=$cy+1;$yy++)for($xx=$cx;$xx<=$cx+1;$xx++)
-                if($xx>=0&&$yy>=0&&$xx<$raster->size&&$yy<$raster->size&&($protected[$yy*$raster->size+$xx]??"\0")!=="\0")$blocked=true;
-            if($blocked){if(count($run)>1)$runs[]=$run;$run=[];continue;}
-            $a=$road[max(0,$i-1)];$b=$road[min(count($road)-1,$i+1)];$length=hypot($b[0]-$a[0],$b[1]-$a[1])?:1;
-            $dx=($b[0]-$a[0])/$length;$dy=($b[1]-$a[1])/$length;$grade=($b[2]-$a[2])/$length;
-            $surfaceAt=static fn($x,$y)=>ord($categories[max(0,min($raster->size-1,(int)floor($y/$step)))*$raster->size+max(0,min($raster->size-1,(int)floor($x/$step)))]??"\0");
-            $section=['bed_surface'=>$surfaceAt($p[0],$p[1]),'bed'=>[$p[0],$p[1],$p[2]-0.05,$profiles[$i]['width_m']+0.04,0.03,0,0,1]];
-            foreach([-1,1] as $side){
-                $nx=$dy*$side;$ny=-$dx*$side;$half=$profiles[$i]['width_m']/2;
-                $width=1.5;
-                for($attempt=0;$attempt<4;$attempt++){
-                    $outer=[$p[0]+$nx*($half+$width),$p[1]+$ny*($half+$width)];
-                    if(min($outer)<0||max($outer)>=$raster->side){$blocked=true;break;}
-                    // Read final shaped terrain, never the preserved source DEM.
-                    $ground=$raster->height(...$outer)-$origin;
-                    $needed=max(1.5,min(6,abs($p[2]-$ground)/0.35));
-                    if($needed<=$width||$attempt===3)break;$width=$needed;
-                }
-                if($blocked)break;
-                $width+=0.75;$outer=[$p[0]+$nx*($half+$width),$p[1]+$ny*($half+$width)];
-                if(min($outer)<0||max($outer)>=$raster->side){$blocked=true;break;}
-                $ground=$raster->height(...$outer)-$origin;
-                $section[($side<0?'left':'right').'_surface']=$surfaceAt(...$outer);
-                $ox=(int)floor($outer[0]/$step);$oy=(int)floor($outer[1]/$step);
-                for($yy=$oy;$yy<=$oy+1;$yy++)for($xx=$ox;$xx<=$ox+1;$xx++)
-                    if($xx>=0&&$yy>=0&&$xx<$raster->size&&$yy<$raster->size&&($protected[$yy*$raster->size+$xx]??"\0")!=="\0")$blocked=true;
-                if($blocked)break;
-                $inner=$p[2]-0.005;$outerZ=$ground-0.15;
-                $maxDrop=max($maxDrop,$inner-$outerZ);$rise=($outerZ-$inner)/$width;
-                $normal=[-$grade*$dx-$rise*$nx,-$grade*$dy-$rise*$ny,1];$norm=sqrt(array_sum(array_map(static fn($v)=>$v*$v,$normal)));
-                $section[$side<0?'left':'right']=[$p[0]+$nx*($half+$width/2),$p[1]+$ny*($half+$width/2),($inner+$outerZ)/2,hypot($width,$outerZ-$inner),0.03,$normal[0]/$norm,$normal[1]/$norm,1/$norm];
+        $step=$raster->side/$raster->size;$original=clone $raster;
+        $nearest=str_repeat(pack('g',INF),$raster->size*$raster->size);$count=0;$maxChange=0.0;
+        $inner=max(1.5,sqrt(2)*$step);$blend=max(6,3*$step);
+        for($i=1;$i<count($road);$i++){
+            if($i%50===0)$progress(null);
+            $a=$road[$i-1];$b=$road[$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length2=$dx*$dx+$dy*$dy;
+            if($length2<0.000001)continue;
+            $radius=max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2+$inner+$blend;
+            $loX=max(0,(int)floor((min($a[0],$b[0])-$radius)/$step));$hiX=min($raster->size-1,(int)ceil((max($a[0],$b[0])+$radius)/$step));
+            $loY=max(0,(int)floor((min($a[1],$b[1])-$radius)/$step));$hiY=min($raster->size-1,(int)ceil((max($a[1],$b[1])+$radius)/$step));
+            for($y=$loY;$y<=$hiY;$y++)for($x=$loX;$x<=$hiX;$x++){
+                $key=$y*$raster->size+$x;if(($protected[$key]??"\0")!=="\0")continue;
+                $wx=$x*$step;$wy=$y*$step;$t=max(0,min(1,(($wx-$a[0])*$dx+($wy-$a[1])*$dy)/$length2));
+                $half=($profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t)/2;
+                $distance=hypot($wx-$a[0]-$dx*$t,$wy-$a[1]-$dy*$t);$edge=max(0,$distance-$half);
+                if($edge>=$inner+$blend)continue;
+                $offset=$key*4;$best=unpack('g',substr($nearest,$offset,4))[1];if($distance>=$best)continue;
+                if(is_infinite($best))$count++;
+                $bytes=pack('g',$distance);for($j=0;$j<4;$j++)$nearest[$offset+$j]=$bytes[$j];
+                $fade=max(0,min(1,($edge-$inner)/$blend));$fade=$fade*$fade*(3-2*$fade);
+                $before=$original->cell($x,$y);$target=$a[2]+($b[2]-$a[2])*$t+$origin-0.05;
+                $height=$target*(1-$fade)+$before*$fade;
+                $raster->put($x,$y,$height);$maxChange=max($maxChange,abs($height-$before));
             }
-            if($blocked){if(count($run)>1)$runs[]=$run;$run=[];continue;}$run[]=$section;
         }
-        if(count($run)>1)$runs[]=$run;
-        return ['runs'=>$runs,'roadbed_clearance_m'=>0.05,'minimum_shoulder_width_m'=>2.25,'maximum_shoulder_width_m'=>6.75,'edge_overlap_m'=>0.75,'edge_embed_m'=>0.15,'maximum_shoulder_drop_m'=>$maxDrop];
+        return ['method'=>'Native terrain only; no shoulder or supporting collision meshes','clearance_target_m'=>0.05,
+            'inner_margin_m'=>$inner,'blend_width_m'=>$blend,'changed_vertices'=>$count,'maximum_height_change_m'=>$maxChange];
     }
 
     /** Lower all vertices of any terrain cell touched by a sampled road ribbon. */

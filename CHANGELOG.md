@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove all separate BeamNG shoulder/roadbed collision objects and their mesh generator. Shape native terrain to a 5 cm pavement-clearance target, then smoothly blend into the original terrain over a grid-aware shoulder range. Preserve bridge masks and terrain materials; retain the protected road-clipping pass and add raising/lowering/falloff/exclusion regressions.
+
 - Replace solid BeamNG shoulder/roadbed MeshRoad ribbons with upward-facing top-only TSStatic collision meshes, removing side walls, undersides and end caps that can catch tires. Preserve terrain-matched ground types, bridge exclusions and buried outer edges; share rail coordinates across material boundaries.
 
 - Reduce new custom-road preparation to a tight padded rectangle with a small import halo instead of radius-search half-degree tiles. Reuse existing full coverage and stable extract keys, preserve bounded halos on dense-area splits, and support splitting long narrow rectangles. Radius-search planning is unchanged.

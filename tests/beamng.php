@@ -72,18 +72,11 @@ try {
     check(count($roads)>=2,'Lane changes create correctly textured road sections');
     check($archive->locateName($base.'art/roads/transition.color.png')===false,'Lane transitions no longer substitute edge-only unmarked road textures');
 
-    $shoulderMaterials=json_decode($archive->getFromName($base.'art/roads/main.materials.json'),true);
-    foreach(['GRASS','DIRT','ROCK','CONCRETE','DIRT'] as $surface=>$model){
-        $matching=array_values(array_filter($shoulderMaterials,static fn($m)=>str_ends_with($m['name'],'_shoulder_'.$surface)));
-        check(count($matching)===1&&$matching[0]['groundType']===$model,'Aerial shoulder material matches terrain ground model '.$surface);
-    }
-
     $arches=array_values(array_filter($objects,fn($o)=>in_array($o['name']??'',['start_arch','finish_arch'],true)));
     check(count($arches)===2,'Start and Finish each have one physical arch');
 
     $openShoulders=array_values(array_filter($objects,static fn($o)=>str_starts_with($o['name']??'','shoulder_')));
-    check(count($openShoulders)>0&&count(array_filter($openShoulders,static fn($o)=>$o['class']==='TSStatic'&&$o['collisionType']==='Visible Mesh Final'))===count($openShoulders),'Export shoulders use open static collision surfaces instead of solid MeshRoad ribbons');
-    foreach($openShoulders as $o)if($archive->locateName(ltrim($o['shapeName'],'/'))===false)throw new RuntimeException('Missing shoulder collision mesh');
+    check($openShoulders===[],'Export contains no separate shoulder or supporting collision objects');
 
     foreach($arches as $arch){
         // Transform the local beam X axis using the serialized axis columns.
@@ -438,45 +431,19 @@ check((imagecolorat($markingImage,170,20)&0xffffff)===0xe1e1d7&&(imagecolorat($m
 check((imagecolorat($markingImage,1,180)&0xffffff)===0xebebe1,'Edge markings remain continuous through lane transitions');
 unset($markingImage);
 
-$shoulderRaster=new BeamRaster(64,64,str_repeat(pack('g',10),4096),str_repeat(chr(100),4096*3));
-$shoulderRoad=[[10,30,10.08],[20,30,10.08],[30,30,10.08],[40,30,10.08],[50,30,10.08]];
-$shoulderProfiles=array_fill(0,5,['width_m'=>8]);
-$shoulderResult=SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,str_repeat("\0",4096),fn($m)=>null);
-check(count($shoulderResult['runs'])===1&&count($shoulderResult['runs'][0])===5,'Ordinary road receives connected shoulder and roadbed strips');
-$section=$shoulderResult['runs'][0][2];
-check(abs($section['bed'][2]-10.03)<0.00001&&$shoulderResult['roadbed_clearance_m']<=0.10,'Roadbed surface stays five centimeters below pavement');
-check(abs($section['left'][2]-9.9625)<0.001&&$section['left'][7]>0.99,'Shoulder smoothly joins pavement edge to final terrain');
-$protected=str_repeat("\1",4096);$before=$shoulderRaster->heights;
-$protectedCorrection=SweepLine\BeamRoadSurface::clearTerrain($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,fn($m)=>null,$protected);
-check($before===$shoulderRaster->heights&&$protectedCorrection['checked_vertices']===0,'Bridge-protected terrain remains unchanged during overlap correction');
-check(SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,$protected,fn($m)=>null)['runs']===[],'Bridge spans receive no roadbed or shoulder meshes');
 
-$fallingRoad=array_map(static fn($p)=>[$p[0],$p[1],12],$shoulderRoad);
-$wideShoulder=SweepLine\BeamRoadSurface::shoulders($fallingRoad,$shoulderProfiles,$shoulderRaster,0,str_repeat("\0",4096),fn($m)=>null);
-check($wideShoulder['runs'][0][2]['left'][3]>5.7,'Shoulder widens on larger drops instead of leaving a narrow vertical shelf');
-$partialMask=str_repeat("\0",4096);for($y=0;$y<64;$y++)for($x=28;$x<=32;$x++)$partialMask[$y*64+$x]="\1";
-$splitShoulders=SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,$partialMask,fn($m)=>null);
-check(count($splitShoulders['runs'])===2&&$splitShoulders['runs'][0][1]['bed'][0]===20&&$splitShoulders['runs'][1][0]['bed'][0]===40,'Shoulder strips stop and restart without bridging a protected span');
-
-$categoryGrid=str_repeat(chr(0),4096);
-for($y=0;$y<64;$y++)for($x=0;$x<64;$x++)if($y>30)$categoryGrid[$y*64+$x]=chr(3);
-$typedShoulder=SweepLine\BeamRoadSurface::shoulders($shoulderRoad,$shoulderProfiles,$shoulderRaster,0,str_repeat("\0",4096),fn($m)=>null,$categoryGrid);
-$typedSection=$typedShoulder['runs'][0][2];
-check($typedSection['left_surface']===3&&$typedSection['right_surface']===0,'Each shoulder side samples its underlying terrain category independently');
-check($typedSection['left'][3]*$typedSection['left'][7]>=2.249,'Shoulder extends at least three quarters of a meter beyond its previous edge');
-$outerHeight=$typedSection['left'][2]-sqrt(max(0,$typedSection['left'][3]**2-(2.25**2)))/2;
-check(abs($outerHeight-9.85)<0.001,'Outer shoulder edge is embedded fifteen centimeters into flat terrain instead of floating above it');
-
-$openNodes=[[0,0,1,2,0.03,0,0,1],[10,0,1,2,0.03,0,0,1],[20,5,2,2,0.03,0,0,1],[30,10,2,2,0.03,0,0,1]];
-$orientedNodes=SweepLine\BeamShoulderMesh::orientNodes($openNodes);
-$openXml=simplexml_load_string(SweepLine\BeamShoulderMesh::build('test_shoulder',$orientedNodes),SimpleXMLElement::class,LIBXML_NONET);
-$openXml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
-check((int)$openXml->xpath('//c:triangles')[0]['count']===6,'Shoulder mesh contains exactly two top triangles per road interval and no walls or caps');
-$openNormals=preg_split('/\s+/',trim((string)$openXml->xpath('//c:float_array[@id="normals-array"]')[0]));$upward=true;
-for($i=2;$i<count($openNormals);$i+=3)if((float)$openNormals[$i]<=0)$upward=false;
-check($upward,'Every shoulder collision triangle faces upward rather than presenting a vertical tire-catching wall');
-$partA=simplexml_load_string(SweepLine\BeamShoulderMesh::build('test_shoulder',array_slice($orientedNodes,0,3)));
-$partB=simplexml_load_string(SweepLine\BeamShoulderMesh::build('test_shoulder',array_slice($orientedNodes,2)));
-$vertexKeys=static function($xml){$values=preg_split('/\s+/',trim((string)$xml->xpath('//*[local-name()="float_array" and @id="positions-array"]')[0]));$keys=[];for($i=0;$i<count($values);$i+=3)$keys[]=sprintf('%.6f,%.6f,%.6f',$values[$i],$values[$i+1],$values[$i+2]);return array_unique($keys);};
-check(count(array_intersect($vertexKeys($partA),$vertexKeys($partB)))===2,'Material-change shoulder meshes share exactly the same boundary rail vertices');
-check(rejects(fn()=>SweepLine\BeamShoulderMesh::build('bad<material',$openNodes)),'Shoulder mesh rejects unsafe material identifiers');
+$blendRoad=[[10,30,12],[30,30,12],[50,30,12]];$blendProfiles=array_fill(0,3,['width_m'=>8]);
+$blendRaster=new BeamRaster(64,64,str_repeat(pack('g',10),4096),str_repeat(chr(100),4096*3));
+$originalBlend=$blendRaster->heights;$originalColors=$blendRaster->colors;
+$blendResult=SweepLine\BeamRoadSurface::blendTerrain($blendRoad,$blendProfiles,$blendRaster,0,str_repeat("\0",4096),fn($m)=>null);
+check(abs($blendRaster->cell(30,30)-11.95)<0.0001,'Native terrain rises to five centimeters below ordinary pavement');
+check($blendRaster->cell(30,36)>$blendRaster->cell(30,38)&&$blendRaster->cell(30,38)>10,'Shoulder range smoothly slopes back to surrounding terrain');
+check($blendRaster->cell(30,44)===10.0&&$blendRaster->colors===$originalColors,'Terrain outside shoulder range and terrain material colors stay unchanged');
+$fullyProtected=new BeamRaster(64,64,$originalBlend,$originalColors);
+$protectedBlend=SweepLine\BeamRoadSurface::blendTerrain($blendRoad,$blendProfiles,$fullyProtected,0,str_repeat("\1",4096),fn($m)=>null);
+check($fullyProtected->heights===$originalBlend&&$protectedBlend['changed_vertices']===0,'Native terrain blending leaves protected bridge areas exactly unchanged');
+$downRaster=new BeamRaster(64,64,$originalBlend,$originalColors);
+$downRoad=array_map(static fn($p)=>[$p[0],$p[1],8],$blendRoad);
+SweepLine\BeamRoadSurface::blendTerrain($downRoad,$blendProfiles,$downRaster,0,str_repeat("\0",4096),fn($m)=>null);
+check(abs($downRaster->cell(30,30)-7.95)<0.0001&&$downRaster->cell(30,38)>7.95,'Native terrain can lower uphill ground with the same gradual transition');
+check(str_contains($blendResult['method'],'Native terrain only')&&$blendResult['blend_width_m']>=6,'Export reports the native terrain approach and transition width');
