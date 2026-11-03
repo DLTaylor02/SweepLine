@@ -33,6 +33,7 @@ try {
     if (preg_match('#^/api/search-history/[1-9]\\d{0,17}$#',$path)) { $expected='DELETE'; }
     if ($path==='/api/favorites' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/favorites/[1-9]\\d{0,17}$#',$path)) { $expected=$method==='DELETE'?'DELETE':'GET'; }
+    if(preg_match('#^/api/favorites/[1-9]\\d{0,17}/preferences$#',$path))$expected='POST';
     if(preg_match('#^/api/(?:admin/)?beamng/[a-f0-9]{32}/cancel$#',$path))$expected='POST';
     if ($method!==$expected) { header('Allow: '.$expected); throw new SweepLine\HttpException(405,'Method not allowed'); }
     $input=[];
@@ -83,11 +84,13 @@ try {
                 if (!isset($favorite['road']['basemap'])) {$favorite['road']['basemap']=SweepLine\ExportMap::load($db,$favorite['road']);}
                 header('Content-Type: image/svg+xml; charset=utf-8');header("Content-Security-Policy: default-src 'none'; style-src 'none'; sandbox");
                 echo SweepLine\FavoriteThumbnail::render($favorite['road']);exit;
+            } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})/preferences$#',$path,$m)) {
+                $result=(new SweepLine\Favorites($db))->preferences((int)$user['id'],(int)$m[1],$input);
             } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})/export$#',$path,$m)) {
                 $format=$_GET['format']??'';if (!is_string($format)) {throw new InvalidArgumentException('Invalid export format');}
                 $favorite=(new SweepLine\Favorites($db))->detail((int)$user['id'],(int)$m[1]);
                 if ($format==='pdf' && !isset($favorite['road']['basemap'])) {$favorite['road']['basemap']=SweepLine\ExportMap::load($db,$favorite['road']);}
-                SweepLine\RoadExport::download($favorite['road'],$format);
+                SweepLine\RoadExport::download($favorite['road'],$format,SweepLine\RoadExport::orientation($_GET['orientation']??($favorite['road']['preferred_orientation']??'forward')),$_GET['preferred_name']??null);
             }
             elseif ($path==='/api/search-history') { $result=(new SweepLine\SearchHistory($db))->recent((int)$user['id']); }
             elseif (preg_match('#^/api/search-history/([1-9]\\d{0,17})$#',$path,$m)) { $result=(new SweepLine\SearchHistory($db))->delete((int)$user['id'],(int)$m[1]); }
@@ -123,10 +126,17 @@ try {
                 $profile=$_GET['profile']??'twisty'; if (!is_string($profile)) { throw new InvalidArgumentException('Unknown profile'); }
                 $result=$api->detail((int)$m[1],$profile,SweepLine\Api::memberIds($_GET['members']??null,(int)$m[1]));
                 $result['favorite_id']=(new SweepLine\Favorites($db))->find((int)$user['id'],$result['geometry_key'],$profile);
+                if($result['favorite_id']){
+                    $savedRoad=(new SweepLine\Favorites($db))->detail((int)$user['id'],$result['favorite_id'])['road'];
+                    $knownNames=array_merge([$result['name']],$result['alternate_names']??[]);
+                    if(in_array($savedRoad['name'],$knownNames,true))$result['preferred_name']=$savedRoad['name'];
+                    $result['preferred_orientation']=$savedRoad['preferred_orientation']??'forward';
+                }
+
             } elseif (preg_match('#^/api/roads/([1-9]\\d{0,17})/export$#',$path,$m)) {
                 $format=$_GET['format']??'';$profile=$_GET['profile']??'twisty';
                 if (!is_string($format) || !in_array($format,['gpx','kmz','pdf'],true) || !is_string($profile)) { throw new InvalidArgumentException('Invalid export format or profile'); }
-                SweepLine\RoadExport::download($api->exportRoad((int)$m[1],$profile,$format==='pdf',SweepLine\Api::memberIds($_GET['members']??null,(int)$m[1])),$format);
+                SweepLine\RoadExport::download($api->exportRoad((int)$m[1],$profile,$format==='pdf',SweepLine\Api::memberIds($_GET['members']??null,(int)$m[1])),$format,SweepLine\RoadExport::orientation($_GET['orientation']??'forward'),$_GET['preferred_name']??null);
             } elseif ($path==='/api/admin/users') {
                 $result=$method==='GET'?$auth->users():$auth->create($input);
             } elseif (preg_match('#^/api/admin/users/([1-9]\\d{0,17})$#',$path,$m)) { $result=$auth->update((int)$m[1],$input); }

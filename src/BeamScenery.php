@@ -39,7 +39,7 @@ final class BeamScenery
         for($i=1;$i<count($road);$i++)$chain[]=$chain[$i-1]+hypot($road[$i][0]-$road[$i-1][0],$road[$i][1]-$road[$i-1][1]);
         $length=$chain[count($chain)-1];$target=min(12000,max(400,(int)ceil($length/1000*250)));$limit=min(200000,$target*25);
         $random=static function()use(&$seed): float {$seed=($seed*1664525+1013904223)&0xFFFFFFFF;return $seed/4294967296;};
-        $out=[];$occupied=[];$types=["tree"=>0,"bush"=>0,"rock"=>0,"building"=>0];$skipped=["water"=>0,"footprint"=>0,"slope"=>0,"spacing"=>0,"bounds"=>0];
+        $out=[];$occupied=[];$types=["tree"=>0,"bush"=>0,"rock"=>0,"building"=>0];$zones=[];$variants=[];$skipped=["water"=>0,"footprint"=>0,"slope"=>0,"spacing"=>0,"bounds"=>0];
         foreach($reserved as $building){[$x,$y]=$building['position'];$occupied[(int)floor($x/20).':'.(int)floor($y/20)][]=[$x,$y,$building['radius']];}
         for($attempt=0;$attempt<$limit && count($out)<$target;$attempt++){
             if($attempt%100===0)$progress(null);
@@ -50,9 +50,10 @@ final class BeamScenery
             $x=$a[0]+$t*($b[0]-$a[0])+($b[1]-$a[1])/$len*$offset;$y=$a[1]+$t*($b[1]-$a[1])-($b[0]-$a[0])/$len*$offset;
             if($x<0||$y<0||$x>=$raster->side||$y>=$raster->side){$skipped["bounds"]++;continue;}
             $cover=BeamRaster::cover($raster->rgb((int)($x/$raster->side*$raster->size),(int)($y/$raster->side*$raster->size)));
-            if($cover===4){$skipped["water"]++;continue;}
-            $pick=$random();$kind=$cover===0?($pick<0.7?"tree":"bush"):($pick<0.65?"bush":"rock");
-            $asset=BeamVegetation::choose($kind,$center,$raster->roadHeight($x,$y),$cover,$random());
+            $biome=BeamBiome::sample($raster,$x,$y,$center);
+            if($biome['water']){$skipped["water"]++;continue;}
+            $pick=$random();$kind=$pick<$biome['tree_probability']?'tree':($random()<0.65?'bush':'rock');
+            $asset=BeamVegetation::choose($kind,$center,$raster->roadHeight($x,$y),$cover,$random(),$biome);
             $scale=0.7+$random()*0.6;$radius=self::radius($kind,$scale,$asset);
             if(!$geometry->allows($x,$y,$radius)){$skipped["footprint"]++;continue;}
             if($x<$radius||$y<$radius||$x+$radius>=$raster->side||$y+$radius>=$raster->side){$skipped["bounds"]++;continue;}
@@ -63,8 +64,9 @@ final class BeamScenery
             for($ix=$cx-2;$ix<=$cx+2;$ix++)for($iy=$cy-2;$iy<=$cy+2;$iy++)foreach($occupied[$ix.":".$iy]??[] as $other)if(hypot($x-$other[0],$y-$other[1])<$radius+$other[2])$overlap=true;
             if($overlap){$skipped["spacing"]++;continue;}
             $occupied[$cx.":".$cy][]=[$x,$y,$radius];$types[$kind]++;
+            $zones[$biome['zone']]=($zones[$biome['zone']]??0)+1;if($asset!==null)$variants[$asset]=($variants[$asset]??0)+1;
             $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale,"asset"=>$asset];
         }
-        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
+        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"biome_counts"=>$zones,"asset_counts"=>$variants,"biome_method"=>"Regional elevation prior plus nine raw aerial-color samples; heuristic, not surveyed land cover.","building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
     }
 }

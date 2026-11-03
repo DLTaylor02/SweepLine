@@ -67,6 +67,7 @@ foreach (['gpx'=>'application/gpx+xml','kmz'=>'application/vnd.google-earth.kmz'
 }
 expect(callApi($anonymous,'GET','/api/roads/'.$exportId.'/export?format=gpx'),401,'Exports require authentication');
 expect(callApi($admin,'GET','/api/roads/'.$exportId.'/export?format=exe'),422,'Export format validated');
+expect(callApi($admin,'GET','/api/roads/'.$exportId.'/export?format=gpx&orientation=sideways'),422,'Export orientation validated');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>25,'profile'=>'open','max_length_miles'=>2],$csrf),200,'Maximum length via HTTP');
 $jobs=expect(callApi($admin,'GET','/api/admin/data'),200,'SuperAdmin sees preparation status');
 if (!isset($jobs['storage']['database_bytes']) || !array_key_exists('available',$jobs['storage'])) { throw new RuntimeException('Storage report missing from Jobs API'); }
@@ -103,6 +104,11 @@ if(count($store->recent((int)$created['id']))!==100) { throw new RuntimeExceptio
 $favoriteBody=['road_id'=>$exportId,'profile'=>'twisty','search'=>['zip'=>'12345','radius_miles'=>25,'max_stops'=>5]];
 expect(callApi($admin,'POST','/api/favorites',$favoriteBody),403,'Favoriting requires CSRF');
 $saved=expect(callApi($admin,'POST','/api/favorites',$favoriteBody,$csrf),200,'Save favorite road');
+expect(callApi($admin,'POST','/api/favorites/'.$saved['id'].'/preferences',['orientation'=>'reverse']),403,'Favorite preferences require CSRF');
+expect(callApi($admin,'POST','/api/favorites/'.$saved['id'].'/preferences',['orientation'=>'reverse'],$csrf),200,'Owner can save Favorite orientation');
+$preferredFavorite=expect(callApi($admin,'GET','/api/favorites/'.$saved['id']),200,'Read Favorite preferences');
+if(($preferredFavorite['road']['preferred_orientation']??null)!=='reverse')throw new RuntimeException('Favorite orientation lost');
+expect(callApi($admin,'POST','/api/favorites/'.$saved['id'].'/preferences',['preferred_name'=>'Invented road name'],$csrf),422,'Favorite rejects unmapped names');
 $savedAgain=expect(callApi($admin,'POST','/api/favorites',$favoriteBody,$csrf),200,'Saving favorite is idempotent');
 if($saved['id']!==$savedAgain['id']) {throw new RuntimeException('Duplicate favorite created');}
 $favorites=expect(callApi($admin,'GET','/api/favorites'),200,'List favorite roads');
@@ -149,6 +155,7 @@ $ordinary=expect(callApi($member,'POST','/api/admin/users',['username'=>'ordinar
 expect(callApi($member,'POST','/api/admin/users/'.$ordinary['id'],['active'=>false],$memberSession['csrf']),200,'Admin manages User');
 $private=expect(callApi($admin,'POST','/api/favorites',$favoriteBody,$csrf),200,'SuperAdmin saves private road');
 expect(callApi($member,'GET','/api/favorites/'.$private['id']),404,'Admin cannot access another owner favorite');
+expect(callApi($member,'POST','/api/favorites/'.$private['id'].'/preferences',['orientation'=>'reverse'],$memberSession['csrf']),404,'Favorite preferences remain owner-only');
 expect(callApi($member,'GET','/api/favorites/'.$private['id'].'/thumbnail'),404,'Admin cannot access another owner thumbnail');
 expect(callApi($member,'GET','/api/favorites/'.$private['id'].'/export?format=gpx'),404,'Admin cannot export another owner favorite');
 expect(callApi($admin,'DELETE','/api/favorites/'.$private['id'],null,$csrf),200,'Owner removes private road');

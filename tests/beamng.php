@@ -48,6 +48,8 @@ try {
     $root=json_decode(trim($archive->getFromName($base.'main/items.level.json')),true,512,JSON_THROW_ON_ERROR);
     check($root['class']==='SimGroup' && $root['name']==='MissionGroup','Scene root matches installed v0.40 layout');
     $objects=array_map(static fn($line)=>json_decode($line,true,512,JSON_THROW_ON_ERROR),explode("\n",trim($archive->getFromName($base.'main/MissionGroup/items.level.json'))));
+    $clock=array_values(array_filter($objects,fn($o)=>$o['class']==='TimeOfDay'))[0];
+    check(abs(fmod($clock['time']+0.5,1)*24-7)<0.000001 && !$clock['play'],'Export starts at fixed 7 AM using BeamNG noon-based clock');
     $spawns=array_values(array_filter($objects,static fn($o)=>$o['class']==='SpawnSphere'));
     check(count($spawns)===2 && $spawns[0]['position']!==$spawns[1]['position'],'Endpoint spawn objects are distinct');
     check($archive->locateName($base.'art/shapes/rock.dae')===false && $archive->locateName($base.'art/shapes/tree.dae')===false && $archive->locateName($base.'art/shapes/bush.dae')===false,'Export contains no procedural rock or plant placeholders');
@@ -291,3 +293,23 @@ check(SweepLine\BeamVegetation::choose('rock',[-119,39],1800,1,0.5)==='utah_rock
 check(SweepLine\BeamVegetation::CATALOG['utah_rock']['radius']>=1.4,'Stock rock footprint conservatively covers installed mesh bounds');
 
 check(BeamRaster::TERRAIN_SATURATION===1.5 && BeamRaster::saturated([100,140,100])[1]-BeamRaster::saturated([100,140,100])[0]>BeamRaster::saturated([100,140,100],1.2)[1]-BeamRaster::saturated([100,140,100],1.2)[0],'Terrain default color boost is stronger than previous 1.2 factor');
+
+$mutedForest=array_fill(0,9,[65,68,75]);
+$montane=SweepLine\BeamBiome::context([-119,39],2200,$mutedForest);
+$lowland=SweepLine\BeamBiome::context([-119,39],500,$mutedForest);
+check($montane['zone']==='montane' && $montane['tree_probability']>$lowland['tree_probability'],'Elevation and shaded canopy jointly increase mountain tree placement');
+check(!$montane['water'] && $montane['tree_probability']>0.6,'Muted blue-gray forest shadows are not automatically treated as water');
+$alpine=SweepLine\BeamBiome::context([-110,44],4000,$mutedForest);
+check($alpine['tree_probability']===0.0,'Tree placement fades out above broad high-elevation limit');
+$bare=SweepLine\BeamBiome::context([-119,39],2200,array_fill(0,9,[210,210,205]));
+check($bare['tree_probability']<$montane['tree_probability']*0.1,'Bright bare or snow-like terrain suppresses mountain trees');
+$water=SweepLine\BeamBiome::context([-119,39],2200,array_fill(0,9,[25,60,130]));
+check($water['water'],'Coherent blue water remains excluded from scenery');
+check(SweepLine\BeamVegetation::choose('tree',[-119,39],2200,2,0.8,$montane)==='coastal_pine','Montane tree palette strongly favors stock pine assets');
+$otherMountain=SweepLine\BeamBiome::context([-112,41],2200,$mutedForest);
+check($otherMountain['zone']==='montane' && $otherMountain['tree_probability']>0.6,'Mountain rule generalizes beyond any named road or ZIP');
+$forestPixels=str_repeat(chr(65),$n*$n).str_repeat(chr(68),$n*$n).str_repeat(chr(75),$n*$n);
+$mountainRaster=new BeamRaster($n,$side,str_repeat(pack('g',2200),$n*$n),$forestPixels);
+$mountainPlacement=SweepLine\BeamScenery::place($testRoad,$testProfiles,$mountainRaster,54321,fn($m)=>null,[-119,39]);
+check(($mountainPlacement['asset_counts']['coastal_pine']??0)>($mountainPlacement['asset_counts']['juniper_tree']??0),'Generated mountain scenery contains more pines than junipers');
+check(array_sum($mountainPlacement['biome_counts'])===count($mountainPlacement['objects']),'Export records inferred biome and actual stock asset counts');

@@ -345,6 +345,23 @@ check(str_contains(SweepLine\RoadExport::gpx($aliasedExport),'Other Name'),'GPX 
 check(str_contains(SweepLine\RoadExport::kml($aliasedExport),'Other Name'),'KML/KMZ includes alternate names');
 check(str_contains(SweepLine\RoadExport::pdf($aliasedExport),'Other Name'),'PDF includes alternate names');
 
+$reverseExport=SweepLine\RoadExport::prepare($export,'reverse');
+check($reverseExport['geometry']['coordinates']===array_reverse($export['geometry']['coordinates']),'Selected reverse direction swaps export endpoints');
+check(SweepLine\RoadExport::prepare($reverseExport,'reverse')['geometry']===$reverseExport['geometry'],'Repeated preparation preserves selected direction');
+check(SweepLine\RoadExport::prepare($reverseExport,'forward')['geometry']===$export['geometry'],'Switching orientation back restores original track');
+$reverseXml=simplexml_load_string(SweepLine\RoadExport::gpx($reverseExport));$reverseXml->registerXPathNamespace('g','http://www.topografix.com/GPX/1/1');$reverseStart=$reverseXml->xpath('//g:wpt')[0];
+check(abs((float)$reverseStart['lon']-$reverseExport['geometry']['coordinates'][0][0])<0.000001,'GPX waypoint follows selected Start');
+check(str_contains(SweepLine\RoadExport::kml($reverseExport),'<name>Start</name>'),'Reversed KMZ/KML retains endpoint labels');
+check(str_starts_with(SweepLine\RoadExport::pdf($reverseExport),'%PDF-'),'Reversed rally notes render as PDF');
+foreach([null,[],true,'sideways'] as $badDirection)check(rejects(fn()=>SweepLine\RoadExport::orientation($badDirection)),'Invalid export orientation rejected');
+check(SweepLine\BeamPlan::options(['orientation'=>'reverse'])['orientation']==='reverse','BeamNG accepts selected endpoint orientation');
+$preferred=SweepLine\RoadNames::prefer($aliasedExport,'Other Name');
+check($preferred['name']==='Other Name' && in_array($aliasedExport['name'],$preferred['alternate_names'],true),'Preferred mapped alias becomes primary and preserves former primary');
+foreach(['Arbitrary name',[],true] as $badName)check(rejects(fn()=>SweepLine\RoadNames::prefer($aliasedExport,$badName)),'Unmapped preferred name rejected');
+$preferred=SweepLine\RoadExport::prepare($preferred,'reverse');
+check(str_contains(SweepLine\RoadExport::gpx($preferred),'<name>Other Name</name>') && str_contains(SweepLine\RoadExport::kml($preferred),'<name>Other Name</name>'),'GPX and KMZ use preferred primary name');
+check(str_contains(SweepLine\RoadExport::pdf($preferred),'Other Name'),'PDF title uses preferred primary name');
+check(str_starts_with(SweepLine\RoadExport::filename($preferred['name'],'pdf'),'Other-Name-'),'Download filename follows preferred name');
 require __DIR__.'/beamng.php';
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

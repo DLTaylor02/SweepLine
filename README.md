@@ -429,3 +429,23 @@ Stock vegetation also depends on each source map''s parent art/shapes/trees/main
 Trees, bushes and scatter rocks now all reference installed stock meshes through the native Forest system. Scatter rocks use Utah utah_boulder_1, with conservative measured footprint bounds. Exports no longer bundle procedural rock/tree/bush placeholder meshes. Arches, bridge parts and mapped building extrusions remain intentionally generated. The report''s stock_scenery_assets field identifies exact model dependencies; the older vegetation_assets field remains for compatibility. Fresh regeneration is required; supplied diagnostic ZIPs are never modified.
 
 Terrain color saturation now uses a centralized 1.5 multiplier. The corridor recess is reduced to 15 cm using the same shaping method; original 1024 elevation sampling and the road elevation offset are unchanged. The overlap-removal pass remains active with its 8 cm numerical clearance, so intersecting terrain cells can still be lowered further when necessary. Generate a fresh export to apply these settings.
+
+New BeamNG exports start at 7 AM with time progression disabled. The scene uses the engine''s noon-based normalized clock value 19/24. Players can still change the time in-game; regenerate older ZIPs to update their default.
+
+### General mountain vegetation inference
+
+Vegetation placement now combines a broad regional/elevation prior with nine neighboring raw aerial-color samples, rather than requiring a single bright-green pixel before any tree can spawn. Shaded or muted canopy can support trees; coherent strongly blue neighborhoods remain excluded as water. Western montane settings increase tree probability and favor the installed stock pine model. Bright neutral bare/snow-like terrain suppresses trees, and a latitude-adjusted high-elevation fade prevents the heuristic from adding forests indefinitely uphill.
+
+These are visual heuristics, not measured species distributions, climate zones or authoritative land-cover data. No road name, ZIP or locality is special-cased. The report records inferred biome counts, actual asset counts and the inference method so future exports can be assessed. Density budgets, footprint/road checks, 200-foot limits and fresh source downloads remain in force. Authoritative canopy/land-cover datasets are a future improvement; stock pines are appearance proxies rather than claims of exact local species.
+
+### Start/Finish selection and export direction
+
+Selecting a road displays labeled Start and Finish pins. Swap Start / Finish exchanges them and updates GPX, KMZ, PDF rally notes and BeamNG generation, including private Favorite exports. The choice is retained per account/road in browser session storage. Closing the detail panel, signing out or starting a new search clears visible pins; Firefox PDF-map recovery recreates the selected pins. Existing generated BeamNG jobs are not rewritten when you swap: a different direction creates a separate request/job.
+
+The default follows the exporter's mapped travel orientation. The optional export orientation parameter is forward or reverse; invalid values are rejected server-side. GPX/KMZ point order and endpoint labels, PDF notes/turn direction and BeamNG track/spawns follow the selected order. Choosing a reverse track does not change real-world access restrictions; the UI warns when it opposes mapped one-way travel. This is an export orientation choice, not navigation permission.
+
+### Preferred primary road name
+
+Click a primary/alternate name in the selected road details to make it primary. Choices are limited server-side to the road''s known names; the former primary remains an alternate. The selected name appears in the road details/results and is used by GPX/KMZ/PDF filenames and titles, BeamNG map titles/previews and new Favorite snapshots. This is a personal display/export preference; shared imported names are unchanged.
+
+For an already-saved Favorite, selecting a name or swapping Start/Finish saves owner-only preferences through CSRF-protected POST /api/favorites/{id}/preferences. Favorite snapshots store the preferred name/aliases and preferred_orientation, so Favorite lists and direct exports retain them. Explicit export parameters can select another known name or forward/reverse orientation for that request. Browser-session choices are scoped per account/road; every export button sends the current choices. BeamNG job state is scoped by both name and direction.

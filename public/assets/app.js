@@ -107,7 +107,7 @@ function rebuildMapAfterPdf() {
   const snapshot={style:oldMap.getStyle(),center:oldMap.getCenter(),zoom:oldMap.getZoom(),
     bearing:oldMap.getBearing(),pitch:oldMap.getPitch(),padding:oldMap.getPadding()};
   pdfPreviewPending=false;pdfPreviewAway=false;
-  oldMap.remove();map=null;
+  clearRoadEndpoints(false);oldMap.remove();map=null;
   initMap(snapshot);
   ready.then(refreshVisibleMap);
   return true;
@@ -145,6 +145,7 @@ function initMap(snapshot=null) {
       map.addLayer({id:'roads',type:'line',source:'roads',paint:{'line-color':color,'line-width':4}});
       map.addLayer({id:'selected',type:'line',source:'roads',filter:['==',['get','id'],-1],paint:{'line-color':'#f08a38','line-width':6}});
       }
+    if(roadEndpointSelection)drawRoadEndpoints(roadEndpointSelection.road,roadEndpointSelection.orientation);
     map.on('click','roads', e => {if(!pickingZip)selectRoad(Number(e.features[0].properties.id));});
     map.on('mouseenter','roads',()=>map.getCanvas().style.cursor=pickingZip?'crosshair':'pointer');
     map.on('mouseleave','roads',()=>map.getCanvas().style.cursor=pickingZip?'crosshair':'');
@@ -175,20 +176,42 @@ function render() {
     b.onclick=()=>selectRoad(road.id); $('results').append(b);
   });
 }
+let roadEndpointMarkers=[],roadEndpointSelection=null;
+function clearRoadEndpoints(clear=true){for(const marker of roadEndpointMarkers)marker.remove();roadEndpointMarkers=[];if(clear)roadEndpointSelection=null;}
+function roadDirectionKey(road){return 'sweepline:orientation:'+(window.SweepLineAccount?.user?.id||activeSearchUser)+':'+(road.geometry_key||road.id);}
+function savedRoadDirection(road){try{return (window.sessionStorage?.getItem(roadDirectionKey(road))||road.preferred_orientation)==='reverse'?'reverse':'forward';}catch(_){return 'forward';}}
+function drawRoadEndpoints(road,orientation){
+  roadEndpointSelection={road,orientation};clearRoadEndpoints(false);
+  if(!map||!window.maplibregl?.Marker)return;
+  const points=road.geometry.coordinates;if(!points.length)return;
+  const reversed=(Number(road.travel_direction)<0)!==(orientation==='reverse');
+  const first=points[reversed?points.length-1:0],last=points[reversed?0:points.length-1];
+  for(const [label,coordinate,kind] of [['Start',first,'start'],['Finish',last,'finish']]){
+    const pin=text('div',label,'road-endpoint road-endpoint-'+kind);pin.setAttribute('aria-label',label+' of selected road');
+    roadEndpointMarkers.push(new window.maplibregl.Marker({element:pin,anchor:'bottom'}).setLngLat(coordinate).addTo(map));
+  }
+}
 async function selectRoad(id) {
   window.sweeplineBeamStop?.();
-  selected=id;
+  selected=id;clearRoadEndpoints();
   document.querySelectorAll('.road').forEach(e=>e.classList.toggle('selected',Number(e.dataset.id)===id));
   const road=roads.find(r=>r.id===id); if (!road) return;
   if(map && map.getLayer('selected')) { map.setFilter('selected',['==',['get','id'],id]); map.fitBounds(bounds(road.geometry.coordinates),{padding:65,maxZoom:13}); }
+  drawRoadEndpoints(road,savedRoadDirection(road));
   const detail=$('road-detail'); detail.replaceChildren(); detail.hidden=false;
-  const close=text('button','Close');close.onclick=()=>{detail.hidden=true;window.sweeplineBeamStop?.();};
+  const close=text('button','Close');close.onclick=()=>{detail.hidden=true;clearRoadEndpoints();window.sweeplineBeamStop?.();};
   detail.append(close,text('h2',road.name),text('p','Loading score breakdown…'));
   try {
     const data=road._snapshot?road:await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}${memberQuery(road)}`);
     if(selected!==id) return;
     detail.replaceChildren(close,text('h2',`${data.name} · ${data.score}/100`));
     if(alternateLabel(data))detail.append(text('p',alternateLabel(data),'road-aliases'));
+    const nameChoices=[...new Set([data.name,...(data.alternate_names||[])])];
+    const nameKey=roadDirectionKey(data)+':name';
+    if(nameChoices.includes(data.preferred_name))data.name=data.preferred_name;
+    try{const preferred=window.sessionStorage?.getItem(nameKey);if(nameChoices.includes(preferred))data.name=preferred;}catch(_){}
+    const namePicker=text('div','','road-name-picker');namePicker.setAttribute('role','group');namePicker.setAttribute('aria-label','Choose primary road name');
+    detail.append(namePicker);
     const heart=text('button',data.favorite_id?'♥ Favorited':'♡ Add to favorites');heart.type='button';heart.className='favorite-heart';
     heart.setAttribute('aria-pressed',String(!!data.favorite_id));
     const favoriteStatus=text('p','');favoriteStatus.setAttribute('role','status');
@@ -199,7 +222,7 @@ async function selectRoad(id) {
           await api('/api/favorites/'+data.favorite_id,{method:'DELETE'});data.favorite_id=null;
           favoriteStatus.textContent='Removed from favorites.';
         } else {
-          const saved=await api('/api/favorites',{method:'POST',body:JSON.stringify({road_id:data.id,profile:activeProfile,search:currentSearchParameters,...((data.member_ids||[]).length>1?{member_ids:data.member_ids}:{})})});
+          const saved=await api('/api/favorites',{method:'POST',body:JSON.stringify({road_id:data.id,profile:activeProfile,search:currentSearchParameters,preferred_name:data.name,orientation,...((data.member_ids||[]).length>1?{member_ids:data.member_ids}:{})})});
           data.favorite_id=saved.id;favoriteStatus.textContent='Road saved to favorites.';
         }
         heart.textContent=data.favorite_id?'♥ Favorited':'♡ Add to favorites';heart.setAttribute('aria-pressed',String(!!data.favorite_id));
@@ -207,17 +230,45 @@ async function selectRoad(id) {
       finally {heart.disabled=false;}
     };
     detail.append(heart,favoriteStatus);
+    let orientation=savedRoadDirection(data);
+    const direction=text('div','','road-direction');
+    const swap=text('button','Swap Start / Finish');swap.type='button';swap.className='road-direction-swap';
+    const directionStatus=text('p','');directionStatus.setAttribute('role','status');
+    direction.append(swap,directionStatus);
     const exports=text('div','','road-exports');
-    for(const [format,label] of [['gpx','GPX'],['kmz','KMZ'],['pdf','Printable PDF']]) {
-      const link=text('a',label);link.href=road._snapshot?`/api/favorites/${data.favorite_id}/export?format=${format}`:`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}${memberQuery(data)}`;
-      if(format==='pdf') {
-        link.target='_blank';link.rel='noopener';link.setAttribute('aria-label','Preview PDF in a new tab');
-        link.onclick=markPdfPreview;
-      } else {link.setAttribute('download','');}
-      exports.append(link);
-    }
-    detail.append(exports,text('p','Export this road track or a PDF with a road sketch and section directions. No navigation to the start is included.'));
-    window.sweeplineBeamExport?.(exports,data,{profile:activeProfile,favoriteId:road._snapshot?data.favorite_id:null});
+    const paintExports=()=>{
+      drawRoadEndpoints(data,orientation);exports.replaceChildren();
+      swap.setAttribute('aria-pressed',String(orientation==='reverse'));
+      directionStatus.textContent=orientation==='reverse'&&(Number(data.travel_direction)||0)!==0?'Selected orientation opposes mapped one-way travel. Verify signs and access before driving.':'Start and Finish pins show the direction used by all exports.';
+      for(const [format,label] of [['gpx','GPX'],['kmz','KMZ'],['pdf','Printable PDF']]){
+        const link=text('a',label);const query='&orientation='+orientation+'&preferred_name='+encodeURIComponent(data.name);
+        link.href=road._snapshot?`/api/favorites/${data.favorite_id}/export?format=${format}${query}`:`/api/roads/${id}/export?format=${format}&profile=${encodeURIComponent(activeProfile)}${memberQuery(data)}${query}`;
+        if(format==='pdf'){link.target='_blank';link.rel='noopener';link.setAttribute('aria-label','Preview PDF in a new tab');link.onclick=markPdfPreview;}else link.setAttribute('download','');
+        exports.append(link);
+      }
+      window.sweeplineBeamExport?.(exports,data,{profile:activeProfile,favoriteId:road._snapshot?data.favorite_id:null,orientation,preferredName:data.name});
+    };
+    let preferenceSave=Promise.resolve();
+    const savePreferences=()=>{
+      if(!data.favorite_id)return;
+      const favoriteId=data.favorite_id,body=JSON.stringify({preferred_name:data.name,orientation});
+      preferenceSave=preferenceSave.then(()=>api('/api/favorites/'+favoriteId+'/preferences',{method:'POST',body}))
+        .then(()=>{favoriteStatus.textContent='Favorite preferences updated.';})
+        .catch(e=>{favoriteStatus.textContent='Could not save Favorite preferences: '+e.message;});
+    };
+    const paintNames=()=>{
+      data.alternate_names=nameChoices.filter(name=>name!==data.name);namePicker.replaceChildren();
+      const title=detail.children[1];title.replaceChildren();const primary=text('button',data.name,'primary-road-name');primary.type='button';primary.setAttribute('aria-pressed','true');primary.onclick=()=>chooseName(data.name);title.append(primary,text('span',` · ${data.score}/100`));
+      const alias=Array.from(detail.children).find(n=>n.className==='road-aliases');if(alias)alias.textContent=alternateLabel(data);
+      for(const name of nameChoices){const choice=text('button',name,'road-name-choice');choice.type='button';choice.setAttribute('aria-pressed',String(name===data.name));choice.onclick=()=>chooseName(name);namePicker.append(choice);}
+    };
+    const chooseName=name=>{
+      data.name=name;try{window.sessionStorage?.setItem(nameKey,name);}catch(_){}
+      road.name=name;road.alternate_names=nameChoices.filter(n=>n!==name);paintNames();paintExports();render();savePreferences();
+    };
+    swap.onclick=()=>{orientation=orientation==='forward'?'reverse':'forward';try{window.sessionStorage?.setItem(roadDirectionKey(data),orientation);}catch(_){}paintExports();savePreferences();};
+    detail.append(direction,exports,text('p','Export this road track or a PDF roadbook in the selected direction. No navigation to the start is included.'));
+    paintNames();paintExports();
     Object.entries(data.dimensions).forEach(([key,value])=>{const row=text('div','','dimension');row.append(text('span',key),text('strong',`${Math.round(value*100)}/100`));detail.append(row);});
     detail.append(text('p','Elevation unavailable. Score dimensions are weighted for the selected profile. Completeness measures mapped attributes, not certainty that every control is present.'));
   } catch(e) { if(selected===id) detail.append(text('p',e.message)); }
@@ -293,7 +344,7 @@ $('road-diagnostic').onsubmit=async event=>{
 
 $('search').onsubmit = event => {
   event.preventDefault();clearTimeout(pollTimer);const sequence=++request,form=event.target;
-  $('submit').disabled=true;setStatus('Preparing your road search…',true);$('road-detail').hidden=true;selected=null;
+  $('submit').disabled=true;setStatus('Preparing your road search…',true);$('road-detail').hidden=true;selected=null;clearRoadEndpoints();
   const payload={...searchParameters(form),_recorded:event.fromHistory===true};
   rememberSearch(payload);discover(payload,sequence);
 };
@@ -322,7 +373,7 @@ async function handleSession(event) {
     if(activeSearchUser) {try {window.sessionStorage?.removeItem(searchStorageKey(activeSearchUser));}catch(_) {}}
     ++diagnosticRequest;$('diagnostic-results').replaceChildren();$('diagnostic-status').textContent='';$('diagnostic-submit').disabled=false;
     ++zipPickRequest;setZipPickMode(false);$('pick-zip').disabled=false;$('zip-pick-status').textContent='';
-    activeSearchUser=null;restoredSearchUser=null;currentSearchParameters=null;
+    clearRoadEndpoints();activeSearchUser=null;restoredSearchUser=null;currentSearchParameters=null;
     ++request;clearTimeout(pollTimer);roads=[];render();$('road-detail').hidden=true;$('submit').disabled=false;setStatus('Choose a ZIP code to explore roads nearby.');
     if(map && map.getSource('roads')) { map.getSource('roads').setData(empty());map.getSource('radius').setData(empty()); }
     return;

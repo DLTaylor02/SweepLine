@@ -19,6 +19,14 @@ final class RoadNames
         }
         return $out;
     }
+    public static function prefer(array $road,mixed $name): array
+    {
+        if($name===null)return $road;
+        if(!is_string($name)||strlen($name)>512)throw new \InvalidArgumentException('Choose a mapped primary or alternate road name.');
+        $name=trim($name);$choices=array_merge([$road['name']],self::collect(array_merge([$road],$road['parts']??[]),$road['name']));
+        if(!in_array($name,$choices,true))throw new \InvalidArgumentException('Choose a mapped primary or alternate road name.');
+        $road['alternate_names']=self::collect(array_merge([$road],$road['parts']??[]),$name);$road['name']=$name;return $road;
+    }
     public static function description(array $road): string
     {
         $names=self::collect([$road],$road['name']);

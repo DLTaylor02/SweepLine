@@ -15,10 +15,11 @@ final class BeamVegetation
         "eastern_bush"=>["kind"=>"bush","map"=>"east_coast_usa","shape"=>"/levels/east_coast_usa/art/shapes/trees/ECA_coast_bush/generibush_small.dae","materials"=>"/levels/east_coast_usa/art/shapes/trees/ECA_coast_bush/main.materials.json","radius"=>2.2],
         "desert_shrub"=>["kind"=>"bush","map"=>"johnson_valley","shape"=>"/levels/johnson_valley/art/shapes/trees/trees_shrub/shrub_a.dae","materials"=>"/levels/johnson_valley/art/shapes/trees/trees_shrub/main.materials.json","radius"=>4.6],
     ];
-    public static function choose(string $kind,array $center,float $elevation,int $cover,float $variation): ?string
+    public static function choose(string $kind,array $center,float $elevation,int $cover,float $variation,?array $biome=null): ?string
     {
         if($kind==="rock")return "utah_rock";
         if(!isset(self::SHAPES[$kind]))return null;
+        if($kind==="tree" && $biome!==null && $biome["montane"]>0.35)return $variation<$biome["pine_probability"]?"coastal_pine":(($center[0]??-119)<=-103?"juniper_tree":"beech_b");
         $east=($center[0]??-119)>-103;
         if($east)$pool=$kind==="tree"?["beech_b","beech_c"]:["eastern_bush"];
         elseif($kind==="tree")$pool=$elevation>1200||($center[1]??39)>38?["coastal_pine","coastal_pine","juniper_tree"]:["juniper_tree"];

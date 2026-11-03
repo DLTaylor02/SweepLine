@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Added clickable primary/alternate road names with server-validated personal name selection across Favorites and every export format. Existing Favorites save name and endpoint-orientation preferences through an owner-only CSRF-protected endpoint; direct Favorite exports default to the saved direction. Export titles/filenames and BeamNG job state reflect the selection.
+
+- Added labeled discovery Start/Finish map pins and a swap control. Selected orientation carries through GPX, KMZ, PDF and BeamNG exports, including Favorites, with server validation, direction-scoped job state, per-user/road browser preferences and mapped one-way warnings. Added endpoint/order and frontend regression coverage.
+
+- Added general mountain vegetation inference from regional elevation and neighboring raw aerial colors. Muted/shaded canopy can now receive trees, montane settings favor stock pines, and bare terrain/high elevations suppress tree placement. Added inferred-biome and actual-asset reporting plus cross-region tests; no road-specific rules.
+
+- Changed BeamNG export default time to fixed 7 AM using the engine''s noon-based time scale.
+
 - Increased terrain saturation from 1.2 to 1.5 and reduced the road-to-terrain recess from 30 cm to 15 cm. Preserved original elevation sampling, corridor shaping and the post-shaping terrain-overlap removal pass.
 
 - Replaced remaining procedural scatter rocks with stock Utah boulders through native Forest instances. The supplied latest Mount Rose export had 3,245 low-poly generated rocks despite its 5,700 plants already using stock models; the matching game log confirmed vegetation material mappings were fixed. Added package checks excluding all generated rock/tree/bush placeholders.

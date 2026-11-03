@@ -12,7 +12,7 @@
     const cancel=node('button','Cancel export');cancel.type='button';cancel.hidden=true;
     section.append(spinner,status,cancel);container.append(action,section);
     const user=window.SweepLineAccount?.user?.id;
-    const storageKey='sweepline:beamng:'+user+':'+(road.geometry_key||road.id);
+    const storageKey='sweepline:beamng:'+user+':'+(road.geometry_key||road.id)+':'+(context.orientation||'forward')+':'+(context.preferredName||road.name||'');
     const noticeKey=storageKey+':notice';
     let jobId=null,busy=false,ready=false,expires=0;
     const paint=job=>{
@@ -45,7 +45,7 @@
       if(ready&&(!expires||Date.now()<expires))return;
       event.preventDefault();if(busy)return;clearTimeout(timer);paint({status:'queued',progress:'Queueing map generation…'});
       try{
-        const payload={padding_miles:0.5,resolution:2048};
+        const payload={padding_miles:0.5,resolution:2048,orientation:context.orientation||'forward',...(context.preferredName?{preferred_name:context.preferredName}:{})};
         if(context.favoriteId)payload.favorite_id=context.favoriteId;
         else Object.assign(payload,{road_id:road.id,profile:context.profile||'twisty',...((road.member_ids||[]).length>1?{member_ids:road.member_ids}:{})});
         const job=await window.sweeplineRequest('/api/beamng',{method:'POST',body:JSON.stringify(payload)});

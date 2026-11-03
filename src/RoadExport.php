@@ -13,9 +13,17 @@ final class RoadExport
     {
         return sprintf('%.6f, %.6f',$point[1],$point[0]);
     }
-    /** Orient a one-way chain legally, and use the same ordering in all formats. */
-    public static function prepare(array $road): array
+    public static function orientation(mixed $value): string
     {
+        if(!is_string($value)||!in_array($value,['forward','reverse'],true))throw new \InvalidArgumentException('Export orientation must be forward or reverse.');
+        return $value;
+    }
+    /** Default to legal mapped direction; explicit reversal is a selected track orientation. */
+    public static function prepare(array $road,string $orientation='forward'): array
+    {
+        self::orientation($orientation);
+        $alreadyPrepared=$road['_prepared_orientation']??null;
+        if($alreadyPrepared===$orientation)return $road;
         $road['alternate_names']=RoadNames::collect(array_merge([$road],$road['parts']??[]),$road['name']);
         $parts=$road['parts']??[];$positive=0;$negative=0;
         foreach ($parts as $part) {
@@ -23,12 +31,14 @@ final class RoadExport
             if ($d>0) {$positive++;} elseif ($d<0) {$negative++;}
         }
         if ($positive && $negative) { throw new \InvalidArgumentException('Road has inconsistent mapped travel directions and cannot be exported as a continuous drive.'); }
-        if ($negative) {
+        if ($alreadyPrepared===null && $negative) {
             $road['geometry']['coordinates']=array_reverse($road['geometry']['coordinates']);
             $parts=array_reverse($parts);
             foreach ($parts as &$part) {$part['reversed']=!$part['reversed'];}
             unset($part);
         }
+        if(($alreadyPrepared===null && $orientation==='reverse') || ($alreadyPrepared!==null && $alreadyPrepared!==$orientation))$road['geometry']['coordinates']=array_reverse($road['geometry']['coordinates']);
+        $road['_prepared_orientation']=$orientation;
         $points=$road['geometry']['coordinates'];
         if (count($points)<2) {throw new \InvalidArgumentException('Road geometry is empty.');}
         // Never sum part geometries: several pieces can refer to one full OSM way.
@@ -93,10 +103,10 @@ final class RoadExport
         $name=trim(substr(preg_replace('/[^A-Za-z0-9]+/','-',$name),0,120),'-');
         return ($name!==''?$name:'Road').'-sweepline.'.$format;
     }
-    public static function download(array $road,string $format): never
+    public static function download(array $road,string $format,string $orientation='forward',mixed $preferredName=null): never
     {
         if (!in_array($format,['gpx','kmz','pdf'],true)) {throw new \InvalidArgumentException('Unknown export format');}
-        $road=self::prepare($road);
+        $road=self::prepare(RoadNames::prefer($road,$preferredName),$orientation);
         $body=match($format) {'gpx'=>self::gpx($road),'kmz'=>self::kmz($road),'pdf'=>self::pdf($road)};
         $mime=match($format) {'gpx'=>'application/gpx+xml','kmz'=>'application/vnd.google-earth.kmz','pdf'=>'application/pdf'};
         header('Content-Type: '.$mime);

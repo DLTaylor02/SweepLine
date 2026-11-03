@@ -112,12 +112,28 @@ async function testFrontend(sources) {
   check(exportLinks.length===3&&exportLinks[2].textContent==='Printable PDF','Selected road offers GPX, KMZ and PDF exports');
   check(exportLinks[2].target==='_blank'&&exportLinks[2].rel==='noopener'&&!('download' in exportLinks[2]),'PDF opens a new preview tab without a forced download');
   check('download' in exportLinks[0]&&'download' in exportLinks[1],'GPX and KMZ remain downloads');
-  check(exportLinks[0].href==='/api/roads/1/export?format=gpx&profile=twisty','Export targets selected road and active profile');
+  check(exportLinks[0].href==='/api/roads/1/export?format=gpx&profile=twisty&orientation=forward&preferred_name=Test%20road','Export targets selected road and active profile');
+  const swapDirection=get('road-detail').children.find(n=>n.className==='road-direction').children[0];
+  swapDirection.onclick();
+  check(get('road-detail').children.find(n=>n.className==='road-exports').children.every(n=>n.href.includes('orientation=reverse')),'Swapping endpoints updates all export formats');
+  check(swapDirection['aria-pressed']==='true','Swap direction exposes accessible selected state');
+  swapDirection.onclick();
+  const nameChoices=get('road-detail').children.find(n=>n.className==='road-name-picker');
+  nameChoices.children.find(n=>n.textContent==='Other Road Name').onclick();
+  check(get('road-detail').children[1].children[0].textContent==='Other Road Name','Clicking alias changes displayed primary name');
+  check(get('road-detail').children.find(n=>n.className==='road-exports').children.every(n=>n.href.includes('preferred_name=Other%20Road%20Name')),'Selected alias propagates to each export link');
+  nameChoices.children.find(n=>n.textContent==='Test road').onclick();
   const heart=get('road-detail').children.find(node=>node.className==='favorite-heart');
   await heart.onclick();await flush();
   check(heart['aria-pressed']==='true'&&heart.textContent.includes('Favorited'),'Heart saves selected road');
   const favoriteRequest=requests.find(r=>r.path==='/api/favorites'&&r.method==='POST');
   check(JSON.parse(favoriteRequest.body).search.zip==='12345'&&!!favoriteRequest.headers['X-CSRF-Token'],'Favorite captures search context with CSRF');
+
+  check(JSON.parse(favoriteRequest.body).preferred_name==='Test road'&&JSON.parse(favoriteRequest.body).orientation==='forward','New Favorite captures preferred name and endpoint orientation');
+  nameChoices.children.find(n=>n.textContent==='Other Road Name').onclick();await flush();
+  const preferenceRequest=requests.filter(r=>r.path==='/api/favorites/7/preferences').at(-1);
+  check(preferenceRequest&&JSON.parse(preferenceRequest.body).preferred_name==='Other Road Name'&&!!preferenceRequest.headers['X-CSRF-Token'],'Changing a saved Favorite name uses owner preference POST with CSRF');
+  nameChoices.children.find(n=>n.textContent==='Test road').onclick();await flush();
   await heart.onclick();await flush();
   check(heart['aria-pressed']==='false'&&!favoritesSaved,'Heart removes saved road');
   searchResponses=[{results:[],preparation:{state:'failed',message:'Provider unavailable',complete:0,total:3}}];
@@ -255,7 +271,7 @@ async function testFrontend(sources) {
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(favoriteMapWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
   await flush();
   check(get('results').children.length===1&&get('road-detail').children.some(node=>node.textContent==='Test road · 70/100'),'Opening a favorite restores saved road result and details');
-  check(get('road-detail').children.find(node=>node.className==='road-exports').children[0].href==='/api/favorites/7/export?format=gpx','Saved road exports do not require active candidate ID');
+  check(get('road-detail').children.find(node=>node.className==='road-exports').children[0].href==='/api/favorites/7/export?format=gpx&orientation=forward&preferred_name=Test%20road','Saved road exports do not require active candidate ID');
   check(get('road-detail').children.find(node=>node.className==='road-exports').children[2].target==='_blank','Favorite PDFs also open a preview tab');
 
   const mapReturnEvents={},documentReturnEvents={},frames=[];
@@ -286,10 +302,17 @@ async function testFrontend(sources) {
     getLayer(id){return this.options.style.layers.find(layer=>layer.id===id);}
     setPaintProperty(){} resize(){} triggerRepaint(){}
   }
-  const lib={Map:RestoredMap,NavigationControl:class {}};
+  const pinInstances=[];
+  const lib={Map:RestoredMap,NavigationControl:class {},Marker:class {constructor(options){this.options=options;pinInstances.push(this);}setLngLat(p){this.position=p;return this;}addTo(map){this.map=map;return this;}remove(){this.removed=true;}}};
   const pdfDocument={...document,visibilityState:'visible',addEventListener:()=>{}};
   const pdfWindow={maplibregl:lib,location:{pathname:'/',search:''},requestAnimationFrame:callback=>pdfFrames.push(callback),addEventListener:(name,handler)=>pdfEvents[name]=handler};
-  const pdfMap=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams','maplibregl',sources['app.js']+'\nreturn {setMap:value=>map=value,markPdfPreview};')(pdfWindow,pdfDocument,fetch,function(){},setTimer,clearTimer,SearchParams,lib);
+  const pdfMap=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams','maplibregl',sources['app.js']+'\nreturn {setMap:value=>map=value,markPdfPreview,drawRoadEndpoints,clearRoadEndpoints};')(pdfWindow,pdfDocument,fetch,function(){},setTimer,clearTimer,SearchParams,lib);
+  pdfMap.setMap({});const pinRoad={geometry:{coordinates:[[-119,39],[-118,40]]},travel_direction:0};
+  pdfMap.drawRoadEndpoints(pinRoad,'forward');
+  check(pinInstances[0].position[0]===-119&&pinInstances[1].position[0]===-118,'Map shows Start and Finish at selected road endpoints');
+  pdfMap.drawRoadEndpoints(pinRoad,'reverse');
+  check(pinInstances[2].position[0]===-118&&pinInstances[3].position[0]===-119&&pinInstances[0].removed,'Swapping exchanges endpoint pins without leaving old markers');
+  pdfMap.clearRoadEndpoints();check(pinInstances[2].removed&&pinInstances[3].removed,'Clearing road selection removes endpoint pins');
   const preservedStyle={version:8,sources:{roads:{type:'geojson',data:{type:'FeatureCollection',features:[{id:7}]}},radius:{type:'geojson',data:{type:'Feature',geometry:{type:'Polygon',coordinates:[]}}}},layers:[{id:'basemap'},{id:'selected',filter:['==',['get','id'],7]}]};
   let removedOldMap=false;
   pdfMap.setMap({getLayer:()=>true,getStyle:()=>preservedStyle,getCenter:()=>({lng:-119.8,lat:39.5}),getZoom:()=>12,getBearing:()=>25,getPitch:()=>20,getPadding:()=>({top:65,right:65,bottom:65,left:65}),remove:()=>removedOldMap=true});

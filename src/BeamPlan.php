@@ -10,7 +10,7 @@ final class BeamPlan
         $padding=Validation::number($input,'padding_miles',0.5,0.1,5);
         $resolution=Validation::number($input,'resolution',2048,1024,2048);
         if(!in_array($resolution,[1024.0,2048.0],true))throw new \InvalidArgumentException('Terrain resolution must be 1024 or 2048.');
-        return ['padding_miles'=>$padding,'resolution'=>(int)$resolution];
+        return ['padding_miles'=>$padding,'resolution'=>(int)$resolution,'orientation'=>RoadExport::orientation($input['orientation']??'forward')];
     }
     public static function square(array $points,float $padding): array
     {
@@ -23,7 +23,7 @@ final class BeamPlan
     }
     public static function project(PDO $db,array $road,array $options): array
     {
-        $road=RoadExport::prepare($road);$geo=$road['geometry']['coordinates'];
+        $road=RoadExport::prepare($road,$options['orientation']??'forward');$geo=$road['geometry']['coordinates'];
         $lon=array_sum(array_column($geo,0))/count($geo);$lat=array_sum(array_column($geo,1))/count($geo);
         if($lon< -125 || $lon> -66 || $lat<24 || $lat>50)throw new \InvalidArgumentException('This exporter currently requires continental US elevation and NAIP imagery coverage.');
         $epsg=32600+max(1,min(60,(int)floor(($lon+180)/6)+1));

@@ -18,6 +18,7 @@ final class Favorites
         if (!is_string($profile) || $profile!==$search['profile']) {throw new \InvalidArgumentException('Profile must match the search');}
         // Only server-owned road data is saved; clients cannot inject geometry or scores.
         $road=(new Api($this->db))->exportRoad((int)$id,$profile,true,Api::memberIds($input['member_ids']??null,(int)$id));$key=$road['geometry_key'];
+        $road=RoadNames::prefer($road,$input['preferred_name']??null);$road['preferred_orientation']=RoadExport::orientation($input['orientation']??'forward');
         $this->db->beginTransaction();
         try {
             $this->db->prepare('SELECT id FROM app_users WHERE id=? FOR UPDATE')->execute([$user]);
@@ -29,6 +30,13 @@ final class Favorites
             $q->execute([$user,$key,$profile,json_encode($road,JSON_THROW_ON_ERROR),json_encode($search,JSON_THROW_ON_ERROR)]);
             $id=(int)$q->fetchColumn();$this->db->commit();return ['id'=>$id,'saved'=>true];
         } catch (\Throwable $e) {$this->db->rollBack();throw $e;}
+    }
+    public function preferences(int $user,int $id,array $input): array
+    {
+        $road=$this->detail($user,$id)['road'];$road=RoadNames::prefer($road,$input['preferred_name']??null);
+        $orientation=RoadExport::orientation($input['orientation']??($road['preferred_orientation']??'forward'));
+        $q=$this->db->prepare("UPDATE favorites SET snapshot=snapshot || CAST(? AS jsonb) WHERE id=? AND user_id=?");
+        $q->execute([json_encode(['name'=>$road['name'],'alternate_names'=>$road['alternate_names'],'preferred_orientation'=>$orientation],JSON_THROW_ON_ERROR),$id,$user]);return ['saved'=>true];
     }
     public function recent(int $user): array
     {

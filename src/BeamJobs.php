@@ -35,15 +35,17 @@ final class BeamJobs
             $favorite=Validation::number($input,'favorite_id',NAN,1,9007199254740991);
             if(floor($favorite)!==$favorite)throw new \InvalidArgumentException('Favorite ID must be a whole number.');
             $road=(new Favorites($this->db))->detail($user,(int)$favorite)['road'];
+            if(!isset($input['orientation']))$options['orientation']=$road['preferred_orientation']??'forward';
         } else {
             $id=Validation::number($input,'road_id',NAN,1,9007199254740991);
             if(floor($id)!==$id)throw new \InvalidArgumentException('Road ID must be a whole number.');
             $profile=$input['profile']??'twisty';if(!is_string($profile))throw new \InvalidArgumentException('Unknown profile.');
             $road=(new Api($this->db))->exportRoad((int)$id,$profile,false,Api::memberIds($input['member_ids']??null,(int)$id));
         }
+        $road=RoadNames::prefer($road,$input['preferred_name']??null);
         $plan=BeamPlan::project($this->db,$road,$options);$payload=json_encode($plan,JSON_THROW_ON_ERROR);
         if(strlen($payload)>2097152)throw new \InvalidArgumentException('This road contains too much geometry for BeamNG export. Choose a shorter stretch.');
-        $fingerprint=hash('sha256','beamng-v0.40-18'.$payload);
+        $fingerprint=hash('sha256','beamng-v0.40-20'.$payload);
         $this->db->beginTransaction();
         try {
             $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
