@@ -164,7 +164,7 @@ try{
         $ground=unpack('v',substr($binary,5+($y*$n+$x)*2,2))[1]/65536*$terrainObject['maxHeight'];
         $gap=$point[2]-$ground;$maxGap=max($maxGap,$gap);$minGap=min($minGap,$gap);
     }
-    check($minGap>=0 && $minGap>0.29 && $maxGap<0.31,'Terrain recess is reduced to 30 cm without changing elevation sampling');
+    check($minGap>=0 && $minGap>0.14 && $maxGap<0.16,'Terrain recess is reduced to 15 cm without changing elevation sampling');
     check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.25)<0.001,'Original road surface offset is 25 cm above sampled elevation');
     $mats=json_decode($flatZip->getFromName($flatBase.'art/terrains/main.materials.json'),true);
     $aerial=imagecreatefromstring($flatZip->getFromName($flatBase.'art/terrains/aerial.color.png'));
@@ -289,3 +289,5 @@ check(strpos($assetsFiles['mainLevel.lua'],'/levels/Utah/art/shapes/trees/main.m
 
 check(SweepLine\BeamVegetation::choose('rock',[-119,39],1800,1,0.5)==='utah_rock','Rock scatter always selects a stock model');
 check(SweepLine\BeamVegetation::CATALOG['utah_rock']['radius']>=1.4,'Stock rock footprint conservatively covers installed mesh bounds');
+
+check(BeamRaster::TERRAIN_SATURATION===1.5 && BeamRaster::saturated([100,140,100])[1]-BeamRaster::saturated([100,140,100])[0]>BeamRaster::saturated([100,140,100],1.2)[1]-BeamRaster::saturated([100,140,100],1.2)[0],'Terrain default color boost is stronger than previous 1.2 factor');
