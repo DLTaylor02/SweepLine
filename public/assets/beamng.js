@@ -1,5 +1,20 @@
 'use strict';
 (() => {
+  const steps=['Queued','Elevation','Aerial imagery','Preparation','Terrain analysis','Road shaping','Materials','Scenery','Packaging'];
+  function stageFor(job){
+    if(job.status==='complete')return steps.length;
+    const message=job.progress||'';
+    const stages=[
+      [/Finalizing.*ZIP/i,8],[/Placing regional scenery/i,7],
+      [/Writing collision|Blending bounded aerial/i,6],
+      [/Shaping the road|Checking and removing terrain/i,5],
+      [/Classifying grass/i,4],
+      [/Preparing terrain|Validating elevation|building/i,3],
+      [/NAIP|aerial|Aligning aerial/i,2],[/USGS elevation|Aligning dem/i,1]
+    ];
+    return stages.find(([pattern])=>pattern.test(message))?.[1]??0;
+  }
+
   let timer,view=0;
   window.sweeplineBeamStop=()=>{++view;clearTimeout(timer);};
   window.sweeplineBeamExport=(container,road,context={})=>{
@@ -10,7 +25,12 @@
     const status=node('span');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
     const spinner=node('span');spinner.className='spinner';spinner.hidden=true;spinner.setAttribute('aria-hidden','true');
     const cancel=node('button','Cancel export');cancel.type='button';cancel.hidden=true;
-    section.append(spinner,status,cancel);container.append(action,section);
+    const progress=node('div');progress.className='beam-steps';progress.hidden=true;
+    const stepLabel=node('div');stepLabel.className='beam-step-label';
+    const track=node('div');track.className='beam-step-track';track.setAttribute('role','img');
+    const segments=steps.map(label=>{const segment=node('span');segment.title=label;segment.setAttribute('aria-hidden','true');track.append(segment);return segment;});
+    progress.append(stepLabel,track);
+    section.append(spinner,status,cancel,progress);container.append(action,section);
     const user=window.SweepLineAccount?.user?.id;
     const baseStorageKey='sweepline:beamng:'+user+':'+(road.geometry_key||road.id)+':'+(context.orientation||'forward')+':'+(context.preferredName||road.name||'');
     const storageKey=baseStorageKey+':stock',noticeKey=storageKey+':notice';
@@ -27,6 +47,12 @@
       const failed=job.status==='failed';
       section.hidden=false;section.classList.toggle('beam-error',failed);
       cancel.hidden=!busy;spinner.hidden=!busy;
+      progress.hidden=!busy&&!ready;
+      const stage=stageFor(job),complete=stage===steps.length;
+      stepLabel.textContent=complete?'All export steps complete':`Step ${stage+1} of ${steps.length} · ${steps[stage]}`;
+      track.setAttribute('aria-label',stepLabel.textContent+'. Steps indicate stages, not elapsed time or percentage.');
+      segments.forEach((segment,index)=>{segment.classList.toggle('is-complete',complete||index<stage);segment.classList.toggle('is-current',!complete&&index===stage);});
+
       status.setAttribute('role',failed?'alert':'status');status.setAttribute('aria-live',failed?'assertive':'polite');
       status.textContent=failed?'BeamNG export could not be generated. '+(job.error||job.progress||'No reason was returned. Please retry; if it persists, ask a SuperAdmin to check Manage.'):(job.progress||'');
       if(!failed&&job.warning)status.textContent+=' '+job.warning;

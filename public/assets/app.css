@@ -70,3 +70,10 @@
 #road-detail .dimension{gap:8px;font-size:10px;padding:5px 0;align-items:center}
 #road-detail .dimension strong{white-space:nowrap}
 #road-detail.road-detail-bottom{top:auto;bottom:36px;left:12px;right:12px;width:auto;max-width:none;max-height:45%;padding:10px 12px}
+
+.beam-steps{clear:both;margin-top:8px}
+.beam-step-label{font-size:11px;color:var(--muted);margin-bottom:5px}
+.beam-step-track{display:flex;gap:3px;height:7px}
+.beam-step-track span{flex:1;min-width:0;border-radius:3px;background:var(--line)}
+.beam-step-track .is-complete{background:var(--accent)}
+.beam-step-track .is-current{background:#f59e0b;box-shadow:inset 0 0 0 1px #b45309}

@@ -21,10 +21,10 @@ final class BeamTerrain
         [$r,$g,$b]=$rgb;$light=($r+$g+$b)/3;
         if($light<15||($light>225&&max($rgb)-min($rgb)<20)||($b>$r*1.2&&$b>$g*1.15))return $base;
         // Limit exposure influence: photographed shadows must not become black ground.
-        $exposure=max(-15,min(15,($light-128)*0.18));$out=[];
+        $exposure=max(-25,min(25,($light-128)*0.32));$out=[];
         foreach($base as $channel=>$value){
-            $tint=max(-24,min(24,$rgb[$channel]-$light))*0.35;
-            $out[]=max((int)round($value*0.9),min(255,(int)round($value+$exposure+$tint)));
+            $tint=max(-36,min(36,$rgb[$channel]-$light))*0.65;
+            $out[]=max((int)round($value*0.85),min(255,(int)round($value+$exposure+$tint)));
         }
         if($id<2)$out[1]=max($out[1],$out[0]+16,$out[2]+16);
         return $out;

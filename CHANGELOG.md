@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Strengthen satellite/palette terrain blending: raise exposure influence and chroma variation while retaining vegetation green separation, conservative invalid-color fallback and an 85% palette brightness floor. Close-up detail strengths remain unchanged.
+
+- Add a nine-segment BeamNG preparation bar showing queued, elevation, imagery, preparation, terrain analysis, road shaping, materials, scenery and packaging stages from worker status. Distinguish current/completed stages, retain detailed progress/errors, and fill the bar only when the download is ready.
+
 - Blend filtered aerial colors into stock terrain base palettes with bounded exposure/chroma, vegetation-green protection and conservative fallback for black/snow/water-like samples. Reuse a north-up tint field, preserve close-up PBR settings and report cancellable worker progress; add color-bound and orientation regressions.
 
 - Place BeamNG START/FINISH arches 100 feet ahead of each spawn along its inward driving direction, following bends, grade and road width; keep vehicle spawns unchanged and clamp short stretches at their endpoint.

@@ -344,7 +344,7 @@ try{
         $layerMaterial=$stockMaterials['sl_dddddddddddd_terrain_'.$layerId];
         $image=imagecreatefromstring($stockZip->getFromName($stockBase.'art/terrains/palette-'.$layerId.'.color.png'));
         $color=imagecolorat($image,400,400);$rgb=[($color>>16)&255,($color>>8)&255,$color&255];
-        check(count(array_filter($rgb,static fn($c,$channel)=>$c>=round($layer['color'][$channel]*0.9)&&$c<=$layer['color'][$channel]+24,ARRAY_FILTER_USE_BOTH))===3&&imagesx($image)===1024,'Generated base color for '.$layer['name'].' stays within bounded aerial/palette blend');
+        check(count(array_filter($rgb,static fn($c,$channel)=>$c>=round($layer['color'][$channel]*0.85)&&$c<=$layer['color'][$channel]+50,ARRAY_FILTER_USE_BOTH))===3&&imagesx($image)===1024,'Generated base color for '.$layer['name'].' stays within bounded aerial/palette blend');
         unset($image);
         check(str_starts_with($layerMaterial['baseColorDetailTex'],$layer['prefix'])&&$layerMaterial['baseColorDetailStrength'][0]>0,'Stock '.$layer['name'].' is a detail layer over the generated base');
         // v0.40 terrain.h.hlsl calculateValue: base + (2*detail-1)*strength.
@@ -404,7 +404,7 @@ foreach([0,1,2,3,4,6,7] as $id){
     $base=SweepLine\BeamTerrain::PALETTE[$id]['color'];
     check(SweepLine\BeamTerrain::blendedColor($id,[0,0,0])===$base&&SweepLine\BeamTerrain::blendedColor($id,[240,240,240])===$base&&SweepLine\BeamTerrain::blendedColor($id,[20,60,150])===$base,'Black, snow and water-like aerial samples retain '.$id.' palette');
     $dark=SweepLine\BeamTerrain::blendedColor($id,[45,50,40]);$light=SweepLine\BeamTerrain::blendedColor($id,[180,170,140]);
-    check($dark!==$light&&min($dark)>=min($base)*0.89,'Aerial brightness varies '.$id.' while limiting shadow darkening');
+    check($dark!==$light&&min($dark)>=min($base)*0.84,'Aerial brightness varies '.$id.' while limiting shadow darkening');
 }
 foreach([0,1] as $id)foreach([[70,60,30],[50,80,40],[170,150,120]] as $sample){
     $rgb=SweepLine\BeamTerrain::blendedColor($id,$sample);
@@ -413,3 +413,6 @@ foreach([0,1] as $id)foreach([[70,60,30],[50,80,40],[170,150,120]] as $sample){
 $tintRaster=new BeamRaster(2,2,str_repeat(pack('g',100),4),chr(180).chr(180).chr(50).chr(50).chr(160).chr(160).chr(70).chr(70).chr(120).chr(120).chr(40).chr(40));
 $tintField=SweepLine\BeamTerrain::tintPixels($tintRaster,static function($m){});
 check(strlen($tintField)===1024*1024*3&&ord($tintField[0])>ord($tintField[(1023*1024)*3]),'Blended aerial field retains north-up orientation and full base resolution');
+
+$strongTint=SweepLine\BeamTerrain::blendedColor(4,[180,170,140]);
+check($strongTint[0]-SweepLine\BeamTerrain::PALETTE[4]['color'][0]>20,'Warm aerial highlights produce stronger local color variation than the original blend');
