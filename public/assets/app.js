@@ -7,6 +7,31 @@ const $ = id => document.getElementById(id);
 let map, ready, roads = [], selected = null, request = 0, pollTimer, activeProfile='twisty';
 let pendingHistorySearch=false, activeSearchUser=null, restoredSearchUser=null, explicitSearchParameters=false;
 let currentSearchParameters=null,pendingFavorite=null;
+
+const discoveryTabs=['zip','custom','discoveries'];
+function showDiscoveryTab(name,focus=false){
+  if(!discoveryTabs.includes(name))return;
+  for(const key of discoveryTabs){
+    const active=key===name,tab=$('tab-'+key);
+    tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;
+    $('panel-'+key).hidden=!active;
+  }
+  if(focus)$('tab-'+name).focus?.();
+}
+for(const [index,name] of discoveryTabs.entries()){
+  const tab=$('tab-'+name);
+  tab.onclick=()=>showDiscoveryTab(name);
+  tab.onkeydown=event=>{
+    let next;
+    if(event.key==='ArrowRight')next=(index+1)%3;
+    if(event.key==='ArrowLeft')next=(index+2)%3;
+    if(event.key==='Home')next=0;
+    if(event.key==='End')next=2;
+    if(next!==undefined){event.preventDefault();showDiscoveryTab(discoveryTabs[next],true);}
+  };
+}
+showDiscoveryTab('zip');
+
 const searchStorageKey=id=>'sweepline:active-search:'+id;
 function rememberSearch(payload) {
   if(!activeSearchUser)return;
@@ -115,6 +140,7 @@ function paintSearchStages(busy,preparation){
 
 function setStatus(message, busy=false, preparation=null) {
   paintSearchStages(busy,preparation);
+  if(preparation?.state==='ready')showDiscoveryTab('discoveries');
   if(preparation||!busy)updatePreparationAreas(preparation);
   $('status').textContent=message;
   $('search-feedback').dataset.busy=String(busy);
@@ -239,7 +265,7 @@ function cancelCustomRoad(){
 $('pick-custom-road').onclick=()=>{
   if(customPicking){cancelCustomRoad();setStatus('Custom selection cancelled.');$('custom-road-status').textContent='Custom selection cancelled.';return;}
   if(!map){$('custom-road-status').textContent='The map is unavailable. Try reloading Discovery.';return;}
-  cancelCustomRoad();updatePreparationAreas(null);setZipPickMode(false);customPicking=true;
+  cancelCustomRoad();showDiscoveryTab('custom');updatePreparationAreas(null);setZipPickMode(false);customPicking=true;
   ++request;clearTimeout(pollTimer);$('submit').disabled=false;setStatus('Choose two points on one continuous road.');
   $('road-detail').hidden=true;clearRoadEndpoints();
   $('pick-custom-road').textContent='Cancel selection';$('pick-custom-road').setAttribute('aria-pressed','true');
@@ -486,14 +512,14 @@ function scrollToSearchProgress(){
 }
 
 $('search').onsubmit = event => {
-  event.preventDefault();cancelCustomRoad();updatePreparationAreas(null);clearTimeout(pollTimer);const sequence=++request,form=event.target;
+  event.preventDefault();showDiscoveryTab('zip');cancelCustomRoad();updatePreparationAreas(null);clearTimeout(pollTimer);const sequence=++request,form=event.target;
   $('submit').disabled=true;setStatus('Preparing your road search…',true);$('road-detail').hidden=true;selected=null;clearRoadEndpoints();
   const payload={...searchParameters(form),_recorded:event.fromHistory===true};
   scrollToSearchProgress();rememberSearch(payload);discover(payload,sequence);
 };
 async function openFavorite(id) {
   clearTimeout(pollTimer);const sequence=++request;
-  setStatus('Loading favorite road…',true);
+  showDiscoveryTab('discoveries');setStatus('Loading favorite road…',true);
   try {
     const saved=await api('/api/favorites/'+id);if(sequence!==request)return;
     const road={...saved.road,_snapshot:true};

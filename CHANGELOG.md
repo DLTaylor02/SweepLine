@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Split the Discovery sidebar into ZIP search, Custom road and Your Discoveries tabs with keyboard navigation. Open discoveries automatically after completed searches and place road diagnostics above results; retain shared profile and preparation progress.
+
 - Reuse the staged discovery progress bar for custom-road preparation, including live area counts, download/analysis stages, completion and cancellation cleanup.
 
 - Show persistent custom-road rejection reasons over the map and in the sidebar, with a reset picker for retry. Expand custom download padding to 25% of endpoint distance (1-5 miles per side) to accommodate winding roads.

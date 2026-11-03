@@ -69,6 +69,14 @@ async function testFrontend(sources) {
   run(sources['account.js']);run(sources['app.js']);
   const flush=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
   let checks=0;const check=(ok,message)=>{if(!ok)throw Error(message);checks++;};
+
+  get('tab-custom').onclick();
+  check(!get('panel-custom').hidden&&get('panel-zip').hidden&&get('panel-discoveries').hidden,'Custom tab shows only its controls');
+  get('tab-custom').onkeydown({key:'ArrowRight',preventDefault(){}});
+  check(get('tab-discoveries')['aria-selected']==='true'&&!get('panel-discoveries').hidden,'Arrow keys select the next sidebar tab');
+  get('tab-discoveries').onkeydown({key:'Home',preventDefault(){}});
+  check(!get('panel-zip').hidden&&get('tab-zip').tabIndex===0&&get('tab-custom').tabIndex===-1,'Home restores ZIP tab with roving keyboard focus');
+
   await flush();
   check(get('workspace').hidden&&!get('account-form').hidden,'Terminal-provisioned accounts use sign-in form');
   check(!requests.some(r=>r.path==='/api/setup'),'Browser never requests account creation');
@@ -105,6 +113,7 @@ async function testFrontend(sources) {
   await timer.fn();await flush();check(get('status').textContent.includes('No roads match'),'Ready response ends preparation message');
   check(get('search-spinner').hidden&&get('map-spinner').hidden&&get('search-progress').hidden,'Ready response clears all loading indicators');
   check(!get('search-stages').hidden&&get('search-stage-track').children.every(n=>n.className==='is-complete'),'Ready response fills every search stage even for empty results');
+  check(!get('panel-discoveries').hidden&&get('panel-zip').hidden,'Completed ZIP search automatically opens discoveries even with no matches');
   check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).record_history===false,'Background polling does not add search history');
   search.min_curve_density_score.value='4.5';
   searchResponses=[{results:[{id:1,name:'Test road',score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5}],preparation:{state:'preparing',message:'Analyzing roads',complete:1,total:3}}];
@@ -398,6 +407,7 @@ async function testFrontend(sources) {
   check(get('search-feedback')['aria-busy']==='true'&&get('search-progress-label').textContent.includes('0 of 2'),'Custom preparation shows busy state and actual area counts');
   await timers.filter(t=>t.active&&t.ms===5000).at(-1).fn();await flush();
   check(get('search-stage-track').children.every(n=>n.className==='is-complete')&&get('search-spinner').hidden,'Custom selection completes the shared stages and stops the spinner');
+  check(!get('panel-discoveries').hidden,'Completed custom selection automatically opens discoveries');
   const customLinks=get('road-detail').children.find(n=>n.className==='road-exports').children;
   check(customLinks.every(n=>n.href.includes('/api/custom-roads/55/export')),'Every standard export uses server-validated custom selection');
   check(customBeamContext.customId===55,'BeamNG uses custom selection rather than the full source candidate');
