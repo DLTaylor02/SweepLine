@@ -43,8 +43,37 @@ final class BeamRoadSurface
             'inner_margin_m'=>$inner,'blend_width_m'=>$blend,'changed_vertices'=>$count,'maximum_height_change_m'=>$maxChange];
     }
 
+    /** Only landward vertices in short abutment zones may be corrected. */
+    public static function bridgeApproachMask(array $road,array $profiles,array $chain,array $bridges,BeamRaster $raster,callable $progress): string
+    {
+        $mask=str_repeat("\1",$raster->size*$raster->size);$step=$raster->side/$raster->size;$best=[];
+        $margin=max(25,4*$step);
+        for($i=1;$i<count($road);$i++){
+            if($i%100===0)$progress(null);
+            $near=false;foreach($bridges as $span)foreach([$span['start_m'],$span['end_m']] as $end)
+                if($chain[$i]>=$end-$margin&&$chain[$i-1]<=$end+$margin)$near=true;
+            if(!$near)continue;
+            $a=$road[$i-1];$b=$road[$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$l2=$dx*$dx+$dy*$dy;if($l2<0.000001)continue;
+            $radius=max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2+max(6,5*$step);
+            for($y=max(0,(int)floor((min($a[1],$b[1])-$radius)/$step));$y<=min($raster->size-1,(int)ceil((max($a[1],$b[1])+$radius)/$step));$y++)
+            for($x=max(0,(int)floor((min($a[0],$b[0])-$radius)/$step));$x<=min($raster->size-1,(int)ceil((max($a[0],$b[0])+$radius)/$step));$x++){
+                $key=$y*$raster->size+$x;
+                $t=max(0,min(1,(($x*$step-$a[0])*$dx+($y*$step-$a[1])*$dy)/$l2));
+                $distance=hypot($x*$step-$a[0]-$t*$dx,$y*$step-$a[1]-$t*$dy);
+                if($distance>$radius||$distance>=($best[$key]??INF))continue;$best[$key]=$distance;
+                $at=$chain[$i-1]+$t*sqrt($l2);$landward=false;$deck=false;
+                foreach($bridges as $span){
+                    if($at>=$span['start_m']-0.5&&$at<=$span['end_m']+0.5)$deck=true;
+                    if(($at<$span['start_m']&&$at>=$span['start_m']-$margin)||($at>$span['end_m']&&$at<=$span['end_m']+$margin))$landward=true;
+                }
+                $mask[$key]=$landward&&!$deck?"\0":"\1";
+            }
+        }
+        return $mask;
+    }
+
     /** Correct interpolated road contact heights without flattening graded cells. */
-    public static function clearTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,callable $progress,string $protected=""): array
+    public static function clearTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,callable $progress,string $protected="",bool $partialCells=false): array
     {
         $step=$raster->side/$raster->size;$checked=[];$lowered=[];$cut=0.0;$checks=0;
         for($i=1;$i<count($road);$i++){
@@ -58,7 +87,8 @@ final class BeamRoadSurface
                     $cx=(int)floor($gx);$cy=(int)floor($gy);
                     if($cx<0||$cy<0||$cx+1>=$raster->size||$cy+1>=$raster->size)continue;
                     $ids=[$cy*$raster->size+$cx,$cy*$raster->size+$cx+1,($cy+1)*$raster->size+$cx,($cy+1)*$raster->size+$cx+1];
-                    foreach($ids as $id)if(($protected[$id]??"\0")!=="\0")continue 2;
+                    $editable=[];foreach($ids as $id)$editable[]=($protected[$id]??"\0")==="\0";
+                    if(!in_array(true,$editable,true)||(!$partialCells&&in_array(false,$editable,true)))continue;
                     $u=$gx-$cx;$v=$gy-$cy;
                     // Check both possible native terrain triangle diagonals, plus bilinear sampling.
                     $weights=[[(1-$u)*(1-$v),$u*(1-$v),(1-$u)*$v,$u*$v],
@@ -66,10 +96,10 @@ final class BeamRoadSurface
                         $u>=$v?[1-$u,$u-$v,0,$v]:[1-$v,0,$v-$u,$u]];
                     foreach($weights as $w){
                         $height=0.0;$norm=0.0;
-                        foreach($ids as $n=>$id){$height+=$raster->cell($id%$raster->size,intdiv($id,$raster->size))*$w[$n];$norm+=$w[$n]*$w[$n];$checked[$id]=true;}
+                        foreach($ids as $n=>$id){$height+=$raster->cell($id%$raster->size,intdiv($id,$raster->size))*$w[$n];if($editable[$n]){$norm+=$w[$n]*$w[$n];$checked[$id]=true;}}
                         $excess=$height-($z+$origin-0.05);
-                        if($excess<=0.0001)continue;
-                        foreach($ids as $n=>$id)if($w[$n]>0){
+                        if($excess<=0.0001||$norm<0.05)continue;
+                        foreach($ids as $n=>$id)if($editable[$n]&&$w[$n]>0){
                             $xx=$id%$raster->size;$yy=intdiv($id,$raster->size);$delta=$excess*$w[$n]/$norm;
                             $raster->put($xx,$yy,$raster->cell($xx,$yy)-$delta);
                             $lowered[$id]=($lowered[$id]??0)+$delta;$cut=max($cut,$lowered[$id]);

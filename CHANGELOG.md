@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Correct native terrain clipping through pavement just beyond bridge abutments, where the broad bridge mask previously blocked shoulder shaping. Add a landing-only shaping/contact pass that preserves deck-interior vertices and leaves ordinary-road processing unchanged. Validate offline against the supplied Frenchman Lake export; report bridge_approach_correction.
+
 - Fix terrain clipping undoing native shoulder shaping on grades. Correct interpolated contact heights rather than flattening every touched vertex to the lowest road sample; cover bilinear and both terrain triangle diagonals. ZIP (24) showed a roughly 25 cm median road-edge gap; add a graded-grid regression at its actual 3.52 m spacing.
 
 - Remove all separate BeamNG shoulder/roadbed collision objects and their mesh generator. Shape native terrain to a 5 cm pavement-clearance target, then smoothly blend into the original terrain over a grid-aware shoulder range. Preserve bridge masks and terrain materials; retain the protected road-clipping pass and add raising/lowering/falloff/exclusion regressions.

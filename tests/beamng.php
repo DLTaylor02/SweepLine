@@ -457,3 +457,15 @@ $gradeCorrection=SweepLine\BeamRoadSurface::clearTerrain($gradeRoad,$gradeProfil
 check($gradeRaster->heights===$beforeGrade&&$gradeCorrection['lowered_vertices']===0,'Clipping pass preserves a correctly graded shoulder instead of lowering each cell to its lowest road sample');
 $gap=100+0.1*(10.6*$gradeStep)+0.25-$gradeRaster->height(10.6*$gradeStep,16.25*$gradeStep+4);
 check(abs($gap-0.05)<0.001,'Five-centimeter road-edge clearance survives clipping on a ten-percent grade at real export grid spacing');
+
+$abutmentHeights='';for($y=0;$y<40;$y++)for($x=0;$x<40;$x++)$abutmentHeights.=pack('g',$x>=12&&$x<=18?8:10.5);
+$abutmentRaster=new BeamRaster(40,40,$abutmentHeights,str_repeat(chr(100),40*40*3));$beforeAbutment=clone $abutmentRaster;
+$abutmentRoad=[[2,20,10],[12,20,10],[18,20,10],[36,20,10]];$abutmentProfiles=array_fill(0,4,['width_m'=>4]);
+$abutmentMask=SweepLine\BeamRoadSurface::bridgeApproachMask($abutmentRoad,$abutmentProfiles,[0,10,16,34],[['start_m'=>10,'end_m'=>16]],$abutmentRaster,fn($m)=>null);
+check($abutmentMask[20*40+14]==="\1"&&$abutmentMask[20*40+21]==="\0",'Bridge approach mask protects deck-interior ground while permitting landward correction');
+SweepLine\BeamRoadSurface::blendTerrain($abutmentRoad,$abutmentProfiles,$abutmentRaster,0,$abutmentMask,fn($m)=>null);
+SweepLine\BeamRoadSurface::clearTerrain($abutmentRoad,$abutmentProfiles,$abutmentRaster,0,fn($m)=>null,$abutmentMask,true);
+check($abutmentRaster->height(21,20)<10&&$abutmentRaster->cell(14,20)===8.0,'Raised terrain after a bridge is corrected without raising the valley floor beneath the deck');
+$outsideIntact=true;for($y=0;$y<40;$y++)for($x=0;$x<40;$x++)if($abutmentMask[$y*40+$x]!=="\0"&&$abutmentRaster->cell($x,$y)!==$beforeAbutment->cell($x,$y))$outsideIntact=false;
+check($outsideIntact,'Bridge approach fix leaves all terrain outside its allowed landing zones unchanged');
+check($flatReport['bridge_approach_correction']===null,'Ordinary exports do not run the bridge-approach correction');
