@@ -394,7 +394,10 @@ async function testFrontend(sources) {
   check(get('custom-road-status').textContent.includes('finish'),'First custom click requests the second point');
   await customUI.pickCustomRoadAt({lngLat:{lng:-119.8,lat:39.509}});
   check(get('custom-road-status').textContent.includes('0/2'),'Custom picker shows automatic coverage preparation');
+  check(!get('search-stages').hidden&&get('search-stage-label').textContent.includes('Download areas'),'Custom preparation uses shared download stage bar');
+  check(get('search-feedback')['aria-busy']==='true'&&get('search-progress-label').textContent.includes('0 of 2'),'Custom preparation shows busy state and actual area counts');
   await timers.filter(t=>t.active&&t.ms===5000).at(-1).fn();await flush();
+  check(get('search-stage-track').children.every(n=>n.className==='is-complete')&&get('search-spinner').hidden,'Custom selection completes the shared stages and stops the spinner');
   const customLinks=get('road-detail').children.find(n=>n.className==='road-exports').children;
   check(customLinks.every(n=>n.href.includes('/api/custom-roads/55/export')),'Every standard export uses server-validated custom selection');
   check(customBeamContext.customId===55,'BeamNG uses custom selection rather than the full source candidate');
@@ -402,6 +405,7 @@ async function testFrontend(sources) {
   await customHeart.onclick();await flush();check(customSavedInput.custom_id===55,'Custom favorite sends selection ID for server-owned geometry');
   get('pick-custom-road').onclick();get('pick-custom-road').onclick();
   check(get('custom-road-status').textContent.includes('cancelled'),'Two-point selection can be cancelled');
+  check(get('search-stages').hidden&&get('search-spinner').hidden,'Cancelling custom selection clears progress indicators');
 
 
 
@@ -409,6 +413,7 @@ async function testFrontend(sources) {
   get('pick-custom-road').onclick();
   await customUI.pickCustomRoadAt({lngLat:{lng:-119.8,lat:39.503}});
   await customUI.pickCustomRoadAt({lngLat:{lng:-119.8,lat:39.504}});
+  check(get('search-stages').hidden&&get('search-spinner').hidden,'Rejected custom selection stops progress indicators');
   check(!get('custom-road-error').hidden&&get('custom-road-error').textContent.includes('same position'),'Custom rejection retains the server reason visibly over the map');
   check(get('custom-road-status').textContent.includes('same position')&&get('pick-custom-road')['aria-pressed']==='false','Rejected selection resets the picker and explains failure in the sidebar');
   get('pick-custom-road').onclick();

@@ -237,10 +237,10 @@ function cancelCustomRoad(){
   if(map)map.getCanvas().style.cursor='';
 }
 $('pick-custom-road').onclick=()=>{
-  if(customPicking){cancelCustomRoad();$('custom-road-status').textContent='Custom selection cancelled.';return;}
+  if(customPicking){cancelCustomRoad();setStatus('Custom selection cancelled.');$('custom-road-status').textContent='Custom selection cancelled.';return;}
   if(!map){$('custom-road-status').textContent='The map is unavailable. Try reloading Discovery.';return;}
   cancelCustomRoad();updatePreparationAreas(null);setZipPickMode(false);customPicking=true;
-  ++request;clearTimeout(pollTimer);$('submit').disabled=false;
+  ++request;clearTimeout(pollTimer);$('submit').disabled=false;setStatus('Choose two points on one continuous road.');
   $('road-detail').hidden=true;clearRoadEndpoints();
   $('pick-custom-road').textContent='Cancel selection';$('pick-custom-road').setAttribute('aria-pressed','true');
   $('map').scrollIntoView({behavior:'smooth',block:'center'});
@@ -255,6 +255,7 @@ async function pickCustomRoadAt(event){
   }
   if(customPoints.length===1){$('custom-road-status').textContent='Now click the finish point on the same road.';return;}
   const sequence=customSequence,payload={start:customPoints[0],finish:customPoints[1],profile:$('search').profile.value};
+  setStatus('Preparing your custom road…',true);scrollToSearchProgress();
   await resolveCustomRoad(payload,sequence);
 }
 async function resolveCustomRoad(payload,sequence){
@@ -263,7 +264,8 @@ async function resolveCustomRoad(payload,sequence){
     const result=await api('/api/custom-roads',{method:'POST',body:JSON.stringify(payload)});
     if(sequence!==customSequence)return;
     if(!result.road){
-      const prep=result.preparation;updatePreparationAreas(prep);
+      const prep=result.preparation;
+      setStatus(prep.message+' · '+prep.complete+'/'+prep.total+' areas ready. Custom selection will update automatically.',prep.state==='preparing',prep);
       $('custom-road-status').textContent=prep.message+' · '+prep.complete+'/'+prep.total+' areas ready.';
       if(prep.state==='preparing'){customTimer=setTimeout(()=>resolveCustomRoad(payload,sequence),5000);return;}
       throw new Error(prep.message+' A SuperAdmin can review preparation in Manage.');
@@ -276,7 +278,7 @@ async function resolveCustomRoad(payload,sequence){
     map?.getSource('roads')?.setData({type:'FeatureCollection',features:[{type:'Feature',geometry:result.road.geometry,properties:{id:result.road.id,score:result.road.score}}]});
     map?.getSource('radius')?.setData(empty());
     await selectRoad(result.road.id);$('custom-road-status').textContent='Custom stretch selected. Scores, favorites and exports use only this stretch.';
-    setStatus('Custom road selection · '+(result.road.length_m/1609.344).toFixed(2)+' miles.');
+    setStatus('Custom road selection · '+(result.road.length_m/1609.344).toFixed(2)+' miles.',false,result.preparation||{state:'ready'});
   }catch(e){if(sequence===customSequence){cancelCustomRoad();updatePreparationAreas(null);
       const message='Custom road could not be selected. '+(e.message||'Please try again.');
       $('custom-road-status').textContent=message;
