@@ -39,7 +39,7 @@ final class BeamVegetation
         foreach($assets as $asset)$paths[$asset['materials']]=true;
         return array_keys($paths);
     }
-    public static function write(array $placements,string $prefix,float $origin,callable $put): int
+    public static function write(array $placements,string $prefix,float $origin,callable $put,array $terrainTextures=[]): int
     {
         $definitions=[];$count=0;$used=self::used($placements);$materials=array_fill_keys(self::materialLibraries($used),true);
         foreach($used as $id=>$asset){
@@ -52,7 +52,7 @@ final class BeamVegetation
         }
         $put("art/forest/managedItemData.json",json_encode((object)$definitions,JSON_THROW_ON_ERROR|JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));
         $paths=implode(",\n",array_map(static fn($s)=>json_encode($s,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES),array_keys($materials)));
-        $shapes=implode(",\n",array_map(static fn($asset)=>json_encode($asset["shape"],JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES),array_values($used)));
+        $shapes=implode(",\n",array_map(static fn($path)=>json_encode($path,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES),array_merge(array_column(array_values($used),"shape"),$terrainTextures)));
         $put("mainLevel.lua","local M = {}\nfunction M.onClientPreStartMission()\n  local sources = {".$paths."}\n  local shapes = {".$shapes."}\n  local missing = false\n  for _, materials in ipairs(sources) do\n    if FS:fileExists(materials) then loadJsonMaterialsFile(materials) else missing = true; log(\"E\", \"SweepLine\", \"Missing stock materials: \" .. materials) end\n  end\n  for _, shape in ipairs(shapes) do\n    if not FS:fileExists(shape) then missing = true; log(\"E\", \"SweepLine\", \"Missing stock vegetation: \" .. shape) end\n  end\n  if missing then guihooks.trigger(\"toastrMsg\", {type=\"error\", title=\"SweepLine vegetation\", msg=\"Required stock meshes or materials are missing. Check the game log and export report.\"}) end\nend\nreturn M\n");
         return $count;
     }

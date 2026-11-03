@@ -25,7 +25,7 @@ check(abs($raster->height($side/2,$side/2)-101.92)<0.002,'DEM elevation bilinear
 check(BeamRaster::cover([65,110,55])===0 && BeamRaster::cover([30,40,90])===4,'Aerial color classes distinguish vegetation and likely water');
 $bad=new BeamRaster($n,$side,str_repeat(pack('g',-9999),$plane),$colors);
 try{$bad->cell(0,0);check(false,'Missing elevation fails');}catch(RuntimeException $e){check(str_contains($e->getMessage(),'No synthetic'),'Missing elevation never replaced with fabricated terrain');}
-$plan=['name'=>'SweepLine Export Validation','alternate_names'=>['Synthetic Fixture Road'],'resolution'=>$n,'padding_miles'=>0.5,'epsg'=>32611,'bounds'=>[1000,2000,2200,3200],'points'=>[[1200,2400],[1900,2400],[1900,2900]],'sources'=>[
+$plan=['terrain_style'=>'aerial','name'=>'SweepLine Export Validation','alternate_names'=>['Synthetic Fixture Road'],'resolution'=>$n,'padding_miles'=>0.5,'epsg'=>32611,'bounds'=>[1000,2000,2200,3200],'points'=>[[1200,2400],[1900,2400],[1900,2900]],'sources'=>[
     ['points'=>[[1200,2400],[1900,2400]],'tags'=>['lanes'=>'2'],'highway'=>'secondary','direction'=>0],
     ['points'=>[[1900,2400],[1900,2900]],'tags'=>['lanes'=>'3','lanes:forward'=>'2','lanes:backward'=>'1'],'highway'=>'secondary','direction'=>0]
 ],'center'=>[-119.8,39.5],'oneway'=>false];
@@ -49,7 +49,7 @@ try {
     check($root['class']==='SimGroup' && $root['name']==='MissionGroup','Scene root matches installed v0.40 layout');
     $objects=array_map(static fn($line)=>json_decode($line,true,512,JSON_THROW_ON_ERROR),explode("\n",trim($archive->getFromName($base.'main/MissionGroup/items.level.json'))));
     $clock=array_values(array_filter($objects,fn($o)=>$o['class']==='TimeOfDay'))[0];
-    check(abs(fmod($clock['time']+0.5,1)*24-7)<0.000001 && !$clock['play'],'Export starts at fixed 7 AM using BeamNG noon-based clock');
+    check(abs(fmod($clock['time']+0.5,1)*24-7)<0.000001 && abs(fmod($clock['startTime']+0.5,1)*24-7)<0.000001 && $clock['version']===2 && !$clock['play'],'Both initial and runtime BeamNG clock fields specify fixed 7 AM');
     $spawns=array_values(array_filter($objects,static fn($o)=>$o['class']==='SpawnSphere'));
     check(count($spawns)===2 && $spawns[0]['position']!==$spawns[1]['position'],'Endpoint spawn objects are distinct');
     check($archive->locateName($base.'art/shapes/rock.dae')===false && $archive->locateName($base.'art/shapes/tree.dae')===false && $archive->locateName($base.'art/shapes/bush.dae')===false,'Export contains no procedural rock or plant placeholders');
@@ -313,3 +313,29 @@ $mountainRaster=new BeamRaster($n,$side,str_repeat(pack('g',2200),$n*$n),$forest
 $mountainPlacement=SweepLine\BeamScenery::place($testRoad,$testProfiles,$mountainRaster,54321,fn($m)=>null,[-119,39]);
 check(($mountainPlacement['asset_counts']['coastal_pine']??0)>($mountainPlacement['asset_counts']['juniper_tree']??0),'Generated mountain scenery contains more pines than junipers');
 check(array_sum($mountainPlacement['biome_counts'])===count($mountainPlacement['objects']),'Export records inferred biome and actual stock asset counts');
+
+check(BeamPlan::options([])['terrain_style']==='stock' && rejects(fn()=>BeamPlan::options(['terrain_style'=>'invented'])),'Terrain style defaults to stock and rejects invalid modes');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[70,130,65]),0.02,[-119,39],500)===0,'Green lowland patches classify as grass');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[50,65,45]),0.1,[-119,39],2200)===1,'Dark vegetated montane patches classify as forest floor');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[150,115,80]),0.05,[-119,39],500)===2,'Tan patches classify as dry soil');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[125,123,120]),0.2,[-119,39],500)===3,'Moderately sloped gray patches classify as gravel');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[125,123,120]),0.7,[-119,39],500)===4,'Steep gray patches classify as rock');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[125,123,120]),0.0,[-119,39],500)===5,'Ambiguous flat gray areas retain aerial fallback');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[20,70,140]),0.1,[-119,39],500)===5 && SweepLine\BeamTerrain::category(array_fill(0,5,[230,230,225]),0.1,[-119,39],2500)===5,'Water-like and snow-like colors keep imagery without invented surfaces');
+$stockFile=tempnam(sys_get_temp_dir(),'sl-stock-terrain-');
+try{
+    $stockPlan=$plan;$stockPlan['terrain_style']='stock';
+    $stockRaster=new BeamRaster($n,$side,$heights,$colors);
+    $stockReport=BeamMap::build($stockPlan,$stockRaster,str_repeat('d',32),$stockFile,fn($m)=>null);
+    $stockZip=new ZipArchive();$stockZip->open($stockFile);$stockBase='levels/sweepline_dddddddddddddddd/';
+    $stockTer=$stockZip->getFromName($stockBase.'theTerrain.ter');$offset=5+3*$n*$n;
+    check(unpack('V',substr($stockTer,$offset,4))[1]===6,'Stock terrain writes five physical classes plus aerial fallback');
+    $stockMaterials=json_decode($stockZip->getFromName($stockBase.'art/terrains/main.materials.json'),true);
+    $stockLayer=$stockMaterials['sl_dddddddddddd_terrain_0'];$stockFallback=$stockMaterials['sl_dddddddddddd_terrain_5'];
+    check(str_starts_with($stockLayer['baseColorBaseTex'],'/assets/materials/terrain/') && $stockFallback['baseColorBaseTexSize']===$n,'Stock layers reference shared assets while fallback spans whole map');
+    $fallbackImage=getimagesizefromstring($stockZip->getFromName($stockBase.'art/terrains/fallback.color.png'));
+    check($fallbackImage[0]===1024 && $fallbackImage[1]===1024,'Fallback base texture matches stock texture array dimensions');
+    check(array_sum($stockReport['terrain_classification']['counts'])===$n*$n && $stockReport['terrain_style']==='stock','Report accounts for every terrain cell and chosen style');
+    check(count($stockReport['stock_terrain_assets'])===25 && $stockZip->locateName(ltrim($stockLayer['baseColorBaseTex'],'/'))===false,'Stock terrain references all PBR channels without copying game assets');
+    $stockZip->close();
+}finally{unlink($stockFile);}

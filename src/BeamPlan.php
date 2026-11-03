@@ -10,7 +10,8 @@ final class BeamPlan
         $padding=Validation::number($input,'padding_miles',0.5,0.1,5);
         $resolution=Validation::number($input,'resolution',2048,1024,2048);
         if(!in_array($resolution,[1024.0,2048.0],true))throw new \InvalidArgumentException('Terrain resolution must be 1024 or 2048.');
-        return ['padding_miles'=>$padding,'resolution'=>(int)$resolution,'orientation'=>RoadExport::orientation($input['orientation']??'forward')];
+        $style=$input['terrain_style']??'stock';if(!is_string($style)||!in_array($style,['stock','aerial'],true))throw new \InvalidArgumentException('Terrain style must be stock or aerial.');
+        return ['terrain_style'=>$style,'padding_miles'=>$padding,'resolution'=>(int)$resolution,'orientation'=>RoadExport::orientation($input['orientation']??'forward')];
     }
     public static function square(array $points,float $padding): array
     {

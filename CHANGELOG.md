@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added experimental Stock materials/Aerial imagery BeamNG export modes. Stock mode classifies terrain into grass, forest floor, dry soil, gravel and rock with neighborhood/slope/elevation heuristics, speckle filtering and aerial fallback for uncertain areas.
+- Referenced 25 verified shared stock PBR textures without redistributing game assets. Added style-scoped jobs/UI state, required-asset diagnostics, classification reports and stock-package/frontend regression tests.
+
+- Fixed BeamNG startup time defaults by authoring startTime alongside time at 7 AM, using TimeOfDay version 2. The supplied ZIP had time set correctly but omitted the separate startup field. Expanded the clock regression check.
+
 - Added clickable primary/alternate road names with server-validated personal name selection across Favorites and every export format. Existing Favorites save name and endpoint-orientation preferences through an owner-only CSRF-protected endpoint; direct Favorite exports default to the saved direction. Export titles/filenames and BeamNG job state reflect the selection.
 
 - Added labeled discovery Start/Finish map pins and a swap control. Selected orientation carries through GPX, KMZ, PDF and BeamNG exports, including Favorites, with server validation, direction-scoped job state, per-user/road browser preferences and mapped one-way warnings. Added endpoint/order and frontend regression coverage.
