@@ -209,3 +209,21 @@ try{
     check(!empty($bridgeReport['bridge_warning'])&&count($bridgeReport['bridges'])===1,'Export report discloses estimated bridge geometry');
     $bridgeZip->close();
 }finally{unlink($bridgeFile);}
+
+// Roadside scenery is bounded by real object footprints, not terrain-grid masks.
+$testRoad=[[100,600,100],[600,600,100],[1100,600,100]];$testProfiles=array_fill(0,3,BeamLanes::infer(['lanes'=>'2','width'=>'8'],'secondary',0));
+$sceneryGeometry=new SweepLine\BeamScenery($testRoad,$testProfiles);
+check($sceneryGeometry->allows(500,605,1),'Object footprint can meet road edge with no extra exclusion zone');
+check(!$sceneryGeometry->allows(500,604.9,1),'Object footprint overlapping pavement is rejected');
+check($sceneryGeometry->allows(500,664.96-1,1),'Object outer edge may meet the 200-foot scenery limit');
+check(!$sceneryGeometry->allows(500,664.97-1,1),'Object footprint beyond 200 feet is rejected');
+$parallelRoad=[[100,600,100],[1100,600,100],[1100,615,100],[100,615,100]];
+$parallelGeometry=new SweepLine\BeamScenery($parallelRoad,array_fill(0,4,$testProfiles[0]));
+check(!$parallelGeometry->allows(500,615,2),'Placement avoids adjacent road sections as well as the sampled section');
+$flatSceneryRaster=new BeamRaster($n,$side,str_repeat(pack('g',100),$n*$n),$colors);
+$sceneryCheckpoints=0;$placements=SweepLine\BeamScenery::place($testRoad,$testProfiles,$flatSceneryRaster,12345,function($m)use(&$sceneryCheckpoints){$sceneryCheckpoints++;});
+$allAllowed=true;foreach($placements['objects'] as $object){[$x,$y]=$object['position'];if(!$sceneryGeometry->allows($x,$y,SweepLine\BeamScenery::radius($object['kind'],$object['scale'])))$allAllowed=false;}
+check(count($placements['objects'])>100 && $allAllowed,'Generated vegetation stays beside road without footprint overlap or distant objects');
+check($placements['counts']['tree']>0 && $placements['counts']['bush']>0,'Vegetated corridor includes trees and bushes');
+check(array_sum($placements['counts'])===count($placements['objects']) && $sceneryCheckpoints>0,'Scenery reports category counts and checks cancellation during placement');
+check(simplexml_load_string(SweepLine\BeamAssets::shape('test_bush','bush'),SimpleXMLElement::class,LIBXML_NONET)!==false,'Generated bush asset is valid COLLADA');

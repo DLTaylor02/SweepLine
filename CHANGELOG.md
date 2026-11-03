@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Concentrated BeamNG scenery within 200 feet of road edges, using full object footprints to avoid pavement and nearby road sections without a broad exclusion zone. Added bushes, a bounded road-length density budget, object spacing checks and per-type/rejection reporting.
+
 - Added bounded simple-bridge BeamNG exports with approach-derived estimated decks, protected under-bridge terrain, generic piers and collision guardrails, and visible approximation warnings. Structure rejection now checks actual selected-road overlap; tunnels and unsupported bridges retain specific rejection reasons. Added overlap and synthetic-valley package tests.
 
 - Made BeamNG rejection and background failure reasons prominent in the export row with accessible alerts. Error messages persist per account/road for the browser session and survive reopening the road; retry clears the previous failure.

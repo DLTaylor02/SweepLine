@@ -54,7 +54,7 @@ final class BeamMap
             $road[]=[$p[0],$p[1],$z-$origin+self::ROAD_ELEVATION_OFFSET_M];if($profiles[$i]['estimated_lanes'])$estimated++;
         }
         $progress('Shaping the road corridor while preserving surrounding terrain');
-        $nearest=str_repeat(pack('g',INF),$n*$n);$corridor=str_repeat("\0",$n*$n);
+        $nearest=str_repeat(pack('g',INF),$n*$n);
         $bridgeMask=str_repeat("\0",$n*$n);
         foreach($bridges as $bridge){[$first,$last]=BeamStructures::indices($chain,$bridge);
             for($i=$first;$i<=$last;$i++){
@@ -69,13 +69,13 @@ final class BeamMap
             $cx=(int)round($p[0]/$step);$cy=(int)round($p[1]/$step);
             for($y=max(0,$cy-$cells);$y<=min($n-1,$cy+$cells);$y++)for($x=max(0,$cx-$cells);$x<=min($n-1,$cx+$cells);$x++) {
                 $distance=hypot($x*$step-$p[0],$y*$step-$p[1]);if($distance>$radius)continue;
-                if($distance<$width/2+20+2*$step)$corridor[$y*$n+$x]="\1";
+
                 if($distance>$carveRadius || $bridgeMask[$y*$n+$x]!=="\0")continue;
                 $offset=($y*$n+$x)*4;$best=unpack('g',substr($nearest,$offset,4))[1];if($distance>=$best)continue;
                 $bytes=pack('g',$distance);for($j=0;$j<4;$j++)$nearest[$offset+$j]=$bytes[$j];
                 $fade=max(0,min(1,($distance-$width/2-$step)/max(1,$step)));
                 $raster->put($x,$y,($p[2]+$origin-self::ROAD_CLEARANCE_M)*(1-$fade)+$raster->cell($x,$y)*$fade);
-                if($distance<$width/2+$step)$corridor[$y*$n+$x]="\1";
+
             }
         }
         unset($nearest);
@@ -165,22 +165,15 @@ final class BeamMap
             $put('map.json',self::json(['segments'=>$segments]));
             $progress('Placing regional scenery clear of the driving corridor');
             $seed=(int)hexdec(substr($id,0,7));$count=0;$sceneryMaterials=[];
-            foreach(['tree'=>[0.16,0.29,0.12,1],'rock'=>[0.38,0.35,0.29,1],'building'=>[0.55,0.48,0.38,1]] as $kind=>$color) {
+            foreach(['tree'=>[0.16,0.29,0.12,1],'bush'=>[0.24,0.32,0.14,1],'rock'=>[0.38,0.35,0.29,1],'building'=>[0.55,0.48,0.38,1]] as $kind=>$color) {
                 $mat=$prefix.'_'.$kind;$sceneryMaterials[$mat]=['class'=>'Material','name'=>$mat,'mapTo'=>$mat,'version'=>1,'Stages'=>[['diffuseColor'=>$color]]];
                 $put('art/shapes/'.$kind.'.dae',BeamAssets::shape($mat,$kind));
             }
-            for($attempt=0;$attempt<12000 && $count<400;$attempt++) {
-                $seed=($seed*1664525+1013904223)&0xFFFFFFFF;$x=20+($seed/4294967296)*max(1,$side-40);
-                $seed=($seed*1664525+1013904223)&0xFFFFFFFF;$y=20+($seed/4294967296)*max(1,$side-40);
-                $cx=min($n-1,(int)($x/$step));$cy=min($n-1,(int)($y/$step));$cover=ord($categories[$cy*$n+$cx]);
-                if($corridor[$cy*$n+$cx]!=="\0" || $cover===4)continue;
-                $h=$raster->height($x,$y);if(abs($raster->height(min($side-1,$x+10),$y)-$h)>5)continue;
-                $kind=$cover===0?'tree':($cover===3 && $seed%5===0?'building':'rock');
-                if($kind==='rock' && $seed%4!==0)continue;
-                $scale=$kind==='tree'&&$plan['center'][0]> -105?1.25:0.7+($seed%60)/100;
-                $objects[]=['class'=>'TSStatic','name'=>'scenery_'.$count++,'__parent'=>'MissionGroup','shapeName'=>$path.'art/shapes/'.$kind.'.dae','position'=>[$x,$y,$h-$origin],'scale'=>[$scale,$scale,$scale],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
-                if($attempt%100===0)$progress(null);
+            $scenery=BeamScenery::place($road,$profiles,$raster,$seed,$progress);
+            foreach($scenery['objects'] as $object){$kind=$object['kind'];$p=$object['position'];$scale=$object['scale'];
+                $objects[]=['class'=>'TSStatic','name'=>'scenery_'.$count++,'__parent'=>'MissionGroup','shapeName'=>$path.'art/shapes/'.$kind.'.dae','position'=>[$p[0],$p[1],$p[2]-$origin],'scale'=>[$scale,$scale,$scale],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
             }
+            unset($scenery['objects']);
             $put('art/shapes/main.materials.json',self::json($sceneryMaterials));
             $items='';foreach($objects as $object)$items.=json_encode($object,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES)."\n";
             $put('main/items.level.json',json_encode(['class'=>'SimGroup','name'=>'MissionGroup','persistentId'=>substr($id,0,8).'-'.substr($id,8,4).'-4'.substr($id,13,3).'-8'.substr($id,17,3).'-'.substr($id,20,12)],JSON_THROW_ON_ERROR)."\n");
@@ -189,7 +182,7 @@ final class BeamMap
             $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
-            $report=['target'=>'BeamNG.drive v0.40','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,
+            $report=['target'=>'BeamNG.drive v0.40','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Short simple bridges use estimated approach-derived decks. Complex bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation graph covers only the selected road; traffic behavior requires in-game validation.','Requires in-game v0.40 validation.']];
             $put('sweepline-report.json',self::json($report));
