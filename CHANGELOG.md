@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Removed the 256-square stock terrain classification cap and nearest-neighbor enlargement that produced large material blocks. Classification now uses full imagery/terrain resolution with one-pixel neighborhood sampling and an isolated-speckle filter that preserves thin features. Added a 512-square pixel-boundary regression test and resolution/spacing reporting.
+
+- Fixed BeamNG menu names displaying Unicode escape text such as u2014. Map titles use a plain hyphen before SweepLine, and level JSON writes non-ASCII road names directly as UTF-8 rather than Unicode escape sequences.
+
 - Added experimental Stock materials/Aerial imagery BeamNG export modes. Stock mode classifies terrain into grass, forest floor, dry soil, gravel and rock with neighborhood/slope/elevation heuristics, speckle filtering and aerial fallback for uncertain areas.
 - Referenced 25 verified shared stock PBR textures without redistributing game assets. Added style-scoped jobs/UI state, required-asset diagnostics, classification reports and stock-package/frontend regression tests.
 

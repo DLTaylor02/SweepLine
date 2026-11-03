@@ -25,7 +25,7 @@ check(abs($raster->height($side/2,$side/2)-101.92)<0.002,'DEM elevation bilinear
 check(BeamRaster::cover([65,110,55])===0 && BeamRaster::cover([30,40,90])===4,'Aerial color classes distinguish vegetation and likely water');
 $bad=new BeamRaster($n,$side,str_repeat(pack('g',-9999),$plane),$colors);
 try{$bad->cell(0,0);check(false,'Missing elevation fails');}catch(RuntimeException $e){check(str_contains($e->getMessage(),'No synthetic'),'Missing elevation never replaced with fabricated terrain');}
-$plan=['terrain_style'=>'aerial','name'=>'SweepLine Export Validation','alternate_names'=>['Synthetic Fixture Road'],'resolution'=>$n,'padding_miles'=>0.5,'epsg'=>32611,'bounds'=>[1000,2000,2200,3200],'points'=>[[1200,2400],[1900,2400],[1900,2900]],'sources'=>[
+$plan=['terrain_style'=>'aerial','name'=>'SweepLine Export Validation Café','alternate_names'=>['Synthetic Fixture Road'],'resolution'=>$n,'padding_miles'=>0.5,'epsg'=>32611,'bounds'=>[1000,2000,2200,3200],'points'=>[[1200,2400],[1900,2400],[1900,2900]],'sources'=>[
     ['points'=>[[1200,2400],[1900,2400]],'tags'=>['lanes'=>'2'],'highway'=>'secondary','direction'=>0],
     ['points'=>[[1900,2400],[1900,2900]],'tags'=>['lanes'=>'3','lanes:forward'=>'2','lanes:backward'=>'1'],'highway'=>'secondary','direction'=>0]
 ],'center'=>[-119.8,39.5],'oneway'=>false];
@@ -35,6 +35,7 @@ try {
     $archive=new ZipArchive();check($archive->open($file)===true,'Generated BeamNG ZIP opens');
     $base='levels/sweepline_aaaaaaaaaaaaaaaa/';
     $info=json_decode($archive->getFromName($base.'info.json'),true,512,JSON_THROW_ON_ERROR);
+    check($info['title']===$plan['name'].' - SweepLine' && !str_contains($archive->getFromName($base.'info.json'),'\u') && str_contains($archive->getFromName($base.'info.json'),'Café'),'BeamNG menu title uses plain separator and UTF-8 names without escaped Unicode labels');
     check($info['defaultSpawnPointName']==='spawns_start' && count($info['spawnPoints'])===2,'Two selectable spawns with Start default');
     check($info['size']===[1200,1200],'World dimensions remain true-scale and square');
     foreach(['preview.png','spawn-start.png','spawn-end.png'] as $preview){
@@ -339,3 +340,12 @@ try{
     check(count($stockReport['stock_terrain_assets'])===25 && $stockZip->locateName(ltrim($stockLayer['baseColorBaseTex'],'/'))===false,'Stock terrain references all PBR channels without copying game assets');
     $stockZip->close();
 }finally{unlink($stockFile);}
+
+// A one-pixel-wide stripe must survive without becoming a coarse square block.
+$detailSize=512;$detailColors="";
+for($band=0;$band<3;$band++)for($y=0;$y<$detailSize;$y++)for($x=0;$x<$detailSize;$x++)$detailColors.=chr(($x===101?[220,100,30]:[50,160,20])[$band]);
+$detailRaster=new BeamRaster($detailSize,512,str_repeat(pack('g',500),$detailSize*$detailSize),$detailColors);
+$detailHeartbeats=0;$detailClasses=SweepLine\BeamTerrain::classify($detailRaster,[-119,39],[],function($m)use(&$detailHeartbeats){$detailHeartbeats++;});
+check($detailClasses['analysis_resolution']===512 && strlen($detailClasses['layers'])===512*512,'Terrain classification uses full source resolution above old 256 cap');
+check(ord($detailClasses['layers'][200*512+101])===2 && ord($detailClasses['layers'][200*512+100])===0 && ord($detailClasses['layers'][200*512+102])===0,'Single-pixel material feature survives without enlarging adjacent pixels');
+check($detailHeartbeats>100 && abs($detailClasses['cell_spacing_m']-1)<0.000001,'Full-resolution classification retains cancellation progress and reports spacing');

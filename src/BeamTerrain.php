@@ -30,26 +30,28 @@ final class BeamTerrain
     }
     public static function classify(BeamRaster $raster,array $center,array $buildings,callable $progress): array
     {
-        $size=min(256,$raster->size);$grid="";$spacing=$raster->side/$size;
+        $size=$raster->size;$grid="";$spacing=$raster->side/$size;
         for($y=0;$y<$size;$y++){
             if($y%8===0)$progress(null);
             for($x=0;$x<$size;$x++){$wx=($x+0.5)*$spacing;$wy=($y+0.5)*$spacing;$pixels=[];
-                foreach([[0,0],[-0.3,0],[0.3,0],[0,-0.3],[0,0.3]] as [$dx,$dy])$pixels[]=$raster->rgb((int)(($wx+$dx*$spacing)/$raster->side*$raster->size),(int)(($wy+$dy*$spacing)/$raster->side*$raster->size));
+                foreach([[0,0],[-1,0],[1,0],[0,-1],[0,1]] as [$dx,$dy])$pixels[]=$raster->rgb($x+$dx,$y+$dy);
                 $h=$raster->roadHeight($wx,$wy);$slope=max(abs($raster->roadHeight(min($raster->side-1,$wx+$spacing),$wy)-$h),abs($raster->roadHeight($wx,min($raster->side-1,$wy+$spacing))-$h))/$spacing;
                 $grid.=chr(self::category($pixels,$slope,$center,$h));
             }
         }
         $smooth=$grid;
-        for($y=0;$y<$size;$y++)for($x=0;$x<$size;$x++){
+        for($y=0;$y<$size;$y++){
+            if($y%8===0)$progress(null);
+            for($x=0;$x<$size;$x++){
             $votes=array_fill(0,6,0);for($dy=-1;$dy<=1;$dy++)for($dx=-1;$dx<=1;$dx++)$votes[ord($grid[max(0,min($size-1,$y+$dy))*$size+max(0,min($size-1,$x+$dx))])]++;
             $current=ord($grid[$y*$size+$x]);$winner=array_search(max($votes),$votes,true);
-            $smooth[$y*$size+$x]=chr($current===5?5:($votes[$winner]>=5?$winner:5));
+            $smooth[$y*$size+$x]=chr($current!==5&&$votes[$current]<3&&$votes[$winner]>=7?$winner:$current);
+        }
         }
         // Mapped roofs are not terrain/stone evidence. Keep imagery underneath them.
         foreach($buildings as $building)foreach($building["points"] as $p){$x=(int)floor($p[0]/$spacing);$y=(int)floor($p[1]/$spacing);if($x>=0&&$y>=0&&$x<$size&&$y<$size)$smooth[$y*$size+$x]=chr(5);}
-        $layers="";$counts=array_fill(0,6,0);
-        for($y=0;$y<$raster->size;$y++){if($y%16===0)$progress(null);for($x=0;$x<$raster->size;$x++){$id=ord($smooth[min($size-1,(int)floor($y/$raster->size*$size))*$size+min($size-1,(int)floor($x/$raster->size*$size))]);$layers.=chr($id);$counts[$id]++;}}
-        return ["layers"=>$layers,"counts"=>array_combine(array_column(self::PALETTE,"name"),$counts),"analysis_resolution"=>$size];
+        $counts=[];foreach(self::PALETTE as $id=>$entry)$counts[$entry["name"]]=substr_count($smooth,chr($id));
+        return ["layers"=>$smooth,"counts"=>$counts,"analysis_resolution"=>$size,"cell_spacing_m"=>$spacing,"filter"=>"Full-resolution classification; isolated speckles only; no coarse-grid enlargement."];
     }
     public static function material(string $name,int $id,string $path,int $gridSize,float $step): array
     {
