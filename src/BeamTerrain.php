@@ -5,14 +5,14 @@ final class BeamTerrain
 {
     public const TEXTURE_SIZE=1024;
     public const PALETTE=[
-        ["name"=>"grass","prefix"=>"/assets/materials/terrain/grass/t_grass_02/t_grass_02","ground"=>"GRASS"],
-        ["name"=>"forest_floor","prefix"=>"/assets/materials/terrain/grass/ind_grass/t_ind_grass","ground"=>"GRASS"],
-        ["name"=>"dry_soil","prefix"=>"/assets/materials/terrain/soil/t_dirt_sandy/t_dirt_sandy","ground"=>"DIRT"],
-        ["name"=>"gravel","prefix"=>"/assets/materials/terrain/soil/t_gravel/t_gravel","ground"=>"GRAVEL"],
-        ["name"=>"rock","prefix"=>"/assets/materials/terrain/rock/terrain_dirt_rocky_large/t_dirt_rocks_large","ground"=>"ROCK"],
+        ["name"=>"grass","prefix"=>"/assets/materials/terrain/grass/t_grass_02/t_grass_02","ground"=>"GRASS","color"=>[99,126,63]],
+        ["name"=>"forest_floor","prefix"=>"/assets/materials/terrain/grass/ind_grass/t_ind_grass","ground"=>"GRASS","color"=>[90,111,60]],
+        ["name"=>"dry_soil","prefix"=>"/assets/materials/terrain/soil/t_dirt_sandy/t_dirt_sandy","ground"=>"DIRT","color"=>[178,148,106]],
+        ["name"=>"gravel","prefix"=>"/assets/materials/terrain/soil/t_gravel/t_gravel","ground"=>"GRAVEL","color"=>[157,150,132]],
+        ["name"=>"rock","prefix"=>"/assets/materials/terrain/rock/terrain_dirt_rocky_large/t_dirt_rocks_large","ground"=>"ROCK","color"=>[159,153,140]],
         ["name"=>"aerial_fallback","prefix"=>null,"ground"=>"DIRT"],
-        ["name"=>"stone","prefix"=>"/assets/materials/terrain/rock/t_pebbles/t_pebbles","ground"=>"ROCK"],
-        ["name"=>"sand","prefix"=>"/assets/materials/terrain/sand/t_sand/t_sand","ground"=>"SAND"],
+        ["name"=>"stone","prefix"=>"/assets/materials/terrain/rock/t_pebbles/t_pebbles","ground"=>"ROCK","color"=>[177,171,158]],
+        ["name"=>"sand","prefix"=>"/assets/materials/terrain/sand/t_sand/t_sand","ground"=>"SAND","color"=>[204,185,141]],
     ];
     public static function paths(): array
     {
@@ -73,14 +73,18 @@ final class BeamTerrain
     public static function material(string $name,int $id,string $path,int $gridSize,float $step): array
     {
         $entry=self::PALETTE[$id];$fallback=$entry["prefix"]===null;$tile=max(1,(int)round(8/$step));
-        $material=["class"=>"TerrainMaterial","name"=>$name,"internalName"=>$name,"groundmodelName"=>$entry["ground"]];
+        $material=["class"=>"TerrainMaterial","name"=>$name,"internalName"=>$name,"groundmodelName"=>$entry["ground"],
+            "detailDistances"=>[0,0,100,250],"macroDistances"=>[0,0,100,1000]];
         foreach(["baseColor"=>"_b.png","normal"=>"_nm.png","roughness"=>"_r.png","ao"=>"_ao.png","height"=>"_h.png"] as $slot=>$suffix){
-            $file=$fallback?match($slot){"baseColor"=>"fallback.color.png","normal"=>"flat.normal.png","ao"=>"ao.data.png",default=>"roughness.data.png"}:null;
-            $material[$slot."BaseTex"]=$fallback?$path."art/terrains/".$file:$entry["prefix"].$suffix;
-            $material[$slot."BaseTexSize"]=$fallback?$gridSize:$tile;
+            $file=match($slot){"baseColor"=>$fallback?"fallback.color.png":"palette-".$id.".color.png","normal"=>"flat.normal.png","ao"=>"ao.data.png",default=>"roughness.data.png"};
+            $material[$slot."BaseTex"]=$path."art/terrains/".$file;
+            $material[$slot."BaseTexSize"]=$gridSize;
             $neutral=match($slot){"baseColor"=>"neutral.color.png","normal"=>"neutral.normal.png",default=>"neutral.data.png"};
-            foreach(["Macro","Detail"] as $level){$material[$slot.$level."Tex"]=$path."art/terrains/".$neutral;$material[$slot.$level."TexSize"]=4;$material[$slot.$level."Strength"]=[0,0];}
-
+            $material[$slot."MacroTex"]=$path."art/terrains/".$neutral;$material[$slot."MacroTexSize"]=4;$material[$slot."MacroStrength"]=[0,0];
+            $material[$slot."DetailTex"]=$fallback?$path."art/terrains/".($slot==="baseColor"?"detail-neutral.color.png":$file):$entry["prefix"].$suffix;
+            $material[$slot."DetailTexSize"]=$tile;
+            $strength=$fallback?0:match($slot){"baseColor"=>0.18,"normal"=>0.65,"roughness"=>0.25,"ao"=>0.12,default=>0.25};
+            $material[$slot."DetailStrength"]=[$strength,$strength];
         }
         return $material;
     }

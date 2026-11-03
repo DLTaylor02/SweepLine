@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Correct BeamNG stock terrain rendering: use explicit category base colors with stock PBR detail instead of treating neutral detail maps as standalone base colors. Preserve 1024-square detail resolution; add shader-formula, exported-pixel and installed-texture color checks. Export (16) confirmed vegetation assignments existed despite the gray/brown appearance.
+
 - Compact the selected-road card with inline Favorite/Swap controls, smaller export buttons, nonduplicated alternate names and expandable score details. Frame selected roads beside the measured card (above it on narrow maps), including Favorites and panel/viewport size changes.
 
 - Reduced BeamNG road-to-terrain corridor clearance from 15 cm to 10 cm, retaining the elevation sampling method and terrain-overlap correction.

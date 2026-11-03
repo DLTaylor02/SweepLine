@@ -41,7 +41,7 @@ try {
     foreach(['preview.png','spawn-start.png','spawn-end.png'] as $preview){
         $image=imagecreatefromstring($archive->getFromName($base.$preview));check(imagesx($image)===1024 && imagesy($image)===576,'BeamNG labeled preview has widescreen dimensions');
         $textPixels=0;for($y=12;$y<48;$y++)for($x=20;$x<240;$x++)if((imagecolorat($image,$x,$y)&0xffffff)===0xffffff)$textPixels++;
-        check($textPixels>100,'Preview includes visible SweepLine text');imagedestroy($image);
+        check($textPixels>100,'Preview includes visible SweepLine text');unset($image);
     }
     foreach($info['spawnPoints'] as $spawnPoint)check($archive->locateName($base.$spawnPoint['preview'])!==false,'Spawn picker references an included thumbnail');
     $nav=json_decode($archive->getFromName($base.'map.json'),true,512,JSON_THROW_ON_ERROR);
@@ -333,11 +333,26 @@ try{
     check(unpack('V',substr($stockTer,$offset,4))[1]===8,'Stock terrain writes seven physical classes plus aerial fallback');
     $stockMaterials=json_decode($stockZip->getFromName($stockBase.'art/terrains/main.materials.json'),true);
     $stockLayer=$stockMaterials['sl_dddddddddddd_terrain_0'];$stockFallback=$stockMaterials['sl_dddddddddddd_terrain_5'];
-    check(str_starts_with($stockLayer['baseColorBaseTex'],'/assets/materials/terrain/') && $stockFallback['baseColorBaseTexSize']===$n,'Stock layers reference shared assets while fallback spans whole map');
+    check(str_starts_with($stockLayer['baseColorDetailTex'],'/assets/materials/terrain/') && $stockFallback['baseColorBaseTexSize']===$n,'Stock layers reference shared assets while fallback spans whole map');
     $fallbackImage=getimagesizefromstring($stockZip->getFromName($stockBase.'art/terrains/fallback.color.png'));
     check($fallbackImage[0]===1024 && $fallbackImage[1]===1024,'Fallback base texture matches stock texture array dimensions');
     check(array_sum($stockReport['terrain_classification']['counts'])===$n*$n && $stockReport['terrain_style']==='stock','Report accounts for every terrain cell and chosen style');
-    check(count($stockReport['stock_terrain_assets'])===35 && $stockZip->locateName(ltrim($stockLayer['baseColorBaseTex'],'/'))===false,'Stock terrain references all PBR channels without copying game assets');
+    check(count($stockReport['stock_terrain_assets'])===35 && $stockZip->locateName(ltrim($stockLayer['baseColorDetailTex'],'/'))===false,'Stock terrain references all PBR channels without copying game assets');
+
+    check($stockMaterials['sl_dddddddddddd_terrain_set']['detailTexSize']===[1024,1024],'Stock detail texture array retains source resolution rather than reducing to 64 pixels');
+    foreach(SweepLine\BeamTerrain::PALETTE as $layerId=>$layer)if(isset($layer['color'])){
+        $layerMaterial=$stockMaterials['sl_dddddddddddd_terrain_'.$layerId];
+        $image=imagecreatefromstring($stockZip->getFromName($stockBase.'art/terrains/palette-'.$layerId.'.color.png'));
+        $color=imagecolorat($image,400,400);$rgb=[($color>>16)&255,($color>>8)&255,$color&255];
+        check($rgb===$layer['color']&&imagesx($image)===1024,'Generated base color for '.$layer['name'].' matches explicit palette');
+        unset($image);
+        check(str_starts_with($layerMaterial['baseColorDetailTex'],$layer['prefix'])&&$layerMaterial['baseColorDetailStrength'][0]>0,'Stock '.$layer['name'].' is a detail layer over the generated base');
+        // v0.40 terrain.h.hlsl calculateValue: base + (2*detail-1)*strength.
+        $rendered=array_map(static fn($c)=>$c/255+(2*0.5-1)*$layerMaterial['baseColorDetailStrength'][0],$rgb);
+        if($layerId<2)check($rendered[1]>$rendered[0]&&$rendered[1]>$rendered[2],'Neutral stock detail preserves visibly green '.$layer['name'].' color');
+        if($layerId===2)check(min($rendered)>0.4&&$rendered[0]>$rendered[2],'Neutral soil detail preserves lighter warm brown instead of gray/dark base');
+    }
+
     $stockZip->close();
 }finally{unlink($stockFile);}
 
