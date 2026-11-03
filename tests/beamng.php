@@ -50,6 +50,7 @@ try {
     $objects=array_map(static fn($line)=>json_decode($line,true,512,JSON_THROW_ON_ERROR),explode("\n",trim($archive->getFromName($base.'main/MissionGroup/items.level.json'))));
     $spawns=array_values(array_filter($objects,static fn($o)=>$o['class']==='SpawnSphere'));
     check(count($spawns)===2 && $spawns[0]['position']!==$spawns[1]['position'],'Endpoint spawn objects are distinct');
+    check($archive->locateName($base.'art/shapes/rock.dae')===false && $archive->locateName($base.'art/shapes/tree.dae')===false && $archive->locateName($base.'art/shapes/bush.dae')===false,'Export contains no procedural rock or plant placeholders');
     $levelInfo=array_values(array_filter($objects,fn($o)=>$o['class']==='LevelInfo'))[0];
     check($levelInfo['visibleDistance']===8000 && $levelInfo['fogDensity']<0.0001,'Generated level explicitly sets long draw distance and light fog');
     check(count(array_filter($objects,fn($o)=>$o['class']==='Forest'))===1,'Stock vegetation uses native Forest rendering');
@@ -61,7 +62,7 @@ try {
         if($forestLines!=='')foreach(explode("\n",$forestLines) as $line){$instance=json_decode($line,true,512,JSON_THROW_ON_ERROR);if($instance['type']!==$type)throw new RuntimeException('Forest type mismatch');$forestCount++;}
         check($archive->locateName(ltrim($definition['shapeFile'],'/'))===false,'Stock mesh is referenced without redistributing game assets');
     }
-    check($forestCount===$report['scenery_placement']['counts']['tree']+$report['scenery_placement']['counts']['bush'],'All vegetation placements are serialized into native forest files');
+    check($forestCount===$report['scenery_placement']['counts']['tree']+$report['scenery_placement']['counts']['bush']+$report['scenery_placement']['counts']['rock'],'All trees, bushes and rocks are serialized into native forest files');
     check(str_contains($archive->getFromName($base.'mainLevel.lua'),SweepLine\BeamVegetation::MATERIALS),'Map pre-start hook loads installed vegetation material definitions');
 
     $roads=array_values(array_filter($objects,static fn($o)=>$o['class']==='MeshRoad'));
@@ -255,11 +256,11 @@ $assetsFiles=[];$multiPlacements=[];
 foreach(SweepLine\BeamVegetation::CATALOG as $asset=>$definition)$multiPlacements[]=['kind'=>$definition['kind'],'asset'=>$asset,'position'=>[100,200,300],'scale'=>1];
 $assetCount=SweepLine\BeamVegetation::write($multiPlacements,'sl_test',100,function($path,$bytes)use(&$assetsFiles){$assetsFiles[$path]=$bytes;});
 $multiDefs=json_decode($assetsFiles['art/forest/managedItemData.json'],true);
-check($assetCount===7 && count($multiDefs)===7,'Mixed stock variants serialize to distinct forest types');
+check($assetCount===count(SweepLine\BeamVegetation::CATALOG) && count($multiDefs)===count(SweepLine\BeamVegetation::CATALOG),'Mixed stock variants serialize to distinct forest types');
 $materials=array_unique(array_column(SweepLine\BeamVegetation::CATALOG,'materials'));
 $materialRefsValid=true;foreach($materials as $path)if(substr_count($assetsFiles['mainLevel.lua'],$path)!==1)$materialRefsValid=false;
 check($materialRefsValid,'Each used stock material library loads once despite shared variants');
-check(count(SweepLine\BeamVegetation::used($multiPlacements))===7,'Export report identifies actual stock dependencies');
+check(count(SweepLine\BeamVegetation::used($multiPlacements))===count(SweepLine\BeamVegetation::CATALOG),'Export report identifies actual stock dependencies');
 
 $taperPoints=[];$taperProfiles=[];for($i=0;$i<=20;$i++){$taperPoints[]=[$i*10,0,100];$taperProfiles[]=BeamLanes::infer(['lanes'=>$i<10?'2':'4','width'=>$i<10?'8':'15'],'secondary',0);}
 $taper=SweepLine\BeamRoadSurface::taper($taperPoints,$taperProfiles);
@@ -285,3 +286,6 @@ check(!$polyVegetation && str_contains($assetsFiles['mainLevel.lua'],'FS:fileExi
 $sharedMaterials=SweepLine\BeamVegetation::materialLibraries(array_values(SweepLine\BeamVegetation::CATALOG));
 check(count(array_filter($sharedMaterials,fn($p)=>str_ends_with($p,'/trees/main.materials.json')))===4,'Every used stock map includes parent vegetation material dependencies');
 check(strpos($assetsFiles['mainLevel.lua'],'/levels/Utah/art/shapes/trees/main.materials.json')<strpos($assetsFiles['mainLevel.lua'],SweepLine\BeamVegetation::MATERIALS),'Shared vegetation materials load before species libraries');
+
+check(SweepLine\BeamVegetation::choose('rock',[-119,39],1800,1,0.5)==='utah_rock','Rock scatter always selects a stock model');
+check(SweepLine\BeamVegetation::CATALOG['utah_rock']['radius']>=1.4,'Stock rock footprint conservatively covers installed mesh bounds');

@@ -3,9 +3,10 @@ declare(strict_types=1);
 namespace SweepLine;
 final class BeamVegetation
 {
-    public const SHAPES=["tree"=>"/levels/Utah/art/shapes/trees/Juniper/Juniper_tree_01.dae","bush"=>"/levels/Utah/art/shapes/trees/Juniper/Juniper_bush_small_01.dae"];
+    public const SHAPES=["rock"=>"/levels/Utah/art/shapes/rocks/utah_boulder_1.dae","tree"=>"/levels/Utah/art/shapes/trees/Juniper/Juniper_tree_01.dae","bush"=>"/levels/Utah/art/shapes/trees/Juniper/Juniper_bush_small_01.dae"];
     public const MATERIALS="/levels/Utah/art/shapes/trees/Juniper/main.materials.json";
     public const CATALOG=[
+        "utah_rock"=>["kind"=>"rock","map"=>"Utah","shape"=>self::SHAPES["rock"],"materials"=>"/levels/Utah/art/shapes/rocks/main.materials.json","radius"=>1.7],
         "juniper_tree"=>["kind"=>"tree","map"=>"Utah","shape"=>self::SHAPES["tree"],"materials"=>self::MATERIALS,"radius"=>7.0],
         "juniper_bush"=>["kind"=>"bush","map"=>"Utah","shape"=>self::SHAPES["bush"],"materials"=>self::MATERIALS,"radius"=>1.2],
         "coastal_pine"=>["kind"=>"tree","map"=>"west_coast_usa","shape"=>"/levels/west_coast_usa/art/shapes/trees/trees_conifer/pine_radiata_small.dae","materials"=>"/levels/west_coast_usa/art/shapes/trees/trees_conifer/main.materials.json","radius"=>7.0],
@@ -16,6 +17,7 @@ final class BeamVegetation
     ];
     public static function choose(string $kind,array $center,float $elevation,int $cover,float $variation): ?string
     {
+        if($kind==="rock")return "utah_rock";
         if(!isset(self::SHAPES[$kind]))return null;
         $east=($center[0]??-119)>-103;
         if($east)$pool=$kind==="tree"?["beech_b","beech_c"]:["eastern_bush"];
@@ -25,7 +27,7 @@ final class BeamVegetation
     }
     public static function used(array $placements): array
     {
-        $used=[];foreach($placements as $p){$id=$p["asset"]??match($p["kind"]){"tree"=>"juniper_tree","bush"=>"juniper_bush",default=>null};if($id!==null)$used[$id]=self::CATALOG[$id];}return $used;
+        $used=[];foreach($placements as $p){$id=$p["asset"]??match($p["kind"]){"tree"=>"juniper_tree","bush"=>"juniper_bush","rock"=>"utah_rock",default=>null};if($id!==null)$used[$id]=self::CATALOG[$id];}return $used;
     }
     public static function materialLibraries(array $assets): array
     {
@@ -42,7 +44,7 @@ final class BeamVegetation
         foreach($used as $id=>$asset){
             $type=$prefix."_".$id;$materials[$asset["materials"]]=true;
             $definitions[$type]=["name"=>$type,"internalName"=>$type,"class"=>"TSForestItemData","shapeFile"=>$asset["shape"],"windScale"=>0.4];$lines="";
-            foreach($placements as $i=>$object){$objectAsset=$object["asset"]??match($object["kind"]){"tree"=>"juniper_tree","bush"=>"juniper_bush",default=>null};if($objectAsset!==$id)continue;
+            foreach($placements as $i=>$object){$objectAsset=$object["asset"]??match($object["kind"]){"tree"=>"juniper_tree","bush"=>"juniper_bush","rock"=>"utah_rock",default=>null};if($objectAsset!==$id)continue;
                 $p=$object["position"];$angle=fmod($i*2.399963,2*M_PI);$c=cos($angle);$s=sin($angle);
                 $lines.=json_encode(["ctxid"=>0,"type"=>$type,"pos"=>[$p[0],$p[1],$p[2]-$origin],"rotationMatrix"=>[$c,$s,0,-$s,$c,0,0,0,1],"scale"=>$object["scale"]],JSON_THROW_ON_ERROR)."\n";$count++;}
             $put("forest/".$type.".forest4.json",$lines);

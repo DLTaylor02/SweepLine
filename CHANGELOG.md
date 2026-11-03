@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replaced remaining procedural scatter rocks with stock Utah boulders through native Forest instances. The supplied latest Mount Rose export had 3,245 low-poly generated rocks despite its 5,700 plants already using stock models; the matching game log confirmed vegetation material mappings were fixed. Added package checks excluding all generated rock/tree/bush placeholders.
+
 - Fixed incomplete stock vegetation material loading: exports now load each used map''s parent tree material library before species libraries, including leaves_strong/leaves_thin. Confirmed missing leaves_strong mappings in the local game log for the supplied affected export. Expanded stock verification to inspect each DAE material mapping rather than only checking file existence.
 
 - Restored buildings from fresh mapped OSM footprints with conservative size, slope, roadside and overlap checks; added generic footprint extrusions and provider-availability warnings.

@@ -43,7 +43,7 @@ final class BeamJobs
         }
         $plan=BeamPlan::project($this->db,$road,$options);$payload=json_encode($plan,JSON_THROW_ON_ERROR);
         if(strlen($payload)>2097152)throw new \InvalidArgumentException('This road contains too much geometry for BeamNG export. Choose a shorter stretch.');
-        $fingerprint=hash('sha256','beamng-v0.40-16'.$payload);
+        $fingerprint=hash('sha256','beamng-v0.40-17'.$payload);
         $this->db->beginTransaction();
         try {
             $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
