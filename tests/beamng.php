@@ -299,7 +299,7 @@ check(strpos($assetsFiles['mainLevel.lua'],'/levels/Utah/art/shapes/trees/main.m
 check(SweepLine\BeamVegetation::choose('rock',[-119,39],1800,1,0.5)==='utah_rock','Rock scatter always selects a stock model');
 check(SweepLine\BeamVegetation::CATALOG['utah_rock']['radius']>=1.4,'Stock rock footprint conservatively covers installed mesh bounds');
 
-check(BeamRaster::TERRAIN_SATURATION===1.5 && BeamRaster::saturated([100,140,100])[1]-BeamRaster::saturated([100,140,100])[0]>BeamRaster::saturated([100,140,100],1.2)[1]-BeamRaster::saturated([100,140,100],1.2)[0],'Terrain default color boost is stronger than previous 1.2 factor');
+check(BeamRaster::TERRAIN_SATURATION===1.25 && BeamRaster::saturated([100,140,100])[1]-BeamRaster::saturated([100,140,100])[0]>BeamRaster::saturated([100,140,100],1.2)[1]-BeamRaster::saturated([100,140,100],1.2)[0],'Reduced aerial boost retains modest color enhancement');
 
 $mutedForest=array_fill(0,9,[65,68,75]);
 $montane=SweepLine\BeamBiome::context([-119,39],2200,$mutedForest);
@@ -350,7 +350,7 @@ try{
         $layerMaterial=$stockMaterials['sl_dddddddddddd_terrain_'.$layerId];
         $image=imagecreatefromstring($stockZip->getFromName($stockBase.'art/terrains/palette-'.$layerId.'.color.png'));
         $color=imagecolorat($image,400,400);$rgb=[($color>>16)&255,($color>>8)&255,$color&255];
-        check(count(array_filter($rgb,static fn($c,$channel)=>$c>=round($layer['color'][$channel]*0.85)&&$c<=$layer['color'][$channel]+50,ARRAY_FILTER_USE_BOTH))===3&&imagesx($image)===1024,'Generated base color for '.$layer['name'].' stays within bounded aerial/palette blend');
+        check($rgb===SweepLine\BeamTerrain::blendedColor($layerId,[65,110,55])&&imagesx($image)===1024,'Generated base color for '.$layer['name'].' uses the photo-balanced tint at full base resolution');
         unset($image);
         check(str_starts_with($layerMaterial['baseColorDetailTex'],$layer['prefix'])&&$layerMaterial['baseColorDetailStrength'][0]>0,'Stock '.$layer['name'].' is a detail layer over the generated base');
         // v0.40 terrain.h.hlsl calculateValue: base + (2*detail-1)*strength.
@@ -414,8 +414,11 @@ foreach([0,1,2,3,4,6,7] as $id){
 }
 foreach([0,1] as $id)foreach([[70,60,30],[50,80,40],[170,150,120]] as $sample){
     $rgb=SweepLine\BeamTerrain::blendedColor($id,$sample);
-    check($rgb[1]-max($rgb[0],$rgb[2])>=16,'Aerial vegetation tint retains enough green to survive close-up detail');
+    check(max($rgb)<=255&&min($rgb)>=0,'Photo-balanced vegetation tint stays within RGB bounds');
 }
+$mutedGrass=SweepLine\BeamTerrain::blendedColor(0,[110,115,105]);
+check($mutedGrass===[92,109,70],'Muted aerial vegetation meets the previous tint and exposure-matched photograph halfway');
+check(SweepLine\BeamRaster::TERRAIN_SATURATION===1.25,'Aerial fallback saturation lies halfway between original imagery and previous boost');
 $tintRaster=new BeamRaster(2,2,str_repeat(pack('g',100),4),chr(180).chr(180).chr(50).chr(50).chr(160).chr(160).chr(70).chr(70).chr(120).chr(120).chr(40).chr(40));
 $tintField=SweepLine\BeamTerrain::tintPixels($tintRaster,static function($m){});
 check(strlen($tintField)===1024*1024*3&&ord($tintField[0])>ord($tintField[(1023*1024)*3]),'Blended aerial field retains north-up orientation and full base resolution');

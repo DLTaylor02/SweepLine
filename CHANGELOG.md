@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Retry temporary BeamNG building-provider failures up to three attempts with 5/10-second cancellable backoff. Retry Overpass timeout responses, avoid retrying permanent/processing failures, and report provider exhaustion separately from processing failures.
+
+- Soften BeamNG stock terrain color toward exposure-matched aerial hue/chroma at a 50% blend, retaining shadow/snow/water guards. Reduce aerial fallback saturation from 1.5 to 1.25; preserve terrain geometry, classification and building placement.
+
 - Remove the idle ZIP-search hint from all Discovery tabs; show feedback only when there is activity or a status message.
 
 - Join the selected Discovery tab to a bordered content panel, retain shared progress inside that frame, and move the driving-profile selector into ZIP search.

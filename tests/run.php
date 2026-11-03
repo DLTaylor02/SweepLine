@@ -405,6 +405,7 @@ foreach(SweepLine\CoveragePlanner::children($customArea) as $child)check(SweepLi
 check(SweepLine\CoveragePlanner::canSplit(['bounds'=>[0,0,0.01,0.5]]),'Long narrow custom extracts can split when too dense');
 check(rejects(fn()=>SweepLine\CoveragePlanner::customArea([179.9,52],[-179.9,52])),'Date-line custom selection cannot accidentally request a world-wide rectangle');
 
+require __DIR__.'/buildings.php';
 require __DIR__.'/beamng.php';
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

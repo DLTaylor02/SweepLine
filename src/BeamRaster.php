@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace SweepLine;
 final class BeamRaster
 {
-    public const TERRAIN_SATURATION=1.5;
+    public const TERRAIN_SATURATION=1.25;
     public function __construct(public int $size,public float $side,public string $heights,public string $colors)
     {
         if(strlen($heights)!==$size*$size*4 || strlen($colors)!==$size*$size*3)throw new \RuntimeException('Raster dimensions or band layout do not match the map.');

@@ -27,6 +27,13 @@ final class BeamTerrain
             $out[]=max((int)round($value*0.85),min(255,(int)round($value+$exposure+$tint)));
         }
         if($id<2)$out[1]=max($out[1],$out[0]+16,$out[2]+16);
+        // Meet the unboosted aerial hue/chroma halfway, retaining the bounded
+        // exposure above so photographed shadows do not make black terrain.
+        $mean=array_sum($out)/3;
+        foreach($out as $channel=>$value){
+            $photo=max(0,min(255,$rgb[$channel]+$mean-$light));
+            $out[$channel]=(int)round(($value+$photo)/2);
+        }
         return $out;
     }
     /** North-up, gently filtered imagery shared by all material base textures. */

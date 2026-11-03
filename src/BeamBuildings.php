@@ -12,8 +12,8 @@ final class BeamBuildings
             $poly=implode(" ",array_map(static fn($p)=>$p[1]." ".$p[0],$ring));
             if(strlen($poly)>100000)throw new \RuntimeException("Building query corridor is too complex.");
             $url=getenv("OSM_OVERPASS_URL")?:"https://overpass-api.de/api/interpreter";$file=$dir."/buildings.json";
-            ($download??[Download::class,'file'])($url,$file,16777216,http_build_query(["data"=>'[out:json][timeout:90][maxsize:16777216];way[building][building!="no"](poly:"'.$poly.'");out geom 1001;']),static fn($m)=>$progress($m));
-            $data=json_decode(file_get_contents($file),true,512,JSON_THROW_ON_ERROR);if(isset($data["remark"]))throw new \RuntimeException("Building provider returned an incomplete response.");
+            $data=self::downloadBuildings($url,$file,http_build_query(["data"=>'[out:json][timeout:90][maxsize:16777216];way[building][building!="no"](poly:"'.$poly.'");out geom 1001;']),static fn($m)=>$progress($m),$download);
+
             $features=[];$tags=[];$vertices=0;
             foreach(array_slice($data["elements"]??[],0,1000) as $element){$geometry=$element["geometry"]??[];if(count($geometry)<4||count($geometry)>100)continue;
                 $coords=array_map(static fn($p)=>[$p["lon"],$p["lat"]],$geometry);if($coords[0]!==$coords[count($coords)-1])continue;
@@ -25,8 +25,34 @@ final class BeamBuildings
             $projected=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)["geometries"];$out=[];
             foreach($projected as $i=>$geometry)$out[]=["points"=>array_map(static fn($p)=>[$p[0]-$plan["bounds"][0],$p[1]-$plan["bounds"][1]],$geometry["coordinates"]),"tags"=>$tags[$i]];
             return ["footprints"=>$out,"source"=>"OpenStreetMap building ways","truncated"=>count($data["elements"]??[])>1000];
-        }catch(JobCancelled $e){throw $e;}catch(\Throwable $e){return ["footprints"=>[],"warning"=>"Mapped buildings were unavailable; no guessed buildings were substituted.","source"=>"OpenStreetMap building ways"];}
+        }catch(JobCancelled $e){throw $e;}catch(\Throwable $e){return ["footprints"=>[],"warning"=>"Mapped buildings were unavailable; no guessed buildings were substituted. ".($e instanceof DownloadFailure?$e->getMessage():"Building data processing failed."),"failure_kind"=>$e instanceof DownloadFailure?($e->retryable?"provider_transient":"provider_permanent"):"processing","source"=>"OpenStreetMap building ways"];}
     }
+
+    /** Bounded provider retries; injected transport/wait keep offline tests deterministic. */
+    public static function downloadBuildings(string $url,string $file,string $query,callable $progress,?callable $download=null,?callable $sleep=null): array
+    {
+        $sleep??=static fn()=>usleep(1000000);
+        for($attempt=1;$attempt<=3;$attempt++){
+            $progress('Fetching mapped buildings (attempt '.$attempt.'/3)');
+            try{
+                ($download??[Download::class,'file'])($url,$file,16777216,$query,$progress);
+                $data=json_decode(file_get_contents($file),true,512,JSON_THROW_ON_ERROR);
+                if(isset($data['remark'])){
+                    $temporary=(bool)preg_match('/timed? ?out|timeout|rate.?limit|too many requests|server.*busy/i',(string)$data['remark']);
+                    throw new DownloadFailure('Building provider returned an incomplete response.',$temporary);
+                }
+                if(!is_array($data)||!isset($data['elements'])||!is_array($data['elements']))throw new \RuntimeException('Building provider returned an invalid response.');
+                return $data;
+            }catch(DownloadFailure $e){
+                if(!$e->retryable||$attempt===3)throw new DownloadFailure($e->retryable?'Building provider remained unavailable after 3 attempts.':'Building provider request failed without a retryable error.',$e->retryable);
+                $seconds=$attempt*5;
+                $progress('Building provider temporarily unavailable; retrying in '.$seconds.' seconds (attempt '.($attempt+1).'/3)');
+                for($i=0;$i<$seconds;$i++){$progress(null);$sleep();}
+            }
+        }
+        throw new \LogicException('Building retry loop did not finish.');
+    }
+
     public static function place(array $footprints,array $road,array $profiles,BeamRaster $raster): array
     {
         $geometry=new BeamScenery($road,$profiles);$out=[];$rejected=0;
