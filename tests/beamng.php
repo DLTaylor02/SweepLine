@@ -55,7 +55,7 @@ try {
     check(count($spawns)===2 && $spawns[0]['position']!==$spawns[1]['position'],'Endpoint spawn objects are distinct');
     check($archive->locateName($base.'art/shapes/rock.dae')===false && $archive->locateName($base.'art/shapes/tree.dae')===false && $archive->locateName($base.'art/shapes/bush.dae')===false,'Export contains no procedural rock or plant placeholders');
     $levelInfo=array_values(array_filter($objects,fn($o)=>$o['class']==='LevelInfo'))[0];
-    check($levelInfo['visibleDistance']===8000 && $levelInfo['fogDensity']<0.0001,'Generated level explicitly sets long draw distance and light fog');
+    check($levelInfo['visibleDistance']===16000 && $levelInfo['fogDensity']===0.000015,'Generated level explicitly sets long draw distance and light fog');
     check(count(array_filter($objects,fn($o)=>$o['class']==='Forest'))===1,'Stock vegetation uses native Forest rendering');
     $forestDefs=json_decode($archive->getFromName($base.'art/forest/managedItemData.json'),true);
     $forestCount=0;
@@ -350,6 +350,15 @@ try{
         // v0.40 terrain.h.hlsl calculateValue: base + (2*detail-1)*strength.
         $rendered=array_map(static fn($c)=>$c/255+(2*0.5-1)*$layerMaterial['baseColorDetailStrength'][0],$rgb);
         if($layerId<2)check($rendered[1]>$rendered[0]&&$rendered[1]>$rendered[2],'Neutral stock detail preserves visibly green '.$layer['name'].' color');
+
+        if($layerId<2){
+            // Worst possible detail tint: red=1, green=0, blue=1, at full near strength.
+            $strength=$layerMaterial['baseColorDetailStrength'][0];
+            check($rgb[1]/255-$strength>max($rgb[0]/255+$strength,$rgb[2]/255+$strength),'Even extreme near detail cannot turn '.$layer['name'].' brown');
+            check($layerMaterial['normalDetailStrength'][0]<=0.25&&$layerMaterial['aoDetailStrength'][0]<=0.04,'Vegetation close-up normals and AO do not overwhelm base shading');
+        }
+        check($layerMaterial['heightDetailStrength']===[0,0],'Detail height cannot move '.$layer['name'].' material borders with camera distance');
+
         if($layerId===2)check(min($rendered)>0.4&&$rendered[0]>$rendered[2],'Neutral soil detail preserves lighter warm brown instead of gray/dark base');
     }
 

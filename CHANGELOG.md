@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preserve vegetation color up close: limit vegetation color-detail tint to 0.02, soften its normal/AO detail, and disable detail-height blending for stock terrain so category borders do not change with viewing distance. Add worst-case near-detail color regressions.
+
+- Double BeamNG level draw distance from 8 km to 16 km and halve fog density to keep distant terrain clearer. New exports include the updated visibility settings.
+
 - Fix Discovery initialization failing in browsers with ResizeObserver after the compact road-panel update; correctly resolve the map and card elements and cover the browser observer path in frontend tests.
 
 - Correct BeamNG stock terrain rendering: use explicit category base colors with stock PBR detail instead of treating neutral detail maps as standalone base colors. Preserve 1024-square detail resolution; add shader-formula, exported-pixel and installed-texture color checks. Export (16) confirmed vegetation assignments existed despite the gray/brown appearance.

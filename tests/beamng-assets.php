@@ -24,7 +24,7 @@ foreach([0,1,2] as $id){
     $image=imagecreatefromstring($terrainZip->getFromName(ltrim($layer["prefix"],"/")."_b.png"));$sum=[0,0,0];$count=0;
     for($y=0;$y<1024;$y+=16)for($x=0;$x<1024;$x+=16){$color=imagecolorat($image,$x,$y);$sum[0]+=($color>>16)&255;$sum[1]+=($color>>8)&255;$sum[2]+=$color&255;$count++;}
     unset($image);$result=[];
-    foreach($sum as $channel=>$value)$result[]=$layer["color"][$channel]/255+(2*$value/$count/255-1)*0.18;
+    foreach($sum as $channel=>$value)$result[]=$layer["color"][$channel]/255+(2*$value/$count/255-1)*($id<2?0.02:0.18);
     if($id<2&& !($result[1]>$result[0]&&$result[1]>$result[2]))throw new RuntimeException("Installed stock detail lost the green base for ".$layer["name"]);
     if($id===2&& !(min($result)>0.35&&$result[0]>$result[2]))throw new RuntimeException("Installed soil detail lost the lighter warm base");
     $checks++;
