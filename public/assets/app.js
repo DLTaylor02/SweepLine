@@ -207,7 +207,7 @@ function fitSelectedRoad(){
 }
 let roadFitTimer;
 function scheduleRoadFit(){clearTimeout(roadFitTimer);roadFitTimer=setTimeout(fitSelectedRoad,80);}
-if(window.ResizeObserver&&road-detail&&map){
+if(window.ResizeObserver&&$('road-detail')&&$('map')){
   const observer=new window.ResizeObserver(scheduleRoadFit);
   observer.observe($('road-detail'));observer.observe($('map'));
 }

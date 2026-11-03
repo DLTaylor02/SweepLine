@@ -28,7 +28,8 @@ async function testFrontend(sources) {
   search.zip.value='12345';search.radius.value='5';search.profile.value='twisty';search.max_stops.value='1';search.min_curve_density_score.value='2.2';search.min_curvature_quality_score.value='2.08';search.min_sustained_curve_ft.value='150';search.surface_filter.value='exclude_unpaved';search.paved.checked=true;
   get('admin-panel').hidden=true;
   const document={getElementById:get,createElement:()=>new Element(),createElementNS:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{theme:'light'}},activeElement:null};
-  const window={addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
+  const observedElements=[];
+  const window={ResizeObserver:class {constructor(callback){this.callback=callback;}observe(element){if(!element)throw new Error('Cannot observe missing element');observedElements.push(element);}},addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
   let currentRole='superadmin',mustChange=false,redirectTarget=null;
   let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false,historyDeleted=false,favoritesSaved=false;
   const favoriteRoad={id:1,name:'Test road',alternate_names:['Other Road Name'],score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5,dimensions:{curvature:0.7},favorite_id:7,geometry:{type:'LineString',coordinates:[[-120,39],[-119.99,39.01]]}};
@@ -81,6 +82,7 @@ async function testFrontend(sources) {
   check(!get('search-spinner').hidden&&!('value' in get('search-progress')),'Submitting immediately shows indeterminate preparation');
   await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
+  check(observedElements.includes(get('map'))&&observedElements.includes(get('road-detail')),'Browser ResizeObserver attaches without blocking Discovery initialization');
   check(payload.min_curve_density_score===2.2,'Curve density uses normalized default in search requests');
   check(payload.surface_filter==='exclude_unpaved'&&payload.min_curvature_quality_score===2.08&&payload.min_sustained_curve_ft===150,'Advanced filter defaults are submitted');
   check(payload.max_stops===1,'New searches submit one mapped stop by default');
