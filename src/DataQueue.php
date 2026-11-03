@@ -41,6 +41,19 @@ final class DataQueue
         }
         return $this->summary($tasks,true);
     }
+    public function prepareArea(float $lon,float $lat,float $radius): array
+    {
+        $cover=$this->db->prepare("SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry),false)
+            FROM regions WHERE active_job_id IS NOT NULL AND imported_at>now()-interval '30 days'");
+        $cover->execute([$lon,$lat,$radius*1609.344]);
+        if($cover->fetchColumn())return ['state'=>'ready','complete'=>1,'total'=>1,'message'=>'Local data ready'];
+        $tasks=[];foreach(CoveragePlanner::tiles($lon,$lat,$radius) as $tile){
+            $this->collect($tile,$tasks);
+            if(count($tasks)>1024)throw new HttpException(422,'Too many areas. Choose closer points.');
+        }
+        return $this->summary($tasks,true);
+    }
+
     private function collect(array $tile,array &$tasks): void
     {
         $task=$this->ensure($tile['key'],'roads',$tile,true);
@@ -53,6 +66,26 @@ final class DataQueue
             foreach (CoveragePlanner::children($tile) as $child) { $this->collect($child,$tasks); }
         } else { $tasks[]=$task; }
     }
+    /** Safe map-only status, never task payloads or provider URLs. */
+    public static function areaFeatures(array $tasks): array
+    {
+        $features=[];
+        foreach($tasks as $task){
+            if(($task['kind']??'')!=='roads')continue;
+            $payload=$task['payload']??[];
+            if(is_string($payload))$payload=json_decode($payload,true);
+            $bounds=$payload['bounds']??null;
+            if(!is_array($bounds)||count($bounds)!==4||!array_is_list($bounds))continue;
+            foreach($bounds as $v)if(!is_numeric($v)||!is_finite((float)$v))continue 2;
+            [$w,$s,$e,$n]=array_map('floatval',$bounds);
+            if($w< -180||$e>180||$s< -90||$n>90||$e<=$w||$n<=$s)continue;
+            $status=($task['cancel_requested']??false)?'cancelled':($task['status']??'queued');
+            if($status==='retry')$status='queued';
+            $features[]=['type'=>'Feature','properties'=>['status'=>$status],'geometry'=>['type'=>'Polygon','coordinates'=>[[[$w,$s],[$e,$s],[$e,$n],[$w,$n],[$w,$s]]]]];
+        }
+        return ['type'=>'FeatureCollection','features'=>$features];
+    }
+
     private function summary(array $tasks,bool $roads): array
     {
         $complete=0; $failed=0; $pending=0; $failureMessage=null; $message=$roads?'Preparing road coverage':'Preparing US ZIP coordinates';
@@ -64,7 +97,7 @@ final class DataQueue
             elseif ($task['status']==='running' || $task['status']==='retry') { $message=$task['progress']; }
         }
         return ['state'=>$pending?'preparing':($failed?'failed':'ready'),
-            'complete'=>$complete,'total'=>count($tasks),'failed'=>$failed,'message'=>$failureMessage??$message];
+            'areas'=>self::areaFeatures($tasks),'complete'=>$complete,'total'=>count($tasks),'failed'=>$failed,'message'=>$failureMessage??$message];
     }
     public function overview(): array
     {

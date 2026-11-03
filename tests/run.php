@@ -362,6 +362,37 @@ $preferred=SweepLine\RoadExport::prepare($preferred,'reverse');
 check(str_contains(SweepLine\RoadExport::gpx($preferred),'<name>Other Name</name>') && str_contains(SweepLine\RoadExport::kml($preferred),'<name>Other Name</name>'),'GPX and KMZ use preferred primary name');
 check(str_contains(SweepLine\RoadExport::pdf($preferred),'Other Name'),'PDF title uses preferred primary name');
 check(str_starts_with(SweepLine\RoadExport::filename($preferred['name'],'pdf'),'Other-Name-'),'Download filename follows preferred name');
+
+$customInput=['start'=>['lon'=>-119.8,'lat'=>39.503],'finish'=>['lon'=>-119.8,'lat'=>39.509],'profile'=>'twisty'];
+check(SweepLine\CustomRoads::parameters($customInput)['profile']==='twisty','Custom road validates two separated points and active profile');
+foreach([
+    [],
+    array_replace($customInput,['start'=>['lon'=>181,'lat'=>39]]),
+    array_replace($customInput,['finish'=>$customInput['start']]),
+    array_replace($customInput,['finish'=>['lon'=>-100,'lat'=>39]]),
+    array_replace($customInput,['profile'=>'invalid']),
+    array_replace($customInput,['start'=>['lon'=>[], 'lat'=>39]])
+] as $bad)check(rejects(fn()=>SweepLine\CustomRoads::parameters($bad)),'Custom road rejects invalid coordinates, range or profile');
+check(SweepLine\CustomRoads::identifier(['custom_id'=>12])===12,'Custom road accepts integer identifiers');
+foreach([0,1.5,[],null] as $bad)check(rejects(fn()=>SweepLine\CustomRoads::identifier(['custom_id'=>$bad])),'Custom road rejects invalid identifiers');
+
+
+foreach([-1,0,1] as $direction)foreach([false,true] as $reverse){
+    $points=[[-119.8,39.503],[-119.8,39.509]];
+    $orientation=SweepLine\CustomRoads::orientation($reverse?0.8:0.2,$reverse?0.2:0.8,$direction);
+    $prepared=SweepLine\RoadExport::prepare(['name'=>'Selected test road','geometry'=>['type'=>'LineString','coordinates'=>$points],'parts'=>[['direction'=>$direction,'reversed'=>false]]],$orientation);
+    check($prepared['geometry']['coordinates'][0]===$points[$reverse?1:0],'Custom export honors clicked start for direction '.$direction.' reverse '.(int)$reverse);
+}
+
+
+$areaTasks=[];
+foreach(['queued','running','complete','retry','failed'] as $state)$areaTasks[]=['kind'=>'roads','status'=>$state,'payload'=>json_encode(['bounds'=>[-120,39,-119.5,39.5],'private'=>'not returned'])];
+$areas=SweepLine\DataQueue::areaFeatures($areaTasks);
+check(count($areas['features'])===5&&array_column(array_column($areas['features'],'properties'),'status')===['queued','running','complete','queued','failed'],'Preparation map reports real tile states and queued retries');
+check($areas['features'][0]['geometry']['coordinates'][0][0]=== $areas['features'][0]['geometry']['coordinates'][0][4],'Preparation tile polygons have closed rings');
+check(!str_contains(json_encode($areas),'private'),'Preparation map never exposes provider payload fields');
+check(SweepLine\DataQueue::areaFeatures([['kind'=>'zips','payload'=>[]],['kind'=>'roads','payload'=>['bounds'=>[0,0,0,1]]],['kind'=>'roads','payload'=>['bounds'=>['bad',0,1,1]]]])['features']===[],'Preparation map skips non-geographic and invalid tasks');
+
 require __DIR__.'/beamng.php';
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

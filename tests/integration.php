@@ -157,3 +157,22 @@ $sessionSettings->save(['session_timeout_days'=>14]);
 check($sessionSettings->read()['session_timeout_days']===14,'Session lifetime setting persists');
 foreach ([0,31,1.5,'invalid'] as $value) {check(rejects(fn()=>$sessionSettings->save(['session_timeout_days'=>$value])),'Session lifetime bounds enforced');}
 $sessionSettings->save(['session_timeout_days'=>7]);
+
+$customService=new SweepLine\CustomRoads($db);$customUser=(int)$administrator['id'];
+$customSelection=$customService->create($customUser,['start'=>['lon'=>-119.8,'lat'=>39.503],'finish'=>['lon'=>-119.8,'lat'=>39.509],'profile'=>'twisty']);
+$custom=$customSelection['road'];
+check($custom['custom_id']>0&&$custom['length_m']>600&&$custom['length_m']<750,'Custom selection clips the continuous candidate to the clicked stretch');
+check($custom['mandatory_stops']===0&&$custom['uncertain_controls']===0,'Custom clipping excludes controls outside the stretch and does not invent endpoint stops');
+check($custom['score']>=0&&$custom['score']<=100&&isset($custom['dimensions']['curvature']),'Custom road recalculates profile scores even below discovery thresholds');
+check(count($custom['parts'])===1&&$custom['parts'][0]['geometry']===$custom['geometry'],'Custom export track contains only clipped geometry');
+$customReversed=$customService->create($customUser,['start'=>['lon'=>-119.8,'lat'=>39.509],'finish'=>['lon'=>-119.8,'lat'=>39.503],'profile'=>'twisty'])['road'];
+check($customReversed['preferred_orientation']==='reverse','Custom click order sets preferred start and finish');
+try{$customService->create($customUser,['start'=>['lon'=>-119.8,'lat'=>39.503],'finish'=>['lon'=>-119.792,'lat'=>39.52]]);check(false,'Different-road selection rejected');}
+catch(SweepLine\HttpException $e){check($e->getCode()!==0||str_contains($e->getMessage(),'continuous road'),'Different-road selection rejected');}
+try{$customService->detail(999999,$custom['custom_id']);check(false,'Custom road owner isolation');}catch(OutOfBoundsException $e){check(true,'Custom road owner isolation');}
+$customFavorite=(new SweepLine\Favorites($db))->save($customUser,['road_id'=>$custom['id'],'custom_id'=>$custom['custom_id'],'profile'=>'twisty','search'=>$customSelection['parameters']]);
+$customSaved=(new SweepLine\Favorites($db))->detail($customUser,$customFavorite['id'])['road'];
+check($customSaved['geometry']===$custom['geometry'],'Custom favorite preserves only selected geometry');
+$db->prepare("UPDATE custom_roads SET created_at=now()-interval '8 days' WHERE id=?")->execute([$custom['custom_id']]);
+try{$customService->detail($customUser,$custom['custom_id']);check(false,'Custom selection expiry');}catch(OutOfBoundsException $e){check(true,'Custom selection expiry');}
+check((new SweepLine\Favorites($db))->detail($customUser,$customFavorite['id'])['road']['geometry']===$custom['geometry'],'Custom favorite survives selection expiry independently');

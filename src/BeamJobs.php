@@ -31,7 +31,10 @@ final class BeamJobs
     public function create(int $user,array $input): array
     {
         $options=BeamPlan::options($input);
-        if(isset($input['favorite_id'])) {
+        if(isset($input['custom_id'])){
+            $road=(new CustomRoads($this->db))->detail($user,CustomRoads::identifier($input));
+            if(!isset($input['orientation']))$options['orientation']=$road['preferred_orientation'];
+        } elseif(isset($input['favorite_id'])) {
             $favorite=Validation::number($input,'favorite_id',NAN,1,9007199254740991);
             if(floor($favorite)!==$favorite)throw new \InvalidArgumentException('Favorite ID must be a whole number.');
             $road=(new Favorites($this->db))->detail($user,(int)$favorite)['road'];

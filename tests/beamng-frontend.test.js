@@ -40,6 +40,13 @@ async function testBeamControls(source){
   }
   await tasks.shift()();check(stageProgress.children[1].children.every(n=>n['is-complete']),'Packaging completes only when the worker reports complete');
 
+
+  let customPayload;
+  window.sweeplineRequest=async(path,options)=>{customPayload=JSON.parse(options.body);return {id:'d'.repeat(32),status:'queued',progress:'Queued'};};
+  const customRow=new Element('div');window.sweeplineBeamExport(customRow,{id:42},{customId:55,orientation:'reverse'});
+  await customRow.children[0].onclick({preventDefault(){}});
+  check(customPayload.custom_id===55&&!('road_id' in customPayload),'BeamNG custom selections never request the full candidate geometry');
+
   return checks;
 }
 if(typeof require==="function"&&require.main===module){testBeamControls(require("fs").readFileSync(require("path").join(__dirname,"../public/assets/beamng.js"),"utf8")).then(n=>console.log(n+" BeamNG frontend checks passed")).catch(e=>{console.error(e);process.exitCode=1;});}

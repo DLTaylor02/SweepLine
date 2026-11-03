@@ -5,15 +5,15 @@ use PDO;
 final class RoadConsolidator
 {
     public function __construct(private PDO $db) {}
-    public function combine(array $group,string $profile): array
+    public function combine(array $group,string $profile,bool $recalculate=false): array
     {
         $members=$group['members'];
         usort($members,static fn($a,$b)=>($b['length_m']<=>$a['length_m'])?:($a['id']<=>$b['id']));
         $road=$members[0];$ids=array_map(static fn($r)=>(int)$r['id'],$members);sort($ids);
         $road['member_ids']=$ids;
         $road['alternate_names']=RoadNames::collect($members,$road['name']);
-        if(count($members)===1)return $road;
-        $key=hash('sha256',json_encode([$profile,Scorer::profiles()[$profile],$members],JSON_THROW_ON_ERROR));
+        if(count($members)===1&&!$recalculate)return $road;
+        $key=hash('sha256',json_encode([$profile,Scorer::profiles()[$profile],$members,$recalculate?$group['points']:null],JSON_THROW_ON_ERROR));
         $cached=$this->db->prepare("SELECT snapshot FROM road_combination_cache WHERE cache_key=? AND created_at>now()-interval '7 days'");
         $cached->execute([$key]);$snapshot=$cached->fetchColumn();
         if($snapshot!==false)return json_decode($snapshot,true,512,JSON_THROW_ON_ERROR);
@@ -30,7 +30,7 @@ final class RoadConsolidator
             $jobs[(int)$n['job_id']]=true;
         }
         $nodes=[];$missing=0;
-        foreach($points as $p) {$keyPoint=RoadOverlap::pointKey($p);if(isset($coordinates[$keyPoint]))$nodes[]=$coordinates[$keyPoint];else{$nodes[]='missing:'.$keyPoint;$missing++;}}
+        foreach($points as $pointIndex=>$p) {$keyPoint=RoadOverlap::pointKey($p);if(isset($coordinates[$keyPoint]))$nodes[]=$coordinates[$keyPoint];else{$nodes[]='missing:'.$keyPoint;if(!$recalculate||($pointIndex>0&&$pointIndex<count($points)-1))$missing++;}}
         $neighbors=[];
         if($jobs) {
             $jobMarks=implode(',',array_fill(0,count($jobs),'?'));

@@ -22,7 +22,7 @@ header('X-Content-Type-Options: nosniff');
 try {
     if ($path==='/api/setup') { throw new OutOfBoundsException('Endpoint not found'); }
     $method=$_SERVER['REQUEST_METHOD']??'GET';
-    $postPaths=['/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/beamng'];
+    $postPaths=['/api/custom-roads','/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/beamng'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if ($path==='/api/admin/storage' && $method==='PATCH') {$expected='PATCH';}
     if ($path==='/api/admin/session-settings' && $method==='GET') {$expected='GET';}
@@ -103,6 +103,19 @@ try {
                 } else { $result=$api->nearestZip($_GET); }
             }
             elseif ($path==='/api/coverage') { $result=$api->coverage(); }
+            elseif($path==='/api/custom-roads'){
+                $result=(new SweepLine\CustomRoads($db))->create((int)$user['id'],$input);
+                if(!isset($result['road']))http_response_code(202);
+            }
+            elseif(preg_match('#^/api/custom-roads/([1-9][0-9]{0,14})(/export)?$#',$path,$m)){
+                $road=(new SweepLine\CustomRoads($db))->detail((int)$user['id'],(int)$m[1],isset($m[2])&&($_GET['format']??'')==='pdf');
+                if(isset($m[2])){
+                    $format=$_GET['format']??'';
+                    if(!is_string($format)||!in_array($format,['gpx','kmz','pdf'],true))throw new InvalidArgumentException('Invalid export format');
+                    SweepLine\RoadExport::download($road,$format,SweepLine\RoadExport::orientation($_GET['orientation']??$road['preferred_orientation']),$_GET['preferred_name']??null);
+                }else $result=$road;
+            }
+
             elseif ($path==='/api/search-diagnostics') { $result=(new SweepLine\RoadDiagnostics($db))->run($input); }
             elseif ($path==='/api/search') {
                 if (isset($input['record_history']) && !is_bool($input['record_history'])) { throw new InvalidArgumentException('record_history must be a JSON boolean'); }

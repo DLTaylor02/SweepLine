@@ -80,6 +80,7 @@ async function testFrontend(sources) {
   searchResponses=[{results:[],preparation:{state:'preparing',message:'Downloading roads',complete:0,total:3}},{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}}];
   search.max_length.value='12.5';search.onsubmit({preventDefault(){},target:search});
   check(!get('search-spinner').hidden&&!('value' in get('search-progress')),'Submitting immediately shows indeterminate preparation');
+  check(!get('search-stages').hidden&&get('search-stage-track').children.length===5&&get('search-stage-label').textContent.includes('Coverage'),'Search immediately shows staged coverage check');
   await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
   check(observedElements.includes(get('map'))&&observedElements.includes(get('road-detail')),'Browser ResizeObserver attaches without blocking Discovery initialization');
@@ -97,16 +98,19 @@ async function testFrontend(sources) {
   check(get('status').textContent.includes('0/3'),'Preparation progress displayed');
   check(!get('search-spinner').hidden&&!get('map-spinner').hidden,'Preparation spinner visible by search and map');
   check(get('search-progress').value===0&&get('search-progress').max===3,'Area progress uses actual completed coverage');
+  check(get('search-stage-label').textContent.includes('Download areas'),'Uncached coverage shows download stage');
   check(get('search-feedback')['aria-busy']==='true','Preparation exposes accessible busy state');
   let timer=timers.filter(t=>t.active&&t.ms===5000).at(-1);check(!!timer,'Preparation schedules polling');
   await timer.fn();await flush();check(get('status').textContent.includes('No roads match'),'Ready response ends preparation message');
   check(get('search-spinner').hidden&&get('map-spinner').hidden&&get('search-progress').hidden,'Ready response clears all loading indicators');
+  check(!get('search-stages').hidden&&get('search-stage-track').children.every(n=>n.className==='is-complete'),'Ready response fills every search stage even for empty results');
   check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).record_history===false,'Background polling does not add search history');
   search.min_curve_density_score.value='4.5';
   searchResponses=[{results:[{id:1,name:'Test road',score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5}],preparation:{state:'preparing',message:'Analyzing roads',complete:1,total:3}}];
   search.onsubmit({preventDefault(){},target:search});await flush();
   check(get('status').textContent.includes('Showing partial results')&&get('results').children.length===1,'Available roads remain visible and labeled during preparation');
   check(get('search-progress').value===1,'Progress advances with completed areas');
+  check(get('search-stage-label').textContent.includes('Analyze roads')&&get('search-progress-label').textContent.includes('1 of 3'),'Analysis stage keeps actual partial-area counts');
   check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).min_curve_density_score===4.5,'User-defined fractional density is submitted');
   get('results').children[0].onclick();await flush();
   check(get('road-detail').children.find(n=>n.className==='road-name-picker').children.some(n=>n.textContent==='Other Road Name'),'Road details display clickable alternate names without duplicate text');
@@ -153,6 +157,7 @@ async function testFrontend(sources) {
   search.onsubmit({preventDefault(){},target:search});await flush();
   check(timers.length===beforeFailure&&get('status').textContent.includes('SuperAdmin'),'Terminal preparation failure stops polling with actionable message');
   check(get('search-spinner').hidden&&get('search-progress').hidden,'Terminal failure clears loading state');
+  check(get('search-stages').hidden,'Failed search hides active stage bar while keeping error message');
   const jobWindow={...window,location:{pathname:'/manage'}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(jobWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
   await flush();check(!get('admin-panel').hidden,'Jobs opens as a dedicated page');
@@ -371,6 +376,48 @@ async function testFrontend(sources) {
   check(compositeExports.every(n=>n.href.includes('members=11%2C12')),'All composite exports carry the same selected member IDs');
   await get('road-detail').children.find(n=>n.className==='road-direction').children.find(n=>n.className==='favorite-heart').onclick();
   check(compositeSaved.member_ids.join(',')==='11,12','Favoriting preserves complete consolidated road');
+
+  let customChecks=0,customSavedInput=null,customBeamContext=null;
+  const customFixture={...compositeRoad,id:81,custom_id:55,member_ids:[81],favorite_id:null,preferred_orientation:'forward'};
+  const customWindow={...window,location:{pathname:'/',search:''},sweeplineBeamExport:(container,road,context)=>customBeamContext=context,sweeplineRequest:async(path,options={})=>{
+    if(path==='/api/custom-roads'){
+      customChecks++;
+      return customChecks===1?{preparation:{state:'preparing',message:'Loading roads',complete:0,total:2}}:{road:customFixture,parameters:{zip:'12345',profile:'twisty',radius_miles:5},preparation:{state:'ready'}};
+    }
+    if(path==='/api/favorites'){customSavedInput=JSON.parse(options.body);return {id:101};}
+    throw Error('Unexpected custom-road request '+path);
+  }};
+  const customUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {setMap:value=>{map=value;ready=Promise.resolve();},pickCustomRoadAt};')(customWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  const customSource={setData(value){this.data=value;}};customUI.setMap({getCanvas:()=>({style:{}}),getSource:()=>customSource,getLayer:()=>true,setFilter(){}});
+  get('pick-custom-road').onclick();await customUI.pickCustomRoadAt({lngLat:{lng:-119.8,lat:39.503}});
+  check(get('custom-road-status').textContent.includes('finish'),'First custom click requests the second point');
+  await customUI.pickCustomRoadAt({lngLat:{lng:-119.8,lat:39.509}});
+  check(get('custom-road-status').textContent.includes('0/2'),'Custom picker shows automatic coverage preparation');
+  await timers.filter(t=>t.active&&t.ms===5000).at(-1).fn();await flush();
+  const customLinks=get('road-detail').children.find(n=>n.className==='road-exports').children;
+  check(customLinks.every(n=>n.href.includes('/api/custom-roads/55/export')),'Every standard export uses server-validated custom selection');
+  check(customBeamContext.customId===55,'BeamNG uses custom selection rather than the full source candidate');
+  const customHeart=get('road-detail').children.find(n=>n.className==='road-direction').children.find(n=>n.className==='favorite-heart');
+  await customHeart.onclick();await flush();check(customSavedInput.custom_id===55,'Custom favorite sends selection ID for server-owned geometry');
+  get('pick-custom-road').onclick();get('pick-custom-road').onclick();
+  check(get('custom-road-status').textContent.includes('cancelled'),'Two-point selection can be cancelled');
+
+
+  const areaFrames=[],areaPaints=[];
+  const areaWindow={location:{pathname:'/',search:''},addEventListener(){}};
+  const areaUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {updatePreparationAreas,setMap:value=>map=value};')(areaWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  areaUI.setMap({getSource:id=>id==='preparation-areas'?{setData:value=>areaFrames.push(value)}:null,getLayer:()=>true,setPaintProperty:(...args)=>areaPaints.push(args)});
+  const areaData={type:'FeatureCollection',features:['queued','running','complete'].map(status=>({type:'Feature',properties:{status},geometry:{type:'Polygon',coordinates:[[[-120,39],[-119,39],[-119,40],[-120,40],[-120,39]]]}}))};
+  areaUI.updatePreparationAreas({state:'preparing',areas:areaData});
+  check(areaFrames.at(-1).features.map(f=>f.properties.status).join(',')==='queued,running,complete'&&!get('preparation-legend').hidden,'Preparation overlays preserve queued, active and completed region states');
+  check(areaPaints.some(p=>p[0]==='preparation-fill'&&p[2][1][2]==='running'),'Pulse applies only to active region opacity');
+  const pulse=timers.filter(t=>t.active&&t.ms===150).at(-1),beforePulse=areaPaints.length;
+  pulse.active=false;pulse.fn();check(areaPaints.length>beforePulse,'Active regions pulse as status polling continues');
+  areaUI.updatePreparationAreas({state:'ready',areas:areaData});
+  check(areaFrames.at(-1).features.length===0&&get('preparation-legend').hidden&&!timers.some(t=>t.active&&t.ms===150),'Completed search clears regions, legend and pulse timer');
+  areaUI.updatePreparationAreas({state:'preparing',areas:areaData});areaUI.updatePreparationAreas(null);
+  check(areaFrames.at(-1).features.length===0&&get('preparation-legend').hidden,'New search or sign-out clears stale geographic preparation');
+
   logged=true;mustChange=true;
   const forcedWindow={...window,location:{pathname:'/',replace:p=>redirectTarget=p}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(forcedWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Show search preparation tiles on the map with light red queued fills, pulsing yellow active fills and green ready fills, plus stronger borders and a legend. Use real task bounds including split tiles, clear overlays on completion/new searches/sign-out, and restore them after map recovery.
+
+- Add BeamNG-style staged progress to Discovery searches for coverage, ZIP location, downloading, analysis and results. Keep actual area counts and accessible area progress, reflect repeated stages across areas, and mark cached/completed searches ready without estimating time or percentages.
+
+- Add a two-point custom-road picker in Discovery with automatic shared coverage preparation, nearest-road snapping and strict single-candidate connectivity validation. Clip and rescore the selected stretch, preserve endpoint order, and reuse private Favorites plus GPX/KMZ/PDF/BeamNG exports through owner-scoped snapshots. Add migration 015, input/UI tests and PostGIS integration coverage.
+
 - Strengthen satellite/palette terrain blending: raise exposure influence and chroma variation while retaining vegetation green separation, conservative invalid-color fallback and an 85% palette brightness floor. Close-up detail strengths remain unchanged.
 
 - Add a nine-segment BeamNG preparation bar showing queued, elevation, imagery, preparation, terrain analysis, road shaping, materials, scenery and packaging stages from worker status. Distinguish current/completed stages, retain detailed progress/errors, and fill the bar only when the download is ready.

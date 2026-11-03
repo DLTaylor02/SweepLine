@@ -72,7 +72,8 @@
       event.preventDefault();if(busy)return;clearTimeout(timer);paint({status:'queued',progress:'Queueing map generation…'});
       try{
         const payload={terrain_style:'stock',padding_miles:0.5,resolution:2048,orientation:context.orientation||'forward',...(context.preferredName?{preferred_name:context.preferredName}:{})};
-        if(context.favoriteId)payload.favorite_id=context.favoriteId;
+        if(context.customId)payload.custom_id=context.customId;
+        else if(context.favoriteId)payload.favorite_id=context.favoriteId;
         else Object.assign(payload,{road_id:road.id,profile:context.profile||'twisty',...((road.member_ids||[]).length>1?{member_ids:road.member_ids}:{})});
         const job=await window.sweeplineRequest('/api/beamng',{method:'POST',body:JSON.stringify(payload)});
         if(current!==view)return;jobId=job.id;
