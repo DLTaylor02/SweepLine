@@ -158,6 +158,9 @@ check($sessionSettings->read()['session_timeout_days']===14,'Session lifetime se
 foreach ([0,31,1.5,'invalid'] as $value) {check(rejects(fn()=>$sessionSettings->save(['session_timeout_days'=>$value])),'Session lifetime bounds enforced');}
 $sessionSettings->save(['session_timeout_days'=>7]);
 
+$beforeCustomTasks=(int)$db->query('SELECT count(*) FROM data_tasks')->fetchColumn();
+$customCoverage=(new SweepLine\DataQueue($db))->prepareCustom([-119.8,39.503],[-119.8,39.509]);
+check($customCoverage['state']==='ready'&&(int)$db->query('SELECT count(*) FROM data_tasks')->fetchColumn()===$beforeCustomTasks,'Custom extraction reuses existing coverage without queuing another download');
 $customService=new SweepLine\CustomRoads($db);$customUser=(int)$administrator['id'];
 $customSelection=$customService->create($customUser,['start'=>['lon'=>-119.8,'lat'=>39.503],'finish'=>['lon'=>-119.8,'lat'=>39.509],'profile'=>'twisty']);
 $custom=$customSelection['road'];

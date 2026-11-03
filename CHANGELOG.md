@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reduce new custom-road preparation to a tight padded rectangle with a small import halo instead of radius-search half-degree tiles. Reuse existing full coverage and stable extract keys, preserve bounded halos on dense-area splits, and support splitting long narrow rectangles. Radius-search planning is unchanged.
+
 - Avoid region-cancellation/status 503s caused by cleanup waiting for active import row locks. Defer running import cleanup, skip locked rows during cleanup, and retain checkpoint cancellation and immediate area-key reuse. Log SQLSTATE and code location for unexpected API errors without SQL or parameter values; add a two-connection lock regression.
 
 - Assign BeamNG shoulder/roadbed materials from each side's underlying terrain category instead of forcing DIRT everywhere; match stock palette colors and split strips when surface types change. Extend outer shoulders by 0.75 m and embed edges 0.15 m into final terrain to hide seams, preserving bridge exclusions.

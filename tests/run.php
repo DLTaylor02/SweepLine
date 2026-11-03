@@ -393,6 +393,17 @@ check($areas['features'][0]['geometry']['coordinates'][0][0]=== $areas['features
 check(!str_contains(json_encode($areas),'private'),'Preparation map never exposes provider payload fields');
 check(SweepLine\DataQueue::areaFeatures([['kind'=>'zips','payload'=>[]],['kind'=>'roads','payload'=>['bounds'=>[0,0,0,1]]],['kind'=>'roads','payload'=>['bounds'=>['bad',0,1,1]]]])['features']===[],'Preparation map skips non-geographic and invalid tasks');
 
+
+$customA=[-119.8,39.503];$customB=[-119.8,39.509];
+$customArea=SweepLine\CoveragePlanner::customArea($customA,$customB);[$cw,$cs,$ce,$cn]=$customArea['bounds'];
+check($cw<$customA[0]&&$ce>$customB[0]&&$cs<$customA[1]&&$cn>$customB[1],'Custom extract tightly encloses both clicks with a continuity buffer');
+check(($ce-$cw)*($cn-$cs)<0.0025,'Short custom selection uses less than one percent of a half-degree tile');
+check(SweepLine\CoveragePlanner::customArea($customB,$customA)===$customArea,'Reversing custom click order reuses the same geographic extract');
+check(SweepLine\CoveragePlanner::halo($customArea)===0.002,'Custom extract uses a small halo instead of broad radius-search overlap');
+foreach(SweepLine\CoveragePlanner::children($customArea) as $child)check(SweepLine\CoveragePlanner::halo($child)===0.002,'Dense custom child retains bounded import halo');
+check(SweepLine\CoveragePlanner::canSplit(['bounds'=>[0,0,0.01,0.5]]),'Long narrow custom extracts can split when too dense');
+check(rejects(fn()=>SweepLine\CoveragePlanner::customArea([179.9,52],[-179.9,52])),'Date-line custom selection cannot accidentally request a world-wide rectangle');
+
 require __DIR__.'/beamng.php';
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

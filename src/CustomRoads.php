@@ -41,8 +41,8 @@ final class CustomRoads
             if($task['status']==='failed')throw new HttpException(503,'ZIP preparation failed. A SuperAdmin can retry it in Manage.');
             return ['preparation'=>['state'=>'preparing','message'=>'Preparing ZIP coordinates','complete'=>0,'total'=>1]];
         }
-        $center=[($a[0]+$b[0])/2,($a[1]+$b[1])/2];
-        $preparation=$queue->prepareArea($center[0],$center[1],min(50,max(1,Geometry::distance($a,$b)/3218.688+2)));
+
+        $preparation=$queue->prepareCustom($a,$b);
         if($preparation['state']!=='ready')return ['preparation'=>$preparation];
         // Both clicks must snap to the same continuous candidate; no junction routing.
         $q=$this->db->prepare("WITH clicks AS (

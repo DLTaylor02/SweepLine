@@ -28,9 +28,24 @@ final class CoveragePlanner
         if (count($out)>512) { throw new \InvalidArgumentException('This search spans too many geographic areas. Use a smaller radius.'); }
         return array_values($out);
     }
+    /** One bounded extract keeps custom-road continuity without half-degree overfetch. */
+    public static function customArea(array $start,array $finish): array
+    {
+        if(abs($start[0]-$finish[0])>180)throw new \InvalidArgumentException('Custom selections across the date line are not supported.');
+        $padding=max(402.336,min(1609.344,Geometry::distance($start,$finish)*0.05));
+        $lat=($start[1]+$finish[1])/2;
+        $dy=rad2deg($padding/6371008.8);$dx=$dy/max(0.05,cos(deg2rad($lat)));
+        // Stable 0.001-degree boundaries reuse nearby equivalent requests.
+        $bounds=[max(-180,floor((min($start[0],$finish[0])-$dx)*1000)/1000),
+            max(-90,floor((min($start[1],$finish[1])-$dy)*1000)/1000),
+            min(180,ceil((max($start[0],$finish[0])+$dx)*1000)/1000),
+            min(90,ceil((max($start[1],$finish[1])+$dy)*1000)/1000)];
+        return ['key'=>'custom-'.substr(hash('sha256',json_encode($bounds,JSON_THROW_ON_ERROR)),0,24),'bounds'=>$bounds,'halo'=>0.002];
+    }
+
     public static function canSplit(array $tile): bool
     {
-        return ($tile['bounds'][2]-$tile['bounds'][0])>0.015625;
+        return max($tile['bounds'][2]-$tile['bounds'][0],$tile['bounds'][3]-$tile['bounds'][1])>0.015625;
     }
     public static function oversized(string $message): bool
     {
@@ -38,13 +53,13 @@ final class CoveragePlanner
     }
     public static function halo(array $tile): float
     {
-        return min(0.04,($tile['bounds'][2]-$tile['bounds'][0])*0.32);
+        return isset($tile['halo'])?min(0.04,max(0,(float)$tile['halo'])):min(0.04,($tile['bounds'][2]-$tile['bounds'][0])*0.32);
     }
     public static function children(array $tile): array
     {
         [$w,$s,$e,$n]=$tile['bounds']; $mx=($w+$e)/2; $my=($s+$n)/2; $out=[];
         foreach ([[$w,$s,$mx,$my],[$mx,$s,$e,$my],[$w,$my,$mx,$n],[$mx,$my,$e,$n]] as $i=>$bounds) {
-            $out[]=['key'=>$tile['key'].'-'.$i,'bounds'=>$bounds];
+            $out[]=['key'=>$tile['key'].'-'.$i,'bounds'=>$bounds]+array_intersect_key($tile,['halo'=>true]);
         }
         return $out;
     }

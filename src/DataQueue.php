@@ -41,6 +41,17 @@ final class DataQueue
         }
         return $this->summary($tasks,true);
     }
+    public function prepareCustom(array $start,array $finish): array
+    {
+        $tile=CoveragePlanner::customArea($start,$finish);
+        $cover=$this->db->prepare("SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),ST_MakeEnvelope(?,?,?,?,4326)),false)
+            FROM regions WHERE active_job_id IS NOT NULL AND imported_at>now()-interval '30 days'");
+        $cover->execute($tile['bounds']);
+        if($cover->fetchColumn())return ['state'=>'ready','complete'=>1,'total'=>1,'message'=>'Local data ready'];
+        $tasks=[];$this->collect($tile,$tasks);
+        return $this->summary($tasks,true);
+    }
+
     public function prepareArea(float $lon,float $lat,float $radius): array
     {
         $cover=$this->db->prepare("SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry),false)
