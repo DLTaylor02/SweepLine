@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show persistent custom-road rejection reasons over the map and in the sidebar, with a reset picker for retry. Expand custom download padding to 25% of endpoint distance (1-5 miles per side) to accommodate winding roads.
+
 - Prevent artificial ridges beside simple bridges: exclude deck intervals from both native terrain-blending passes and widen bridge protection to the full shoulder influence band plus a grid guard. Preserve the landward approach correction and ordinary shoulder output. Add a regression that reproduces the old ridge and checks unchanged valley terrain.
 
 - Correct native terrain clipping through pavement just beyond bridge abutments, where the broad bridge mask previously blocked shoulder shaping. Add a landing-only shaping/contact pass that preserves deck-interior vertices and leaves ordinary-road processing unchanged. Validate offline against the supplied Frenchman Lake export; report bridge_approach_correction.

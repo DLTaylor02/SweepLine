@@ -230,6 +230,7 @@ function render() {
 
 let customPicking=false,customPoints=[],customMarkers=[],customSequence=0,customTimer;
 function cancelCustomRoad(){
+  $('custom-road-error').hidden=true;
   customPicking=false;customPoints=[];++customSequence;clearTimeout(customTimer);
   customMarkers.forEach(marker=>marker.remove());customMarkers=[];
   $('pick-custom-road').textContent='Choose two points';$('pick-custom-road').setAttribute('aria-pressed','false');
@@ -276,7 +277,12 @@ async function resolveCustomRoad(payload,sequence){
     map?.getSource('radius')?.setData(empty());
     await selectRoad(result.road.id);$('custom-road-status').textContent='Custom stretch selected. Scores, favorites and exports use only this stretch.';
     setStatus('Custom road selection · '+(result.road.length_m/1609.344).toFixed(2)+' miles.');
-  }catch(e){if(sequence===customSequence){cancelCustomRoad();$('custom-road-status').textContent=e.message;}}
+  }catch(e){if(sequence===customSequence){cancelCustomRoad();updatePreparationAreas(null);
+      const message='Custom road could not be selected. '+(e.message||'Please try again.');
+      $('custom-road-status').textContent=message;
+      $('custom-road-error').textContent=message+' Choose two points again to retry.';
+      $('custom-road-error').hidden=false;
+      setStatus(message);}}
 }
 
 let roadEndpointMarkers=[],roadEndpointSelection=null;

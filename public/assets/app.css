@@ -83,3 +83,5 @@
 #search-stages{margin:10px 0 6px}#search-progress.sr-only{width:1px;height:1px;margin:0}#search-stages .beam-step-track{height:8px}
 
 .preparation-legend{position:absolute;left:12px;top:76px;display:flex;flex-wrap:wrap;gap:8px 12px;max-width:260px;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:10px;pointer-events:none}.preparation-legend span{display:flex;align-items:center;gap:5px}.preparation-legend i{width:9px;height:9px;border-radius:2px}.area-queued{background:#ef4444}.area-running{background:#facc15}.area-ready{background:#22c55e}
+
+.custom-road-error{z-index:8;max-height:40%;overflow:auto;border:1px solid var(--accent);pointer-events:auto}

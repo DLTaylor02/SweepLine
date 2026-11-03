@@ -404,6 +404,17 @@ async function testFrontend(sources) {
   check(get('custom-road-status').textContent.includes('cancelled'),'Two-point selection can be cancelled');
 
 
+
+  customWindow.sweeplineRequest=async()=>{throw Error('Both points snap to the same position. Choose a longer stretch.');};
+  get('pick-custom-road').onclick();
+  await customUI.pickCustomRoadAt({lngLat:{lng:-119.8,lat:39.503}});
+  await customUI.pickCustomRoadAt({lngLat:{lng:-119.8,lat:39.504}});
+  check(!get('custom-road-error').hidden&&get('custom-road-error').textContent.includes('same position'),'Custom rejection retains the server reason visibly over the map');
+  check(get('custom-road-status').textContent.includes('same position')&&get('pick-custom-road')['aria-pressed']==='false','Rejected selection resets the picker and explains failure in the sidebar');
+  get('pick-custom-road').onclick();
+  check(get('custom-road-error').hidden,'Retry clears the previous map rejection');
+  get('pick-custom-road').onclick();
+
   const areaFrames=[],areaPaints=[];
   const areaWindow={location:{pathname:'/',search:''},addEventListener(){}};
   const areaUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {updatePreparationAreas,setMap:value=>map=value};')(areaWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);

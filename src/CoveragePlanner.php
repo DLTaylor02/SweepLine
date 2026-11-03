@@ -32,7 +32,7 @@ final class CoveragePlanner
     public static function customArea(array $start,array $finish): array
     {
         if(abs($start[0]-$finish[0])>180)throw new \InvalidArgumentException('Custom selections across the date line are not supported.');
-        $padding=max(402.336,min(1609.344,Geometry::distance($start,$finish)*0.05));
+        $padding=max(1609.344,min(8046.72,Geometry::distance($start,$finish)*0.25));
         $lat=($start[1]+$finish[1])/2;
         $dy=rad2deg($padding/6371008.8);$dx=$dy/max(0.05,cos(deg2rad($lat)));
         // Stable 0.001-degree boundaries reuse nearby equivalent requests.

@@ -397,7 +397,8 @@ check(SweepLine\DataQueue::areaFeatures([['kind'=>'zips','payload'=>[]],['kind'=
 $customA=[-119.8,39.503];$customB=[-119.8,39.509];
 $customArea=SweepLine\CoveragePlanner::customArea($customA,$customB);[$cw,$cs,$ce,$cn]=$customArea['bounds'];
 check($cw<$customA[0]&&$ce>$customB[0]&&$cs<$customA[1]&&$cn>$customB[1],'Custom extract tightly encloses both clicks with a continuity buffer');
-check(($ce-$cw)*($cn-$cs)<0.0025,'Short custom selection uses less than one percent of a half-degree tile');
+check(($ce-$cw)*($cn-$cs)<0.01,'Short custom selection remains much smaller than a half-degree tile');
+check(Geometry::distance([$customA[0],$cs],$customA)>=1609.344,'Short custom selections include at least one mile of winding-road padding');
 check(SweepLine\CoveragePlanner::customArea($customB,$customA)===$customArea,'Reversing custom click order reuses the same geographic extract');
 check(SweepLine\CoveragePlanner::halo($customArea)===0.002,'Custom extract uses a small halo instead of broad radius-search overlap');
 foreach(SweepLine\CoveragePlanner::children($customArea) as $child)check(SweepLine\CoveragePlanner::halo($child)===0.002,'Dense custom child retains bounded import halo');
