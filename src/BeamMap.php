@@ -197,18 +197,21 @@ final class BeamMap
                 $put($texture,BeamPng::rgb(64,64,static function($x,$y)use($tint){$noise=(($x*17+$y*31)%11)-5;return array_map(static fn($c)=>$c+$noise,$tint);}));
             }
             foreach($shoulders['runs'] as $runIndex=>$run)foreach(['bed','left','right'] as $strip){
+                $surfaceNodes=BeamShoulderMesh::orientNodes(array_column($run,$strip));
                 $chunks=[];$lastSurface=null;
                 foreach($run as $i=>$section){
                     $surface=$section[$strip.'_surface'];
-                    if($lastSurface!==$surface){$chunks[]=['surface'=>$surface,'nodes'=>$i>0?[$run[$i-1][$strip]]:[]];$lastSurface=$surface;}
-                    $chunks[count($chunks)-1]['nodes'][]=$section[$strip];
+                    if($lastSurface!==$surface){$chunks[]=['surface'=>$surface,'nodes'=>$i>0?[$surfaceNodes[$i-1]]:[]];$lastSurface=$surface;}
+                    $chunks[count($chunks)-1]['nodes'][]=$surfaceNodes[$i];
                 }
                 foreach($chunks as $chunkIndex=>$chunk)if(count($chunk['nodes'])>1){
                     $mat=$prefix.'_shoulder_'.$chunk['surface'];
-                    $objects[]=['class'=>'MeshRoad','name'=>'shoulder_'.$runIndex.'_'.$strip.'_'.$chunkIndex,'__parent'=>'MissionGroup','topMaterial'=>$mat,'bottomMaterial'=>$mat,'sideMaterial'=>$mat,'textureLength'=>4,'breakAngle'=>1,'widthSubdivisions'=>1,'nodes'=>$chunk['nodes']];
+                    $shape='art/roads/shoulder-'.$runIndex.'-'.$strip.'-'.$chunkIndex.'.dae';
+                    $put($shape,BeamShoulderMesh::build($mat,$chunk['nodes']));
+                    $objects[]=['class'=>'TSStatic','name'=>'shoulder_'.$runIndex.'_'.$strip.'_'.$chunkIndex,'__parent'=>'MissionGroup','shapeName'=>$path.$shape,'position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
                 }
             }
-            unset($shoulders['runs']);
+            unset($shoulders['runs']);$shoulders['collision']='Top-only triangle surfaces; no side walls, undersides or end caps';
 
             $put('art/roads/main.materials.json',self::json(array_combine(array_column($roadMaterials,'name'),array_values($roadMaterials))));
             $start=self::spawn($road,$profiles,false,$plan['oneway']);$end=self::spawn($road,$profiles,true,$plan['oneway']);$objects[]=$start;$objects[]=$end;

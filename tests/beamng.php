@@ -80,6 +80,11 @@ try {
 
     $arches=array_values(array_filter($objects,fn($o)=>in_array($o['name']??'',['start_arch','finish_arch'],true)));
     check(count($arches)===2,'Start and Finish each have one physical arch');
+
+    $openShoulders=array_values(array_filter($objects,static fn($o)=>str_starts_with($o['name']??'','shoulder_')));
+    check(count($openShoulders)>0&&count(array_filter($openShoulders,static fn($o)=>$o['class']==='TSStatic'&&$o['collisionType']==='Visible Mesh Final'))===count($openShoulders),'Export shoulders use open static collision surfaces instead of solid MeshRoad ribbons');
+    foreach($openShoulders as $o)if($archive->locateName(ltrim($o['shapeName'],'/'))===false)throw new RuntimeException('Missing shoulder collision mesh');
+
     foreach($arches as $arch){
         // Transform the local beam X axis using the serialized axis columns.
         $m=$arch['rotationMatrix'];$nearest=INF;$tangent=null;
@@ -461,3 +466,17 @@ check($typedSection['left_surface']===3&&$typedSection['right_surface']===0,'Eac
 check($typedSection['left'][3]*$typedSection['left'][7]>=2.249,'Shoulder extends at least three quarters of a meter beyond its previous edge');
 $outerHeight=$typedSection['left'][2]-sqrt(max(0,$typedSection['left'][3]**2-(2.25**2)))/2;
 check(abs($outerHeight-9.85)<0.001,'Outer shoulder edge is embedded fifteen centimeters into flat terrain instead of floating above it');
+
+$openNodes=[[0,0,1,2,0.03,0,0,1],[10,0,1,2,0.03,0,0,1],[20,5,2,2,0.03,0,0,1],[30,10,2,2,0.03,0,0,1]];
+$orientedNodes=SweepLine\BeamShoulderMesh::orientNodes($openNodes);
+$openXml=simplexml_load_string(SweepLine\BeamShoulderMesh::build('test_shoulder',$orientedNodes),SimpleXMLElement::class,LIBXML_NONET);
+$openXml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
+check((int)$openXml->xpath('//c:triangles')[0]['count']===6,'Shoulder mesh contains exactly two top triangles per road interval and no walls or caps');
+$openNormals=preg_split('/\s+/',trim((string)$openXml->xpath('//c:float_array[@id="normals-array"]')[0]));$upward=true;
+for($i=2;$i<count($openNormals);$i+=3)if((float)$openNormals[$i]<=0)$upward=false;
+check($upward,'Every shoulder collision triangle faces upward rather than presenting a vertical tire-catching wall');
+$partA=simplexml_load_string(SweepLine\BeamShoulderMesh::build('test_shoulder',array_slice($orientedNodes,0,3)));
+$partB=simplexml_load_string(SweepLine\BeamShoulderMesh::build('test_shoulder',array_slice($orientedNodes,2)));
+$vertexKeys=static function($xml){$values=preg_split('/\s+/',trim((string)$xml->xpath('//*[local-name()="float_array" and @id="positions-array"]')[0]));$keys=[];for($i=0;$i<count($values);$i+=3)$keys[]=sprintf('%.6f,%.6f,%.6f',$values[$i],$values[$i+1],$values[$i+2]);return array_unique($keys);};
+check(count(array_intersect($vertexKeys($partA),$vertexKeys($partB)))===2,'Material-change shoulder meshes share exactly the same boundary rail vertices');
+check(rejects(fn()=>SweepLine\BeamShoulderMesh::build('bad<material',$openNodes)),'Shoulder mesh rejects unsafe material identifiers');
