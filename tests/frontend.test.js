@@ -14,7 +14,7 @@ async function testFrontend(sources) {
     setAttribute(k,v){this[k]=v;}
     removeAttribute(k){delete this[k];}
     contains(){return false;}
-    scrollIntoView(){}
+    scrollIntoView(options){this.lastScroll=options;}
     reset(){for(const field of Object.values(this.fields))field.value='';}
     addEventListener(n,fn){this[n]=fn;}
   }
@@ -84,6 +84,7 @@ async function testFrontend(sources) {
   await flush();
   let req=requests.filter(r=>r.path==='/api/search').at(-1),payload=JSON.parse(req.body);
   check(observedElements.includes(get('map'))&&observedElements.includes(get('road-detail')),'Browser ResizeObserver attaches without blocking Discovery initialization');
+  check(get('search-feedback').lastScroll?.block==='start','Starting a search jumps to its progress section on the page');
   check(payload.min_curve_density_score===2.2,'Curve density uses normalized default in search requests');
   check(payload.surface_filter==='exclude_unpaved'&&payload.min_curvature_quality_score===2.08&&payload.min_sustained_curve_ft===150,'Advanced filter defaults are submitted');
   check(payload.max_stops===1,'New searches submit one mapped stop by default');

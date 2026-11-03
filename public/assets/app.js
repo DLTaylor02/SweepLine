@@ -470,11 +470,18 @@ $('road-diagnostic').onsubmit=async event=>{
   finally{if(sequence===diagnosticRequest)$('diagnostic-submit').disabled=false;}
 };
 
+function scrollToSearchProgress(){
+  const feedback=$('search-feedback'),panel=feedback.closest?.('aside');
+  if(panel&&panel.scrollHeight>panel.clientHeight){
+    panel.scrollTo({top:Math.max(0,panel.scrollTop+feedback.getBoundingClientRect().top-panel.getBoundingClientRect().top-16),behavior:'auto'});
+  }else feedback.scrollIntoView({behavior:'auto',block:'start'});
+}
+
 $('search').onsubmit = event => {
   event.preventDefault();cancelCustomRoad();updatePreparationAreas(null);clearTimeout(pollTimer);const sequence=++request,form=event.target;
   $('submit').disabled=true;setStatus('Preparing your road search…',true);$('road-detail').hidden=true;selected=null;clearRoadEndpoints();
   const payload={...searchParameters(form),_recorded:event.fromHistory===true};
-  rememberSearch(payload);discover(payload,sequence);
+  scrollToSearchProgress();rememberSearch(payload);discover(payload,sequence);
 };
 async function openFavorite(id) {
   clearTimeout(pollTimer);const sequence=++request;

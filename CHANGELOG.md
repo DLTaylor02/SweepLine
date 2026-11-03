@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Jump to search progress when a search starts, scrolling only the left panel on desktop and the page on mobile. Background polls do not reposition the view.
+
 - Show search preparation tiles on the map with light red queued fills, pulsing yellow active fills and green ready fills, plus stronger borders and a legend. Use real task bounds including split tiles, clear overlays on completion/new searches/sign-out, and restore them after map recovery.
 
 - Add BeamNG-style staged progress to Discovery searches for coverage, ZIP location, downloading, analysis and results. Keep actual area counts and accessible area progress, reflect repeated stages across areas, and mark cached/completed searches ready without estimating time or percentages.
