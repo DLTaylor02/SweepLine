@@ -22,7 +22,7 @@ header('X-Content-Type-Options: nosniff');
 try {
     if ($path==='/api/setup') { throw new OutOfBoundsException('Endpoint not found'); }
     $method=$_SERVER['REQUEST_METHOD']??'GET';
-    $postPaths=['/api/custom-roads','/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/beamng'];
+    $postPaths=['/api/elevations','/api/custom-roads','/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/beamng'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if ($path==='/api/admin/storage' && $method==='PATCH') {$expected='PATCH';}
     if ($path==='/api/admin/session-settings' && $method==='GET') {$expected='GET';}
@@ -63,7 +63,8 @@ try {
             $user=$auth->requireUser(preg_match('#^/api/admin/users(?:/|$)#',$path)?'admin':str_starts_with($path,'/api/admin/'));
             // Release the session lock before spatial queries or polling.
             if ($path!=='/api/password/change') {session_write_close();}
-            if($path==='/api/beamng'){$result=(new SweepLine\BeamJobs($db))->create((int)$user['id'],$input);}
+            if($path==='/api/elevations'){$result=SweepLine\EndpointElevation::load($db,$input);}
+            elseif($path==='/api/beamng'){$result=(new SweepLine\BeamJobs($db))->create((int)$user['id'],$input);}
             elseif(preg_match('#^/api/beamng/([a-f0-9]{32})(?:/(download|cancel))?$#',$path,$m)) {
                 $exports=new SweepLine\BeamJobs($db);$action=$m[2]??'';
                 if($action==='download')$exports->download((int)$user['id'],$m[1]);

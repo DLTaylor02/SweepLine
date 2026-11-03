@@ -207,3 +207,7 @@ $db->prepare("UPDATE data_tasks SET status='cancelled' WHERE id=?")->execute([$c
 $cancelQueue->purgeCancelled();
 $remaining=$db->prepare('SELECT count(*) FROM import_jobs WHERE id=?');$remaining->execute([$lockedImport]);
 check((int)$remaining->fetchColumn()===0,'Stopped cancelled import is removed after worker releases it');
+
+$db->exec("INSERT INTO endpoint_elevations(point_key,elevation_m,expires_at) VALUES ('-119.800000,39.500000',304.8,now()+interval '1 day'),('-119.700000,39.600000',NULL,now()+interval '5 minutes') ON CONFLICT(point_key) DO UPDATE SET elevation_m=excluded.elevation_m,expires_at=excluded.expires_at");
+$endpointCache=SweepLine\EndpointElevation::load($db,['points'=>[[-119.8,39.5],[-119.7,39.6]]]);
+check($endpointCache['elevations_m']===[304.8,null],'Elevation cache returns successful and unavailable samples without provider calls');

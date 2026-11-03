@@ -391,13 +391,28 @@ async function selectRoad(id) {
     };
     favoriteStatus.className='road-feedback';
     let orientation=savedRoadDirection(data);
+
+    let elevations=null,elevationLoading=true;
+    const overview=text('div','','road-overview');overview.setAttribute('role','status');overview.setAttribute('aria-live','polite');
+    const paintOverview=()=>{
+      overview.replaceChildren();
+      const reversed=(Number(data.travel_direction??road.travel_direction)<0)!==(orientation==='reverse');
+      const values=elevations?(reversed?[elevations[1],elevations[0]]:elevations):[null,null];
+      const feet=value=>typeof value==='number'&&Number.isFinite(value)?Math.round(value/0.3048).toLocaleString()+' ft':elevationLoading?'Loading…':'Unavailable';
+      const length=Number(data.length_m??road.length_m);
+      for(const [label,value] of [['Length',Number.isFinite(length)?(length/1609.344).toFixed(2)+' mi':'Unavailable'],['Starting elevation',feet(values[0])],['Ending elevation',feet(values[1])]]){
+        const item=text('div','','road-overview-item');item.append(text('span',label),text('strong',value));overview.append(item);
+      }
+    };
+    paintOverview();detail.append(overview);
+
     const direction=text('div','','road-direction');
     const swap=text('button','Swap ends');swap.type='button';swap.className='road-direction-swap';
     const directionStatus=text('p','');directionStatus.setAttribute('role','status');
     swap.title='Swap Start and Finish for favorites and exports';direction.append(heart,swap);
     const exports=text('div','','road-exports');
     const paintExports=()=>{
-      drawRoadEndpoints(data,orientation);exports.replaceChildren();
+      drawRoadEndpoints(data,orientation);paintOverview();exports.replaceChildren();
       swap.setAttribute('aria-pressed',String(orientation==='reverse'));
       directionStatus.textContent=orientation==='reverse'&&(Number(data.travel_direction)||0)!==0?'Selected orientation opposes mapped one-way travel. Verify signs and access before driving.':'Start and Finish pins show the direction used by all exports.';
       directionStatus.hidden=!(orientation==='reverse'&&(Number(data.travel_direction)||0)!==0);
@@ -430,9 +445,16 @@ async function selectRoad(id) {
     swap.onclick=()=>{orientation=orientation==='forward'?'reverse':'forward';try{window.sessionStorage?.setItem(roadDirectionKey(data),orientation);}catch(_){}paintExports();savePreferences();};
     detail.append(direction,favoriteStatus,directionStatus,exports);
     paintNames();paintExports();
+    const coordinates=(data.geometry||road.geometry)?.coordinates;
+    if(coordinates?.length){
+      api('/api/elevations',{method:'POST',body:JSON.stringify({points:[coordinates[0].slice(0,2),coordinates.at(-1).slice(0,2)]})})
+        .then(result=>{elevations=Array.isArray(result.elevations_m)?result.elevations_m:null;})
+        .catch(()=>{elevations=null;})
+        .finally(()=>{elevationLoading=false;paintOverview();scheduleRoadFit();});
+    }else{elevationLoading=false;paintOverview();}
     const breakdown=text('details','','road-breakdown');breakdown.append(text('summary','Score breakdown & details'));const metrics=text('div','','road-dimensions');breakdown.append(metrics);
     Object.entries(data.dimensions).forEach(([key,value])=>{const row=text('div','','dimension');row.append(text('span',key),text('strong',`${Math.round(value*100)}/100`));metrics.append(row);});
-    breakdown.append(text('p','Elevation unavailable. Score dimensions are weighted for the selected profile. Completeness measures mapped attributes, not certainty that every control is present.'));
+    breakdown.append(text('p','Endpoint elevations estimate ground height, not surveyed road or bridge height. Score dimensions are weighted for the selected profile. Completeness measures mapped attributes, not certainty that every control is present.'));
     breakdown.append(text('p','Exports follow the selected direction; no navigation to the start is included.'));detail.append(breakdown);scheduleRoadFit();
   } catch(e) { if(selected===id) detail.append(text('p',e.message)); }
 }

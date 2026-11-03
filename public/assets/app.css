@@ -93,3 +93,5 @@
 .discovery-panels{border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:16px 14px}
 .discovery-panels .custom-road-picker{margin:0;padding:0;border:0}
 .discovery-panels .search-feedback{margin-bottom:0}
+
+.road-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0;padding:10px 0;border-block:1px solid var(--line)}.road-overview-item span{display:block;font-size:10px;color:var(--muted);margin-bottom:4px}.road-overview-item strong{display:block;font-size:13px;overflow-wrap:anywhere}

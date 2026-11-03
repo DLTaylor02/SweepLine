@@ -24,6 +24,7 @@ expect(callApi($anonymous,'GET','/api/search-history'),401,'Search history requi
 expect(callApi($anonymous,'GET','/api/zips/nearest?lon=-119.8&lat=39.52'),401,'Map ZIP lookup requires sign-in');
 expect(callApi($anonymous,'POST','/api/search-diagnostics',['zip'=>'12345','road'=>'Synthetic']),403,'Road diagnosis requires CSRF before authentication');
 expect(callApi($anonymous,'GET','/api/coverage'),401,'Coverage requires login');
+expect(callApi($anonymous,'POST','/api/elevations',['points'=>[[0,0],[1,1]]]),403,'Endpoint elevation requires CSRF');
 expect(callApi($anonymous,'GET','/api/custom-roads/1'),401,'Custom road snapshots require sign-in');
 expect(callApi($anonymous,'POST','/api/custom-roads',[]),403,'Custom road selection requires CSRF');
 $session=expect(callApi($admin,'GET','/api/session'),200,'Get session and CSRF');

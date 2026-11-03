@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Display selected-road length in miles and endpoint terrain elevations in feet for discovery, custom and favorite roads. Load USGS point elevations asynchronously, cache successful samples for 90 days and unavailable samples for five minutes, and swap values with Start/Finish orientation.
+
 - Retry temporary BeamNG building-provider failures up to three attempts with 5/10-second cancellable backoff. Retry Overpass timeout responses, avoid retrying permanent/processing failures, and report provider exhaustion separately from processing failures.
 
 - Soften BeamNG stock terrain color toward exposure-matched aerial hue/chroma at a 50% blend, retaining shadow/snow/water guards. Reduce aerial fallback saturation from 1.5 to 1.25; preserve terrain geometry, classification and building placement.

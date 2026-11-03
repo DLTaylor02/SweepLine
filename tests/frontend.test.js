@@ -50,7 +50,8 @@ async function testFrontend(sources) {
     else if(path==='/api/favorites/7'&&options.method==='DELETE'){favoritesSaved=false;data={deleted:true};}
     else if(path==='/api/favorites/7')data=savedFavorite;
     else if(path==='/api/favorites')data=favoritesSaved?[savedFavorite]:[];
-    else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',alternate_names:['Other Road Name'],score:70,dimensions:{curvature:0.7}};
+    else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',alternate_names:['Other Road Name'],score:70,dimensions:{curvature:0.7},geometry:favoriteRoad.geometry};
+    else if(path==='/api/elevations')data={elevations_m:[304.8,609.6]};
     else if(path==='/api/coverage')data=[];
     else if(path==='/api/admin/users')data=[{id:2,name:'Test member',username:'member',email:null,role:'member',active:true,must_change_password:true}];
     else if(path==='/api/password-policy')data={minimum_length:12,strength:'standard',screen_compromised:true};
@@ -139,9 +140,13 @@ async function testFrontend(sources) {
   check(exportLinks[2].target==='_blank'&&exportLinks[2].rel==='noopener'&&!('download' in exportLinks[2]),'PDF opens a new preview tab without a forced download');
   check('download' in exportLinks[0]&&'download' in exportLinks[1],'GPX and KMZ remain downloads');
   check(exportLinks[0].href==='/api/roads/1/export?format=gpx&profile=twisty&orientation=forward&preferred_name=Test%20road','Export targets selected road and active profile');
+  const overview=get('road-detail').children.find(n=>n.className==='road-overview');
+  check(overview.children[0].children[1].textContent==='3.11 mi','Selected road details show miles even when detail response omits length');
+  check(overview.children[1].children[1].textContent.replace(/,/g,'')==='1000 ft'&&overview.children[2].children[1].textContent.replace(/,/g,'')==='2000 ft','Endpoint elevations render in feet');
   const swapDirection=get('road-detail').children.find(n=>n.className==='road-direction').children.find(n=>n.className==='road-direction-swap');
   swapDirection.onclick();
   check(get('road-detail').children.find(n=>n.className==='road-exports').children.every(n=>n.href.includes('orientation=reverse')),'Swapping endpoints updates all export formats');
+  check(overview.children[1].children[1].textContent.replace(/,/g,'')==='2000 ft'&&overview.children[2].children[1].textContent.replace(/,/g,'')==='1000 ft','Swap ends also swaps elevation values');
   check(swapDirection['aria-pressed']==='true','Swap direction exposes accessible selected state');
   swapDirection.onclick();
   const nameChoices=get('road-detail').children.find(n=>n.className==='road-name-picker');
@@ -411,6 +416,7 @@ async function testFrontend(sources) {
   const customLinks=get('road-detail').children.find(n=>n.className==='road-exports').children;
   check(customLinks.every(n=>n.href.includes('/api/custom-roads/55/export')),'Every standard export uses server-validated custom selection');
   check(customBeamContext.customId===55,'BeamNG uses custom selection rather than the full source candidate');
+  check(get('road-detail').children.find(n=>n.className==='road-overview').children[1].children[1].textContent==='Unavailable','Custom road detail remains usable when elevation lookup fails');
   const customHeart=get('road-detail').children.find(n=>n.className==='road-direction').children.find(n=>n.className==='favorite-heart');
   await customHeart.onclick();await flush();check(customSavedInput.custom_id===55,'Custom favorite sends selection ID for server-owned geometry');
   get('pick-custom-road').onclick();get('pick-custom-road').onclick();
