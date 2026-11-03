@@ -6,10 +6,10 @@ final class BeamTerrain
     public const TEXTURE_SIZE=1024;
     public const PALETTE=[
         ["name"=>"grass","prefix"=>"/assets/materials/terrain/grass/t_grass_02/t_grass_02","ground"=>"GRASS"],
-        ["name"=>"forest_floor","prefix"=>"/assets/materials/terrain/soil/t_dirt_dry_grassy/t_dirt_dry_grassy","ground"=>"GRASS"],
-        ["name"=>"dry_soil","prefix"=>"/assets/materials/terrain/soil/dirt_crumbly/t_dirt_crumbly","ground"=>"DIRT"],
+        ["name"=>"forest_floor","prefix"=>"/assets/materials/terrain/grass/ind_grass/t_ind_grass","ground"=>"GRASS"],
+        ["name"=>"dry_soil","prefix"=>"/assets/materials/terrain/soil/t_dirt_sandy/t_dirt_sandy","ground"=>"DIRT"],
         ["name"=>"gravel","prefix"=>"/assets/materials/terrain/soil/t_gravel/t_gravel","ground"=>"GRAVEL"],
-        ["name"=>"rock","prefix"=>"/assets/materials/terrain/rock/t_dirt_rocky/t_dirt_rocky","ground"=>"ROCK"],
+        ["name"=>"rock","prefix"=>"/assets/materials/terrain/rock/terrain_dirt_rocky_large/t_dirt_rocks_large","ground"=>"ROCK"],
         ["name"=>"aerial_fallback","prefix"=>null,"ground"=>"DIRT"],
         ["name"=>"stone","prefix"=>"/assets/materials/terrain/rock/t_pebbles/t_pebbles","ground"=>"ROCK"],
         ["name"=>"sand","prefix"=>"/assets/materials/terrain/sand/t_sand/t_sand","ground"=>"SAND"],
@@ -24,9 +24,15 @@ final class BeamTerrain
         $chroma=max($r,$g,$b)-min($r,$g,$b);
         if(($b>$r*1.2&&$b>$g*1.15)||($brightness>225&&$chroma<18)||$brightness<12)return 5;
         $biome=BeamBiome::context($center,$elevation,$pixels);
+        // Vegetation evidence takes priority over slope: forested hills are not bare rock.
+        $greenVotes=0;$canopyVotes=0;
+        foreach($pixels as [$pr,$pg,$pb]){
+            if($pg>$pr*1.015&&$pg>$pb*1.01)$greenVotes++;
+            if(($pr+$pg+$pb)/3<100&&$pg>$pr*1.015&&$pb<$pg*1.35)$canopyVotes++;
+        }
+        if($canopyVotes/$n>=0.6&&($biome["montane"]>0.35||$brightness<65)&&$biome["tree_probability"]>0.55)return 1;
+        if($greenVotes/$n>=0.6)return $brightness<100&&($biome["montane"]>0.35||$brightness<65)&&$biome["tree_probability"]>0.4?1:0;
         if($slope>0.5)return 4;
-        if($g>$r*1.04&&$g>$b*1.02)return $brightness<100&&($biome["montane"]>0.35||$brightness<65)&&$biome["tree_probability"]>0.4?1:0;
-        if($brightness<85&&$g>$r*1.01&&$g>$b*0.98&&$biome["tree_probability"]>0.55)return 1;
         // Warm pale ground is a sand candidate, not automatically white/snow fallback.
         if($brightness>=130&&$r>$b*1.10&&$g>$b*1.04&&$r>=$g*0.98&&$slope<0.3)return 7;
         if($r>$g*1.08&&$g>$b*1.05)return $slope>0.3?4:2;

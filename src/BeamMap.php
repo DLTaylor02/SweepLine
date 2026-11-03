@@ -5,7 +5,7 @@ use ZipArchive;
 final class BeamMap
 {
     public const ROAD_ELEVATION_OFFSET_M=0.25;
-    public const ROAD_CLEARANCE_M=0.15;
+    public const ROAD_CLEARANCE_M=0.10;
     private static function json(mixed $value): string {return json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT);}
     public static function spawn(array $road,array $profiles,bool $end,bool $oneway): array
     {

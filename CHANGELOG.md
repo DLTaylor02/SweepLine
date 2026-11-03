@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reduced BeamNG road-to-terrain corridor clearance from 15 cm to 10 cm, retaining the elevation sampling method and terrain-overlap correction.
+
+- Corrected steep and muted forest terrain being classified as stone/rock. Replaced stony forest ground with grass blades, and changed dry soil and exposed-rock stock materials after inspecting export (15).
+
 - Added distinct sand and stone terrain classes and broadened mineral recognition for pale/shaded slopes while retaining uncertain-water/snow/pavement and mapped-roof fallback.
 - Replaced moss-heavy forest floor, grass and dark soil textures with alternate stock PBR sets; verified all replacement channels. Removed the web terrain-style dropdown and always requests Stock materials, ignoring obsolete Aerial preferences.
 

@@ -167,7 +167,7 @@ try{
         $ground=unpack('v',substr($binary,5+($y*$n+$x)*2,2))[1]/65536*$terrainObject['maxHeight'];
         $gap=$point[2]-$ground;$maxGap=max($maxGap,$gap);$minGap=min($minGap,$gap);
     }
-    check($minGap>=0 && $minGap>0.14 && $maxGap<0.16,'Terrain recess is reduced to 15 cm without changing elevation sampling');
+    check($minGap>=0 && $minGap>0.09 && $maxGap<0.11,'Terrain recess is reduced to 10 cm without changing elevation sampling');
     check(abs($flatRoads[0]['nodes'][0][2]+$flatReport['elevation_origin_m']-100.25)<0.001,'Original road surface offset is 25 cm above sampled elevation');
     $mats=json_decode($flatZip->getFromName($flatBase.'art/terrains/main.materials.json'),true);
     $aerial=imagecreatefromstring($flatZip->getFromName($flatBase.'art/terrains/aerial.color.png'));
@@ -354,8 +354,14 @@ check(SweepLine\BeamTerrain::category(array_fill(0,5,[200,180,140]),0.02,[-119,3
 check(SweepLine\BeamTerrain::category(array_fill(0,5,[210,208,200]),0.1,[-119,39],1800)===6,'Pale exposed stone receives stock stone instead of snow fallback');
 check(SweepLine\BeamTerrain::category(array_fill(0,5,[70,69,65]),0.35,[-119,39],2200)===6,'Shaded neutral mineral slopes receive stone rather than false forest floor');
 check(SweepLine\BeamTerrain::category(array_fill(0,5,[70,69,65]),0.65,[-119,39],2200)===4,'Steeper shaded mineral slopes receive rock');
-check(str_contains(SweepLine\BeamTerrain::PALETTE[1]['prefix'],'t_dirt_dry_grassy')&&str_contains(SweepLine\BeamTerrain::PALETTE[2]['prefix'],'dirt_crumbly'),'Forest floor and soil use replacement stock textures');
+check(str_contains(SweepLine\BeamTerrain::PALETTE[1]['prefix'],'t_ind_grass')&&str_contains(SweepLine\BeamTerrain::PALETTE[2]['prefix'],'t_dirt_sandy'),'Forest floor and soil use replacement stock textures');
 
 $roofRaster=new BeamRaster(16,16,str_repeat(pack('g',500),256),str_repeat(chr(50),256).str_repeat(chr(160),256).str_repeat(chr(20),256));
 $roofClasses=SweepLine\BeamTerrain::classify($roofRaster,[-119,39],[['points'=>[[3,3],[10,3],[10,10],[3,10],[3,3]]]],static function($m){});
 check(ord($roofClasses['layers'][6*16+6])===5 && ord($roofClasses['layers'][1*16+1])===0,'Mapped roof interiors retain aerial fallback without replacing surrounding grass');
+
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[50,65,45]),0.8,[-119,39],2200)===1,'Steep green forest stays forest rather than bare rock');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[65,68,75]),0.35,[-119,39],2200)===1,'Muted blue-green canopy shadows stay forest rather than stone');
+check(SweepLine\BeamTerrain::category(array_fill(0,5,[110,114,105]),0.7,[-119,39],500)===0,'Subtle green grass on steep terrain stays vegetation');
+check(SweepLine\BeamTerrain::category([[65,68,75],[65,68,75],[65,68,75],[65,68,75],[100,100,95]],0.35,[-119,39],2200)===1,'Mixed canopy neighborhood retains vegetation despite a bare pixel');
+check(str_contains(SweepLine\BeamTerrain::PALETTE[1]['prefix'],'/grass/ind_grass/') && str_contains(SweepLine\BeamTerrain::PALETTE[4]['prefix'],'terrain_dirt_rocky_large'),'Forest uses grass blades and exposed rock uses a lighter replacement');

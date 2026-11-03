@@ -374,7 +374,7 @@ The BeamNG action appears beside GPX/KMZ/PDF. Generate becomes an orange Downloa
 
 Every new BeamNG generation downloads fresh elevation and imagery; completed exports are never reused for generation. Raw rasters and intermediate files are discarded immediately after completion, failure or cancellation. Only the finished ZIP remains downloadable for 30 minutes. Reopening a road resumes queued/running work, but does not restore a completed export as a substitute for fresh generation. Duplicate clicks while an identical job is active share that job.
 
-BeamNG 0.40 samples terrain base textures in grid units. Export material BaseTexSize fields therefore use terrain resolution, while squareSize retains the real-world meter spacing. The aerial PNG remains north-up to match the shader''s Y flip. This avoids stretching a small portion of the imagery across a large map. Road clearance is 15 cm; regeneration is required for existing ZIPs.
+BeamNG 0.40 samples terrain base textures in grid units. Export material BaseTexSize fields therefore use terrain resolution, while squareSize retains the real-world meter spacing. The aerial PNG remains north-up to match the shader''s Y flip. This avoids stretching a small portion of the imagery across a large map. Road clearance is 10 cm; regeneration is required for existing ZIPs.
 
 BeamNG road clearance is now 25 cm. Vehicle spawn frames include a 180-degree facing correction at both endpoints, preserving their lane positions and leaving arch orientation unchanged. Generate a fresh ZIP after upgrading.
 
@@ -428,7 +428,7 @@ Stock vegetation also depends on each source map''s parent art/shapes/trees/main
 
 Trees, bushes and scatter rocks now all reference installed stock meshes through the native Forest system. Scatter rocks use Utah utah_boulder_1, with conservative measured footprint bounds. Exports no longer bundle procedural rock/tree/bush placeholder meshes. Arches, bridge parts and mapped building extrusions remain intentionally generated. The report''s stock_scenery_assets field identifies exact model dependencies; the older vegetation_assets field remains for compatibility. Fresh regeneration is required; supplied diagnostic ZIPs are never modified.
 
-Terrain color saturation now uses a centralized 1.5 multiplier. The corridor recess is reduced to 15 cm using the same shaping method; original 1024 elevation sampling and the road elevation offset are unchanged. The overlap-removal pass remains active with its 8 cm numerical clearance, so intersecting terrain cells can still be lowered further when necessary. Generate a fresh export to apply these settings.
+Terrain color saturation now uses a centralized 1.5 multiplier. The corridor recess is reduced to 10 cm using the same shaping method; original 1024 elevation sampling and the road elevation offset are unchanged. The overlap-removal pass remains active with its 8 cm numerical clearance, so intersecting terrain cells can still be lowered further when necessary. Generate a fresh export to apply these settings.
 
 New BeamNG exports start at 7 AM with time progression disabled. The scene uses the engine''s noon-based normalized clock value 19/24. Players can still change the time in-game; regenerate older ZIPs to update their default.
 
@@ -473,3 +473,9 @@ The web export control now always requests Stock materials; its terrain-style dr
 Seven physical terrain classes are now supported: grass, forest floor, dry soil, gravel, stone, rock and sand, plus aerial fallback. Warm pale terrain can classify as sand, pale or shaded neutral mineral slopes as stone/gravel, and steep slopes as rock. Bright near-neutral snow-like colors and blue water-like colors retain fallback. Flat uniform gray areas remain uncertain to avoid turning pavement into rock; mapped building bounds are also preserved as imagery.
 
 Palette changes replace grass 01 with grass 02, the moss-heavy forest floor with dry grassy ground, and dark loose soil with crumbly soil. Stone uses stock pebbles and sand uses stock sand. Matching albedo/normal/roughness/AO/height channels are referenced from the installed game; no stock image data is included in generated ZIPs. These are visual proxies, not geological or land-cover measurements. Full-resolution classification, the isolated-speckle filter, 200-foot scenery bounds and terrain-overlap correction remain unchanged. Regenerate an export for the new palette and review appearance in-game.
+
+### Terrain correction after export (15)
+
+Vegetation color evidence is evaluated before slope-based mineral classification, including muted blue-green forest shadows. A steep hillside alone is no longer enough to replace a vegetated patch with rock. Neutral gray mineral surfaces retain the stone/gravel rules; these remain visual heuristics rather than surveyed land cover.
+
+The forest-floor slot now uses stock `grass/ind_grass/t_ind_grass` (grass blades rather than the stony `soil/t_dirt_dry_grassy`), dry soil uses `soil/t_dirt_sandy/t_dirt_sandy`, and exposed rock uses `rock/terrain_dirt_rocky_large/t_dirt_rocks_large`. These supersede the earlier palette choices above. All five PBR channels follow each replacement; no game textures are copied into exports. ZIP (15) confirmed that soil occupied under 0.1% of the map, so changing only its texture could not fix dark areas belonging to other layers. Regenerate an export to apply the correction; lighting and appearance still require in-game validation.
