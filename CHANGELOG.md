@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Remove the idle ZIP-search hint from all Discovery tabs; show feedback only when there is activity or a status message.
+
+- Join the selected Discovery tab to a bordered content panel, retain shared progress inside that frame, and move the driving-profile selector into ZIP search.
+
 - Split the Discovery sidebar into ZIP search, Custom road and Your Discoveries tabs with keyboard navigation. Open discoveries automatically after completed searches and place road diagnostics above results; retain shared profile and preparation progress.
 
 - Reuse the staged discovery progress bar for custom-road preparation, including live area counts, download/analysis stages, completion and cancellation cleanup.

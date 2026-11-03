@@ -143,6 +143,7 @@ function setStatus(message, busy=false, preparation=null) {
   if(preparation?.state==='ready')showDiscoveryTab('discoveries');
   if(preparation||!busy)updatePreparationAreas(preparation);
   $('status').textContent=message;
+  $('search-feedback').hidden=!message&&!busy;
   $('search-feedback').dataset.busy=String(busy);
   $('search-feedback').setAttribute('aria-busy',String(busy));
   $('search-spinner').hidden=!busy;
@@ -543,7 +544,7 @@ async function handleSession(event) {
     ++diagnosticRequest;$('diagnostic-results').replaceChildren();$('diagnostic-status').textContent='';$('diagnostic-submit').disabled=false;
     cancelCustomRoad();++zipPickRequest;setZipPickMode(false);$('pick-zip').disabled=false;$('zip-pick-status').textContent='';
     clearRoadEndpoints();activeSearchUser=null;restoredSearchUser=null;currentSearchParameters=null;
-    ++request;clearTimeout(pollTimer);roads=[];render();$('road-detail').hidden=true;$('submit').disabled=false;setStatus('Choose a ZIP code to explore roads nearby.');
+    ++request;clearTimeout(pollTimer);roads=[];render();$('road-detail').hidden=true;$('submit').disabled=false;setStatus('');
     if(map && map.getSource('roads')) { map.getSource('roads').setData(empty());map.getSource('radius').setData(empty()); }
     return;
   }
