@@ -50,3 +50,53 @@ $largeBuilding=['position'=>[200,140,100],'radius'=>60];
 $vegetation=SweepLine\BeamScenery::place($broad,$bp,$greenRaster,12345,static fn($m)=>null,[-85,40],[$largeBuilding]);
 $clear=(bool)$vegetation['objects'];foreach($vegetation['objects'] as $object)if(hypot($object['position'][0]-200,$object['position'][1]-140)<60+SweepLine\BeamScenery::radius($object['kind'],$object['scale'],$object['asset']))$clear=false;
 check($clear,'Large mapped buildings reserve all occupied spatial cells so trees cannot appear through their roofs');
+
+$curvedMain=[[0,100,20],[40,104,21],[80,100,23],[120,115,24]];
+$curvedProfiles=array_fill(0,count($curvedMain),$profile);
+$curvedSections=SweepLine\BeamJunctionBoundary::sections($curvedMain,$curvedProfiles);
+$edgeStart=$curvedSections[1][0];$edgeEnd=$curvedSections[2][0];
+$edgeMid=array_map(static fn($a,$b)=>($a+$b)/2,$edgeStart,$edgeEnd);
+$hit=SweepLine\BeamJunctionBoundary::hit([$edgeMid[0],$edgeMid[1]+20,0],[0,1],$curvedMain,$curvedProfiles,['along'=>60]);
+check($hit!==null&&hypot($hit[0]-$edgeMid[0],$hit[1]-$edgeMid[1])<1e-7&&abs($hit[2]-$edgeMid[2])<1e-7,'Curved-road connector hits the actual ribbon edge and exact edge elevation');
+$overlapVertices=[[50,100,30],[70,100,30],[70,120,30],[50,120,30]];
+$overlapTriangles=[['v'=>[0,1,2],'uv'=>[[0,0],[1,0],[1,1]],'material'=>'fixture'],['v'=>[0,2,3],'uv'=>[[0,0],[1,1],[0,1]],'material'=>'fixture']];
+[$trimmedVertices,$trimmedTriangles]=SweepLine\BeamJunctionBoundary::trim($overlapVertices,$overlapTriangles,$curvedMain,$curvedProfiles);
+$overlapArea=0;$contactCount=0;$contactError=0;
+foreach($trimmedTriangles as $t){
+    $pieces=[array_map(static fn($i)=>$trimmedVertices[$i],$t['v'])];$original=abs(BeamPolygon::cross(...$pieces[0]))/2;
+    foreach(SweepLine\BeamJunctionBoundary::cutters($curvedMain,$curvedProfiles,$trimmedVertices) as $c){
+        $next=[];foreach($pieces as $piece)array_push($next,...SweepLine\BeamJunctionBoundary::subtract($piece,$c));$pieces=$next;
+    }
+    $left=0;foreach($pieces as $piece)for($j=1;$j<count($piece)-1;$j++)$left+=abs(BeamPolygon::cross($piece[0],$piece[$j],$piece[$j+1]))/2;
+    $overlapArea+=max(0,$original-$left);
+}
+foreach($trimmedVertices as $p){
+    $dx=$edgeEnd[0]-$edgeStart[0];$dy=$edgeEnd[1]-$edgeStart[1];$t=(($p[0]-$edgeStart[0])*$dx+($p[1]-$edgeStart[1])*$dy)/($dx*$dx+$dy*$dy);
+    if($t>=0&&$t<=1&&hypot($p[0]-$edgeStart[0]-$t*$dx,$p[1]-$edgeStart[1]-$t*$dy)<1e-6){$contactCount++;$contactError=max($contactError,abs($p[2]-$edgeStart[2]-$t*($edgeEnd[2]-$edgeStart[2])));}
+}
+check(count($trimmedTriangles)>0&&$overlapArea<1e-7,'Clipping removes raised branch pavement from the primary footprint while retaining the side road');
+check($contactCount>0&&$contactError<1e-7,'Clipped contact vertices have the exact main-road elevation, not the raised branch elevation');
+$rendered=BeamIntersections::markingSections($curvedMain,$curvedProfiles,[['along'=>60,'radius'=>4]]);
+$paintSections=SweepLine\BeamJunctionBoundary::renderSections($curvedMain,$curvedProfiles,$rendered['points']);
+$unchanged=true;
+foreach($rendered['points'] as $i=>$p)foreach($curvedMain as $j=>$original)if(hypot($p[0]-$original[0],$p[1]-$original[1])<1e-7)$unchanged=$unchanged&&$paintSections[$i]===$curvedSections[$j];
+check($unchanged&&count($paintSections)>count($curvedMain),'Paint-only subdivisions retain original cross-sections rather than recomputing and shifting the road edge');
+$primaryMesh=BeamPavement::build($rendered,$curvedMain,$curvedProfiles,'fixture',$paintSections);
+check(!$primaryMesh['connector']&&$primaryMesh['triangles']>0,'Explicit primary pavement uses the same boundary definition without adding a second junction surface');
+
+$touchTriangle=[[0,0,0],[10,0,0],[0,10,0]];
+$outsideTouch=[[0,0,5],[10,0,5],[5,-4,5]];
+$pieces=SweepLine\BeamJunctionBoundary::subtract($outsideTouch,$touchTriangle);$area=0;
+foreach($pieces as $piece)for($i=1;$i<count($piece)-1;$i++)$area+=abs(BeamPolygon::cross($piece[0],$piece[$i],$piece[$i+1]))/2;
+check(abs($area-20)<1e-8,'Boundary-coincident vertices preserve all adjacent outside pavement instead of dropping a touching triangle');
+$cuts=SweepLine\BeamJunctionBoundary::cutters($curvedMain,$curvedProfiles,$trimmedVertices);$outside=true;
+foreach($trimmedTriangles as $t){
+    $p=array_map(static fn($id)=>$trimmedVertices[$id],$t['v']);
+    $samples=[array_map(static fn($a,$b,$c)=>($a+$b+$c)/3,...$p)];
+    foreach([0,1,2] as $i)$samples[]=array_map(static fn($a,$b)=>($a+$b)/2,$p[$i],$p[($i+1)%3]);
+    foreach($samples as $sample)foreach($cuts as $cut){
+        $inside=true;foreach([0,1,2] as $i)if(BeamPolygon::cross($cut[$i],$cut[($i+1)%3],$sample)<=1e-7)$inside=false;
+        if($inside)$outside=false;
+    }
+}
+check($outside,'Independent half-plane checks find no retained branch triangle centres or edges inside the primary pavement');

@@ -11,25 +11,12 @@ final class BeamPavement
         $a=$points[max(0,$i-1)];$b=$points[min(count($points)-1,$i+1)];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy)?:1;$half=$profiles[$i]['width_m']/2;$p=$points[$i];
         return [[$p[0]-$dy/$length*$half,$p[1]+$dx/$length*$half,$p[2]],[$p[0]+$dy/$length*$half,$p[1]-$dx/$length*$half,$p[2]]];
     }
-    private static function localMain(array $point,array $road,array $profiles,array $join): array
-    {
-        $first=max(0,$join['segment']-1);$last=min(count($road)-1,$join['segment']);$distance=0.0;
-        while($first>0&&$distance<40){$distance+=hypot($road[$first][0]-$road[$first-1][0],$road[$first][1]-$road[$first-1][1]);$first--;}
-        $distance=0.0;while($last<count($road)-1&&$distance<40){$distance+=hypot($road[$last+1][0]-$road[$last][0],$road[$last+1][1]-$road[$last][1]);$last++;}
-        return BeamIntersections::nearest($point,array_slice($road,$first,$last-$first+1),array_slice($profiles,$first,$last-$first+1));
-    }
     /** Find the existing main-road boundary along a ray from the branch face. */
     public static function boundary(array $end,array $direction,array $road,array $profiles,array $join): ?array
     {
-        $at=static function($t)use($end,$direction,$road,$profiles,$join){$p=[$end[0]-$direction[0]*$t,$end[1]-$direction[1]*$t];$near=self::localMain($p,$road,$profiles,$join);return [$p,$near,$near['distance']-$near['half_width']];};
-        $lo=0.0;$hi=0.0;$found=false;
-        for($t=0;$t<=100;$t+=0.5){[$p,$near,$distance]=$at($t);if($distance<=0.005){$hi=$t;$found=true;break;}$lo=$t;}
-        if(!$found)return null;
-        for($i=0;$i<30;$i++){$mid=($lo+$hi)/2;if($at($mid)[2]<=0.005)$hi=$mid;else $lo=$mid;}
-        [$p,$near]=$at($hi);
-        return [$p[0],$p[1],$near['z']+0.001];
+        return BeamJunctionBoundary::hit($end,$direction,$road,$profiles,$join);
     }
-    public static function build(array $branch,array $main,array $mainProfiles,string $prefix): array
+    public static function build(array $branch,array $main,array $mainProfiles,string $prefix,?array $surfaceSections=null): array
     {
         $points=$branch['points'];$profiles=$branch['profiles'];$origin=$points[0];$vertices=[];$lookup=[];$triangles=[];$along=0.0;
         $vertex=static function($p)use(&$vertices,&$lookup){$key=implode(',',array_map(static fn($v)=>sprintf('%.7F',$v),$p));if(isset($lookup[$key]))return $lookup[$key];$id=count($vertices);$vertices[]=$p;$lookup[$key]=$id;return $id;};
@@ -37,7 +24,7 @@ final class BeamPavement
             $ids=array_map($vertex,[$a,$b,$c,$d]);
             foreach([[0,1,2],[0,2,3]] as $t){$x=$ids[$t[0]];$y=$ids[$t[1]];$z=$ids[$t[2]];if($x===$y||$y===$z||$z===$x||abs(BeamPolygon::cross([$a,$b,$c,$d][$t[0]],[$a,$b,$c,$d][$t[1]],[$a,$b,$c,$d][$t[2]]))<0.00000001)continue;$triangles[]=['v'=>[$x,$y,$z],'uv'=>[$uv[$t[0]],$uv[$t[1]],$uv[$t[2]]],'material'=>$material];}
         };
-        $sections=[];foreach($points as $i=>$p)$sections[]=self::section($points,$profiles,$i);
+        $sections=$surfaceSections??BeamJunctionBoundary::sections($points,$profiles);
         for($i=1;$i<count($points);$i++){
             $next=$along+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);$material=$prefix.'_road_'.self::key($profiles[$i]);
             $quad($sections[$i-1][0],$sections[$i-1][1],$sections[$i][1],$sections[$i][0],$material,[[0,$along/12],[1,$along/12],[1,$next/12],[0,$next/12]]);$along=$next;
@@ -49,8 +36,9 @@ final class BeamPavement
             $v0=($i-1-(count($rings)-1))/12;$v1=($i-(count($rings)-1))/12;
             $quad($a,$b,$c,$d,$prefix.'_road_'.self::key($profiles[0]),[[0,$v0],[1,$v0],[1,$v1],[0,$v1]]);
         }
+        if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles);
         return ['xml'=>self::collada($vertices,$triangles,$origin),'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
-            'connector_end_seam_m'=>($connector?0.0:null),'method'=>'Welded side-road/connector top surface; existing main-road MeshRoad unchanged.'];
+            'connector_end_seam_m'=>($connector?0.0:null),'method'=>'Exact ribbon boundary; overlapping side pavement removed; contact heights shared with primary surface.'];
     }
 
     public static function connectorRings(array $branch,array $main,array $mainProfiles): array

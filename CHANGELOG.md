@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix tire-catching intersection ledges by clipping side-road pavement out of the primary footprint and matching exact shared-edge elevations. Junction maps use an explicit primary ribbon to avoid independent native spline drift; retain sampled route/elevation/width data, native terrain shoulders, bridge protections, markings and navigation. Preserve pavement edges across paint subdivisions. Canal Road (4) geometry replay removes overlaps at 22 entrances across 50 branches. Regenerate exports; in-game collision validation remains required.
+
+
 - Replace raised side-road surfaces and lower terrain decals with one welded pavement mesh per branch and connector. Preserve primary-road centreline/elevation/width, use smooth junction crossfall, and shape native side shoulders after all primary-road terrain passes; final clearance lowers contact terrain rather than lifting pavement. End lane markings at exact junction boundaries and continue side-road markings through the connector.
 - Replace circular/convex building placement filters with polygon pavement/neighbor clearance, ear-clipped concave roofs, larger practical footprint limits and a 3 m foundation-variation allowance. Record rejection reasons. A live 95 m Canal Road corridor audit placed 142 of 289 footprints versus 75 with the old filters; most remaining buildings were beyond the retained 200 ft range.
 

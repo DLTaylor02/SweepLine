@@ -342,6 +342,9 @@ try{
     check($stockReport['intersection_context']['rendered_branches']===1,'Generated ZIP report includes the connected side-road context');
     $contextScene=$stockZip->getFromName($stockBase.'main/MissionGroup/items.level.json');
     check(str_contains($contextScene,'"class":"TSStatic","name":"intersection_context_0_surface"')&&$stockZip->locateName($stockBase.'art/roads/side-0.dae')!==false,'Generated level includes one welded pavement mesh for the side road and connector');
+    $junctionObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($contextScene)));
+    check($stockZip->locateName($stockBase.'art/roads/primary.dae')!==false&&count(array_filter($junctionObjects,static fn($o)=>($o['class']??'')==='TSStatic'&&($o['name']??'')==='road_surface'))===1,'Junction exports use one explicit primary collision surface sharing side-road boundaries');
+    check(count(array_filter($junctionObjects,static fn($o)=>($o['class']??'')==='MeshRoad'&&str_starts_with($o['name']??'','road_')))===0,'Junction exports contain no independent smoothed primary MeshRoad overlapping the shared ribbon');
     $stockTer=$stockZip->getFromName($stockBase.'theTerrain.ter');$offset=5+3*$n*$n;
     check(unpack('V',substr($stockTer,$offset,4))[1]===8,'Stock terrain writes seven physical classes plus aerial fallback');
     $stockMaterials=json_decode($stockZip->getFromName($stockBase.'art/terrains/main.materials.json'),true);
