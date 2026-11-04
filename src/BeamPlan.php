@@ -44,11 +44,11 @@ final class BeamPlan
         return $options+['name'=>$road['name'],'alternate_names'=>$road['alternate_names']??[],'epsg'=>$epsg,'bounds'=>$bounds,'points'=>$points,'sources'=>$sources,'bridges'=>$bridges,'oneway'=>$oneway,'center'=>[$lon,$lat]];
     }
     /** Keep original vertices while adding short supports, avoiding cuts across sharp corners. */
-    public static function sample(array $points,float $spacing=8): array
+    public static function sample(array $points,float $spacing=8,float $minimumSegment=0.5): array
     {
         $out=[$points[0]];
         for($i=1;$i<count($points);$i++) {
-            $a=$points[$i-1];$b=$points[$i];$distance=hypot($b[0]-$a[0],$b[1]-$a[1]);if($distance<0.5)continue;$steps=max(1,(int)ceil($distance/$spacing));
+            $a=$points[$i-1];$b=$points[$i];$distance=hypot($b[0]-$a[0],$b[1]-$a[1]);if($distance<$minimumSegment)continue;$steps=max(1,(int)ceil($distance/$spacing));
             for($j=1;$j<=$steps;$j++)$out[]=[$a[0]+($b[0]-$a[0])*$j/$steps,$a[1]+($b[1]-$a[1])*$j/$steps];
             if(count($out)>20000)throw new \RuntimeException('Road geometry exceeds the BeamNG processing limit; choose a shorter stretch.');
         }

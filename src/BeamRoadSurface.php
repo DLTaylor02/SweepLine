@@ -3,6 +3,16 @@ declare(strict_types=1);
 namespace SweepLine;
 final class BeamRoadSurface
 {
+    public const PAVED_SHOULDER_M=0.6096;
+    /** Add two feet outside each existing carriageway edge, exactly once. */
+    public static function shoulders(array $profiles): array
+    {
+        foreach($profiles as &$profile){
+            if(isset($profile['shoulder_m']))continue;
+            $profile['carriageway_width_m']=$profile['width_m'];$profile['shoulder_m']=self::PAVED_SHOULDER_M;
+            $profile['width_m']+=2*self::PAVED_SHOULDER_M;
+        }unset($profile);return $profiles;
+    }
     public static function taper(array $points,array $profiles): array
     {
         $chain=[0.0];for($i=1;$i<count($points);$i++)$chain[]=$chain[$i-1]+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);

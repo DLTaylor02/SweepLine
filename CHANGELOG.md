@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Texture mapped building walls with stock residential/business/industrial/neutral materials and physical-scale UVs, keeping roofs separate. Prefer building tags over optional mapped land-use hints; preserve buildings if land-use fetching fails. Record appearance provenance and coverage limits.
+- Add two-foot paved shoulders on each side of primary and mapped side roads, preserving lane widths/markings and spawn offsets. Blend native terrain to the new outer pavement edge; retain junction clipping and bridge protection.
+- Refine small road direction changes using bounded quadratic corner rounds and fine angle supports. Protect sharp turns, endpoints, junctions and structure corridors; use explicit pavement for rounded roads to avoid independent engine spline overshoot.
+
+
 - Add automatic OSM guardrail fetching and pavement-aware BeamNG placement with generic steel posts, closed beams and rigid capped terminals. Join mapped way breaks, retain existing bridge railings, report source/coverage/rejections and optional failures, and bound download/mesh work. Share cancellation-aware OSM retries with buildings; add offline fetch, geometry and generated-ZIP tests. No guessed roadside barriers are substituted where mapping is absent.
 
 

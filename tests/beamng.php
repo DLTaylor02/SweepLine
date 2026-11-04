@@ -334,6 +334,7 @@ check(SweepLine\BeamTerrain::category(array_fill(0,5,[20,70,140]),0.1,[-119,39],
 $stockFile=tempnam(sys_get_temp_dir(),'sl-stock-terrain-');
 try{
     $stockPlan=$plan;$stockPlan['terrain_style']='stock';
+    $stockPlan['building_data']=['footprints'=>[['points'=>[[300,430],[310,430],[310,440],[300,440],[300,430]],'tags'=>['building'=>'house']]]];
     $stockPlan['guardrail_data']=['lines'=>[['points'=>[[300,408],[500,408]],'osm_ids'=>[123],'tags'=>['barrier'=>'guard_rail']]],'source'=>'Offline explicit guardrail fixture'];
     $stockPlan['intersection_data']=['branches'=>[['points'=>[[1900,2400],[2100,2400]],'width_m'=>8]],'truncated'=>false,'limit_ft'=>600];
     $stockRaster=new BeamRaster($n,$side,$heights,$colors);
@@ -341,6 +342,9 @@ try{
     $stockZip=new ZipArchive();$stockZip->open($stockFile);$stockBase='levels/sweepline_dddddddddddddddd/';
     check(isset($stockReport['shadow_correction']['corrected_pixels'])&&$stockReport['shadow_correction']['corrected_pixels']===0,'Generated export records shadow correction while leaving well-lit fixture colors intact');
     check($stockReport['intersection_context']['rendered_branches']===1,'Generated ZIP report includes the connected side-road context');
+    check(($stockReport['building_data']['facade_counts']['residential']??0)===1,'Generated ZIP classifies mapped residential building facades');
+    $buildingMesh=$stockZip->getFromName($stockBase.'art/shapes/building_0.dae');
+    check(str_contains($buildingMesh,'semantic="TEXCOORD"')&&str_contains($buildingMesh,'_building_residential')&&str_contains($buildingMesh,'_building_roof'),'Generated building has textured walls and an independent roof material');
     $contextScene=$stockZip->getFromName($stockBase.'main/MissionGroup/items.level.json');
     check($stockReport['guardrail_data']['placed_runs']===1&&$stockReport['guardrail_data']['terminals']===2,'Generated ZIP report includes mapped guardrail placement and rigid terminals');
     check($stockZip->locateName($stockBase.'art/guardrails/rail-0.dae')!==false&&str_contains($contextScene,'"name":"mapped_guardrail_0"'),'Generated BeamNG scene references its mapped guardrail collision mesh');
@@ -502,3 +506,14 @@ $ordinaryA=clone $ridgeOriginal;$ordinaryB=clone $ridgeOriginal;
 SweepLine\BeamRoadSurface::blendTerrain($ridgeRoad,$ridgeProfiles,$ordinaryA,0,str_repeat("\0",4096),fn($m)=>null);
 SweepLine\BeamRoadSurface::blendTerrain($ridgeRoad,$ridgeProfiles,$ordinaryB,0,str_repeat("\0",4096),fn($m)=>null,[]);
 check($ordinaryA->heights===$ordinaryB->heights,'Bridge exclusion leaves ordinary shoulder height output byte-for-byte unchanged');
+
+$curveFile=tempnam(sys_get_temp_dir(),'sl-rounded-map-');
+try{
+    $curvePlan=$plan;$curvePlan['points']=[[1200,2400],[1600,2400],[1900,2500],[1900,2900]];
+    $curveRaster=new BeamRaster($n,$side,$heights,$colors);
+    $curveReport=BeamMap::build($curvePlan,$curveRaster,str_repeat('f',32),$curveFile,static fn($m)=>null);
+    $curveZip=new ZipArchive();$curveZip->open($curveFile);$curveBase='levels/sweepline_ffffffffffffffff/';
+    check($curveReport['curve_smoothing']['rounded']&&$curveReport['curve_smoothing']['explicit_pavement']&&$curveZip->locateName($curveBase.'art/roads/primary.dae')!==false,'Rounded roads use explicit pavement so engine spline interpolation cannot introduce new overshoot');
+    check($curveReport['paved_shoulder_each_side_ft']===2,'Export report records the two-foot paved shoulder on each side');
+    $curveZip->close();
+}finally{unlink($curveFile);}

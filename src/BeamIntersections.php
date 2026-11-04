@@ -125,10 +125,10 @@ final class BeamIntersections
             $sine=abs($dx/$length*$join['dy']-$dy/$length*$join['dx']);$cosine=abs($dx/$length*$join['dx']+$dy/$length*$join['dy']);
             if($bridge||$sine<0.2){$out['skipped']++;continue;}
             $profile=$branch['profile']??BeamLanes::infer(['width'=>(string)$branch['width_m']],'residential',0);
-            $profile['width_m']=$branch['width_m'];
+            $profile['width_m']=$branch['width_m'];$profile=BeamRoadSurface::shoulders([$profile])[0];
             $trim=($join['half_width']+$profile['width_m']/2*$cosine)/$sine+max(8,$profile['width_m']/2);
             $surface=self::after($local,$trim);if(count($surface)<2){$out['skipped']++;continue;}
-            $sampled=BeamPlan::sample($surface,2);$raw=[];$chain=[0.0];
+            $sampled=BeamPlan::sample(BeamCurve::smooth($surface,[$surface[0],end($surface)]),2,0.001);$raw=[];$chain=[0.0];
             foreach($sampled as $i=>$p){$raw[]=$raster->roadHeight($p[0],$p[1]);if($i)$chain[]=$chain[$i-1]+hypot($p[0]-$sampled[$i-1][0],$p[1]-$sampled[$i-1][1]);}
             $nodes=[];$branchProfiles=[];
             foreach($sampled as $i=>$p){

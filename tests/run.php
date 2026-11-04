@@ -408,6 +408,7 @@ check(rejects(fn()=>SweepLine\CoveragePlanner::customArea([179.9,52],[-179.9,52]
 require __DIR__.'/elevations.php';
 require __DIR__.'/buildings.php';
 require __DIR__.'/guardrails.php';
+require __DIR__.'/beamng-enhancements.php';
 require __DIR__.'/shadows.php';
 require __DIR__.'/intersections.php';
 require __DIR__.'/pavement.php';
