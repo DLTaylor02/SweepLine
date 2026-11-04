@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add automatic OSM guardrail fetching and pavement-aware BeamNG placement with generic steel posts, closed beams and rigid capped terminals. Join mapped way breaks, retain existing bridge railings, report source/coverage/rejections and optional failures, and bound download/mesh work. Share cancellation-aware OSM retries with buildings; add offline fetch, geometry and generated-ZIP tests. No guessed roadside barriers are substituted where mapping is absent.
+
+
 - Fix tire-catching intersection ledges by clipping side-road pavement out of the primary footprint and matching exact shared-edge elevations. Junction maps use an explicit primary ribbon to avoid independent native spline drift; retain sampled route/elevation/width data, native terrain shoulders, bridge protections, markings and navigation. Preserve pavement edges across paint subdivisions. Canal Road (4) geometry replay removes overlaps at 22 entrances across 50 branches. Regenerate exports; in-game collision validation remains required.
 
 

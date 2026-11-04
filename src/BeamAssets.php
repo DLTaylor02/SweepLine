@@ -43,12 +43,17 @@ final class BeamAssets
             $vertices=[[-4,-5,0],[4,-5,0],[4,5,0],[-4,5,0],[-4,-5,6],[4,-5,6],[4,5,6],[-4,5,6]];
             $triangles=[[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]];
         }
+        return self::mesh($vertices,$triangles,$material);
+    }
+
+    public static function mesh(array $vertices,array $triangles,string $material): string
+    {
         $positions=[];$normals=[];$indices=[];$id=0;
         foreach($triangles as $triangle) {
             [$a,$b,$c]=array_map(static fn($i)=>$vertices[$i],$triangle);
             $u=[$b[0]-$a[0],$b[1]-$a[1],$b[2]-$a[2]];$v=[$c[0]-$a[0],$c[1]-$a[1],$c[2]-$a[2]];
             $normal=[$u[1]*$v[2]-$u[2]*$v[1],$u[2]*$v[0]-$u[0]*$v[2],$u[0]*$v[1]-$u[1]*$v[0]];$len=sqrt(array_sum(array_map(static fn($x)=>$x*$x,$normal)))?:1;
-            foreach([$a,$b,$c] as $p) {$positions=array_merge($positions,$p);$normals=array_merge($normals,array_map(static fn($x)=>$x/$len,$normal));$indices[]=$id;$indices[]=$id;$id++;}
+            foreach([$a,$b,$c] as $p) {array_push($positions,...$p);array_push($normals,...array_map(static fn($x)=>$x/$len,$normal));$indices[]=$id;$indices[]=$id;$id++;}
         }
         $count=$id*3;$tri=count($triangles);
         return '<?xml version="1.0" encoding="UTF-8"?>'.

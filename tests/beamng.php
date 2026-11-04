@@ -334,6 +334,7 @@ check(SweepLine\BeamTerrain::category(array_fill(0,5,[20,70,140]),0.1,[-119,39],
 $stockFile=tempnam(sys_get_temp_dir(),'sl-stock-terrain-');
 try{
     $stockPlan=$plan;$stockPlan['terrain_style']='stock';
+    $stockPlan['guardrail_data']=['lines'=>[['points'=>[[300,408],[500,408]],'osm_ids'=>[123],'tags'=>['barrier'=>'guard_rail']]],'source'=>'Offline explicit guardrail fixture'];
     $stockPlan['intersection_data']=['branches'=>[['points'=>[[1900,2400],[2100,2400]],'width_m'=>8]],'truncated'=>false,'limit_ft'=>600];
     $stockRaster=new BeamRaster($n,$side,$heights,$colors);
     $stockReport=BeamMap::build($stockPlan,$stockRaster,str_repeat('d',32),$stockFile,fn($m)=>null);
@@ -341,6 +342,11 @@ try{
     check(isset($stockReport['shadow_correction']['corrected_pixels'])&&$stockReport['shadow_correction']['corrected_pixels']===0,'Generated export records shadow correction while leaving well-lit fixture colors intact');
     check($stockReport['intersection_context']['rendered_branches']===1,'Generated ZIP report includes the connected side-road context');
     $contextScene=$stockZip->getFromName($stockBase.'main/MissionGroup/items.level.json');
+    check($stockReport['guardrail_data']['placed_runs']===1&&$stockReport['guardrail_data']['terminals']===2,'Generated ZIP report includes mapped guardrail placement and rigid terminals');
+    check($stockZip->locateName($stockBase.'art/guardrails/rail-0.dae')!==false&&str_contains($contextScene,'"name":"mapped_guardrail_0"'),'Generated BeamNG scene references its mapped guardrail collision mesh');
+    $guardMaterials=json_decode($stockZip->getFromName($stockBase.'art/guardrails/main.materials.json'),true);
+    check(array_values($guardMaterials)[0]['groundType']==='METAL','Guardrail collision material uses the metal ground type');
+
     check(str_contains($contextScene,'"class":"TSStatic","name":"intersection_context_0_surface"')&&$stockZip->locateName($stockBase.'art/roads/side-0.dae')!==false,'Generated level includes one welded pavement mesh for the side road and connector');
     $junctionObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($contextScene)));
     check($stockZip->locateName($stockBase.'art/roads/primary.dae')!==false&&count(array_filter($junctionObjects,static fn($o)=>($o['class']??'')==='TSStatic'&&($o['name']??'')==='road_surface'))===1,'Junction exports use one explicit primary collision surface sharing side-road boundaries');
