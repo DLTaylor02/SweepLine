@@ -47,6 +47,17 @@ async function testBeamControls(source){
   await customRow.children[0].onclick({preventDefault(){}});
   check(customPayload.custom_id===55&&!('road_id' in customPayload),'BeamNG custom selections never request the full candidate geometry');
 
+
+  tasks.length=0;let regressionIndex=0;
+  const regressionMessages=['Classifying grass, forest floor','Downloading 0.1 MB','Preparing intersecting road context','Shaping the road corridor'];
+  window.sweeplineRequest=async(path,options)=>options?{id:'e'.repeat(32),status:'queued',progress:'Queued'}:{status:'running',progress:regressionMessages[regressionIndex++]};
+  const regressionRow=new Element('div');window.sweeplineBeamExport(regressionRow,{id:94});await regressionRow.children[0].onclick({preventDefault(){}});
+  const regressionLabel=regressionRow.children[1].children[3].children[0];
+  await tasks.shift()();check(regressionLabel.textContent.includes('Step 5 of 9'),'Terrain classification reaches analysis stage');
+  await tasks.shift()();check(regressionLabel.textContent.includes('Step 5 of 9'),'Unrecognized download status does not reset the stage bar');
+  await tasks.shift()();check(regressionLabel.textContent.includes('Step 5 of 9'),'Repeated preparation status cannot move progress backwards');
+  await tasks.shift()();check(regressionLabel.textContent.includes('Step 6 of 9'),'A later worker phase still advances the monotonic progress bar');
+
   return checks;
 }
 if(typeof require==="function"&&require.main===module){testBeamControls(require("fs").readFileSync(require("path").join(__dirname,"../public/assets/beamng.js"),"utf8")).then(n=>console.log(n+" BeamNG frontend checks passed")).catch(e=>{console.error(e);process.exitCode=1;});}

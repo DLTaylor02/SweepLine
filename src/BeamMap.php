@@ -79,6 +79,7 @@ final class BeamMap
         }
         $intersectionData=$plan['intersection_data']??['branches'=>[]];
         $preparedIntersections=BeamIntersections::prepare($intersectionData,$road,$profiles,$raster,$plan['bounds'],$origin,$bridges,$progress);
+        $preparedIntersections=BeamTraffic::turnarounds($preparedIntersections,$road,$profiles,$raster,$origin,$progress,$plan['building_data']['footprints']??[]);
         $progress('Shaping the road corridor while preserving surrounding terrain');
 
         $bridgeMask=str_repeat("\0",$n*$n);
@@ -105,6 +106,7 @@ final class BeamMap
         }
 
 
+        $preparedIntersections=BeamIntersections::conform($preparedIntersections,$raster,$origin,$progress);
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
         $put=static function($file,$bytes)use($zip,$base){if(!$zip->addFromString($base.$file,$bytes))throw new \RuntimeException('Could not write BeamNG archive.');};
         try {
@@ -214,12 +216,8 @@ final class BeamMap
                 }
             }
             $put('art/shapes/arches.materials.json',self::json($archMaterials));
-            $segments=[];
-            foreach($road as $i=>$point){
-                $objects[]=['class'=>'BeamNGWaypoint','name'=>'sl_nav_'.$i,'__parent'=>'MissionGroup','position'=>$point,'scale'=>array_fill(0,3,$profiles[$i]['width_m']/2)];
-                if($i>0)$segments['road_'.$i]=['nodes'=>['sl_nav_'.($i-1),'sl_nav_'.$i],'drivability'=>1,'oneWay'=>$plan['oneway'],'autoLanes'=>false,'lanesLeft'=>$profiles[$i]['backward'],'lanesRight'=>$profiles[$i]['forward'],'autoJunction'=>false,'hiddenInNavi'=>false];
-            }
-            $put('map.json',self::json(['segments'=>$segments]));
+            $navigation=BeamTraffic::graph($road,$profiles,$preparedIntersections);$objects=array_merge($objects,$navigation['objects']);
+            $put('map.json',self::json(['segments'=>$navigation['segments']]));
             $progress('Placing regional scenery clear of the driving corridor');
             $seed=(int)hexdec(substr($id,0,7));$count=0;$sceneryMaterials=[];
             $buildingData=$plan['building_data']??['footprints'=>[]];
@@ -250,10 +248,10 @@ final class BeamMap
             $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
-            unset($intersectionData['branches']);$intersectionData['rendered_branches']=count($preparedIntersections['roads']);$intersectionData['skipped_branches']=$preparedIntersections['skipped'];$intersectionData['surface_method']='Matched MeshRoad surfaces, native terrain shoulders and unmarked junction aprons';$intersectionData['terrain_shaping']=$intersectionShaping;
+            unset($intersectionData['branches']);$intersectionData['rendered_branches']=count(array_filter($preparedIntersections['roads'],static fn($r)=>!isset($r['turnaround_for'])));$intersectionData['skipped_branches']=$preparedIntersections['skipped'];$intersectionData['surface_method']='Matched MeshRoad surfaces, native terrain shoulders and unmarked junction aprons';$intersectionData['terrain_shaping']=$intersectionShaping;$intersectionData['final_clearance']=$preparedIntersections['final_clearance'];$intersectionData['turnarounds']=$preparedIntersections['turnarounds'];$intersectionData['navigation_nodes']=count($navigation['objects']);$intersectionData['navigation_edges']=count($navigation['segments']);
             $report=['shadow_correction'=>$shadowCorrection,'intersection_context'=>$intersectionData,'target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes only for trees, bushes and rocks; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,'shoulder_transition'=>$shoulders,'bridge_approach_correction'=>$bridgeApproachCorrection,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
-                'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Short simple bridges use estimated approach-derived decks. Complex bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation graph covers only the selected road; traffic behavior requires in-game validation.','Requires in-game v0.40 validation.']];
+                'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Short simple bridges use estimated approach-derived decks. Complex bridges and tunnels are refused. Unmapped structures may be inaccurate.','Navigation includes the primary road, side branches and supported synthetic return loops. Enable traffic in-game; maneuvers require in-game validation.','Requires in-game v0.40 validation.']];
             $put('sweepline-report.json',self::json($report));
             $zip->addFromString('INSTALL.txt',"SweepLine BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." - SweepLine, then Start or End.\nStart is the default spawn. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nUses installed BeamNG.drive 0.40 vegetation from Utah, West Coast USA, East Coast USA or Johnson Valley. Required references are listed in the report. No BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
             $progress('Finalizing the map ZIP');

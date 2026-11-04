@@ -31,3 +31,26 @@ $forestContext=['canopy_evidence'=>0.9,'edge_distance_m'=>30,'montane'=>0,'pine_
 check(SweepLine\BeamVegetation::choose('tree',[-85,40],250,0,0.2,$forestContext)==='beech_forest'&&SweepLine\BeamVegetation::choose('tree',[-85,40],250,0,0.8,$forestContext)==='beech_group','Dense eastern woodland interiors select purpose-made stock forest assets');
 $forestContext['edge_distance_m']=5;
 check(SweepLine\BeamVegetation::choose('tree',[-85,40],250,0,0.2,$forestContext)==='beech_b','Roadside trees retain individual models instead of interior groups');
+
+$trafficPrepared=SweepLine\BeamTraffic::turnarounds($prepared,$mainIntersectionRoad,$mainIntersectionProfiles,$contextRaster,50,static fn($m)=>null);
+check($trafficPrepared['turnarounds']['created']===1,'Flat clear two-way stub end receives a synthetic turnaround surface');
+$trafficGraph=SweepLine\BeamTraffic::graph($mainIntersectionRoad,$mainIntersectionProfiles,$trafficPrepared);
+$graphNodes=array_fill_keys(array_column($trafficGraph['objects'],'name'),true);$adj=[];$valid=true;$visible=true;
+foreach($trafficGraph['segments'] as $edge){[$a,$b]=$edge['nodes'];$valid=$valid&&isset($graphNodes[$a],$graphNodes[$b]);$visible=$visible&&!$edge['hiddenInNavi'];$adj[$a][$b]=true;$adj[$b][$a]=true;}
+$seen=[];$todo=[array_key_first($graphNodes)];while($todo){$n=array_pop($todo);if(isset($seen[$n]))continue;$seen[$n]=true;foreach(array_keys($adj[$n]??[]) as $next)$todo[]=$next;}
+check($valid&&$visible&&count($seen)===count($graphNodes),'Primary road, intersections and turnarounds form one valid visible minimap/AI graph');
+check(count(array_filter(array_keys($trafficGraph['segments']),static fn($key)=>str_ends_with($key,'_return')))===1,'Turnaround navigation explicitly returns to the side-road endpoint');
+$ridgeRaster=clone $contextRaster;$ridgeRaster->heights=str_repeat(pack('g',100.6),64);$originalHeights=$ridgeRaster->heights;
+$adjusted=BeamIntersections::conform($prepared,$ridgeRaster,50,static fn($m)=>null);
+check($adjusted['final_clearance']['raised_samples']>0&&$adjusted['roads'][0]['points'][0][2]>50.6,'Final side-road audit raises surfaces above terrain changed by later passes');
+check($ridgeRaster->heights===$originalHeights&&$mainIntersectionRoad[1][2]===50.25,'Final clearance repair never moves primary road geometry or terrain');
+$hairpinMain=[[0,50,0.25],[100,50,0.25],[100,70,10.25],[0,70,10.25]];
+$hairpinProfiles=array_fill(0,4,$meshProfile);
+$hairpin=BeamIntersections::prepare(['branches'=>[['points'=>[[50,50],[50,150]],'width_m'=>8]]],$hairpinMain,$hairpinProfiles,$contextRaster,[0,0,400,400],100,[],static fn($m)=>null);
+check(count($hairpin['roads'])===1&&max(array_column($hairpin['roads'][0]['points'],2))<1&&max(array_column($hairpin['roads'][0]['points'],1))<66,'Hairpin side road stays tied to its original junction and stops before colliding with the other main-road leg');
+
+$blockedTurn=SweepLine\BeamTraffic::turnarounds($prepared,$mainIntersectionRoad,$mainIntersectionProfiles,$contextRaster,50,static fn($m)=>null,[['points'=>[[80,280],[120,280],[120,330],[80,330],[80,280]]]]);
+check($blockedTurn['turnarounds']['created']===0,'Mapped building footprints prevent synthetic turnaround placement');
+$oneWayPrepared=$prepared;foreach($oneWayPrepared['roads'][0]['profiles'] as &$p)$p['oneway']=true;unset($p);
+$oneWayTurn=SweepLine\BeamTraffic::turnarounds($oneWayPrepared,$mainIntersectionRoad,$mainIntersectionProfiles,$contextRaster,50,static fn($m)=>null);
+check($oneWayTurn['turnarounds']['created']===0,'One-way stubs do not receive an against-flow turnaround');

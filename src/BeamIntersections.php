@@ -97,7 +97,7 @@ final class BeamIntersections
                 if($nl>0.001){$vx+=$nx/$nl;$vy+=$ny/$nl;$vl=hypot($vx,$vy);if($vl>0.001){$vx/=$vl;$vy/=$vl;}}
             }
             if($distance<$best){$best=$distance;$out=['distance'=>$distance,'z'=>$a[2]+($b[2]-$a[2])*$t,'along'=>$along+$length*$t,
-                'dx'=>$vx,'dy'=>$vy,'half_width'=>($profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t)/2];}
+                'x'=>$a[0]+$t*$dx,'y'=>$a[1]+$t*$dy,'segment'=>$i,'grade'=>($b[2]-$a[2])/$length,'dx'=>$vx,'dy'=>$vy,'half_width'=>($profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t)/2];}
             $along+=$length;
         }
         return $out;
@@ -140,14 +140,18 @@ final class BeamIntersections
                 }
                 $z=$sum/$weights-$origin+BeamMap::ROAD_ELEVATION_OFFSET_M;
                 $near=self::nearest($p,$road,$profiles);$fade=min(1,$chain[$i]/30.48);$fade=$fade*$fade*(3-2*$fade);
-                $z=$near['z']*(1-$fade)+$z*$fade;
+                $anchor=$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade'];
+                $z=$anchor*(1-$fade)+$z*$fade;
+                $nearMain=self::nearest($p,$road,$profiles);
+                if($i>1&&$nearMain['distance']<$nearMain['half_width']+$profile['width_m']/2+0.25)break;
                 if($i&&abs($z-$nodes[$i-1][2])/max(0.01,$chain[$i]-$chain[$i-1])>0.35)break;
                 $nodes[]=[$p[0],$p[1],$z];$branchProfiles[]=$profile+['unmarked'=>$chain[$i]<max(8,$profile['width_m'])];
             }
             if(count($nodes)<2){$out['skipped']++;continue;}
-            $out['roads'][]=['name'=>'intersection_context_'.$index,'points'=>$nodes,'profiles'=>$branchProfiles];
+            $connector=array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample(self::clip($local,$trim)));
+            $out['roads'][]=['name'=>'intersection_context_'.$index,'points'=>$nodes,'profiles'=>$branchProfiles,'join'=>$join,'connector'=>$connector];
             $apron=self::clip($local,$trim+1);
-            $apronSurface=array_map(function($p)use($road,$profiles){return [$p[0],$p[1],self::nearest($p,$road,$profiles)['z']];},BeamPlan::sample($apron));
+            $apronSurface=array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample($apron));
             $out['aprons'][]=['points'=>$apron,'width_m'=>$profile['width_m'],'surface'=>$apronSurface];
             $out['junctions'][]=$join+['radius'=>max(8,($profile['width_m']/2+3)/$sine)];
         }
@@ -181,6 +185,54 @@ final class BeamIntersections
                 'clearance'=>BeamRoadSurface::clearTerrain($branch['points'],$branch['profiles'],$raster,$origin,$progress,$mask,true)];
         }
         return $reports;
+    }
+
+
+    public static function terrainTop(BeamRaster $raster,float $x,float $y): float
+    {
+        $step=$raster->side/$raster->size;$gx=max(0,min($raster->size-1,$x/$step));$gy=max(0,min($raster->size-1,$y/$step));
+        $ix=(int)$gx;$iy=(int)$gy;$u=$gx-$ix;$v=$gy-$iy;
+        $a=$raster->cell($ix,$iy);$b=$raster->cell($ix+1,$iy);$c=$raster->cell($ix,$iy+1);$d=$raster->cell($ix+1,$iy+1);
+        $one=$u>=$v?$a*(1-$u)+$b*($u-$v)+$d*$v:$a*(1-$v)+$c*($v-$u)+$d*$u;
+        $two=$u+$v<=1?$a*(1-$u-$v)+$b*$u+$c*$v:$d*($u+$v-1)+$b*(1-$v)+$c*(1-$u);
+        return max($raster->height($x,$y),$one,$two);
+    }
+    /** Final clearance audit occurs after every terrain/apron pass; main road is immutable. */
+    public static function conform(array $prepared,BeamRaster $raster,float $origin,callable $progress): array
+    {
+        $out=[];$shortened=[];$parentEnds=[];$raised=0;$maxRaise=0.0;$skipped=0;
+        foreach($prepared['roads'] as $branch){
+            $progress(null);$loop=isset($branch['turnaround_for']);$parent=$branch['turnaround_for']??null;
+            if($loop&&(!isset($parentEnds[$parent])||isset($shortened[$parent]))){$skipped++;continue;}
+            $zShift=$loop?$parentEnds[$parent][2]-$branch['points'][0][2]:0;
+            $points=[];$profiles=[];$originalEnd=end($branch['points']);$failed=false;
+            for($i=1;$i<count($branch['points']);$i++){
+                $a=$branch['points'][$i-1];$b=$branch['points'][$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy);if($length<0.001)continue;
+                $count=max(1,(int)ceil($length));
+                for($j=$i===1?0:1;$j<=$count;$j++){
+                    $t=$j/$count;$x=$a[0]+$dx*$t;$y=$a[1]+$dy*$t;$z=$a[2]+($b[2]-$a[2])*$t+$zShift;
+                    $profile=$branch['profiles'][$i];$half=$profile['width_m']/2;$required=-INF;
+                    for($s=-$half;$s<=$half+0.001;$s+=min(1,$profile['width_m']/2)){
+                        $xx=$x+$dy/$length*$s;$yy=$y-$dx/$length*$s;
+                        $required=max($required,self::terrainTop($raster,$xx,$yy)-$origin+0.05);
+                    }
+                    $up=max(0,$required-$z);$candidate=$z+$up;
+                    $last=$points?end($points):null;
+                    if($up>2||($last&&abs($candidate-$last[2])/max(0.01,hypot($x-$last[0],$y-$last[1]))>0.35)){$failed=true;break 2;}
+                    if($up>0.0001){$raised++;$maxRaise=max($maxRaise,$up);}
+                    $points[]=[$x,$y,$candidate];$profiles[]=$profile;
+                }
+            }
+            if(count($points)<2||($loop&&$failed)){$skipped++;continue;}
+            if($failed)$shortened[$branch['name']]=true;
+            $branch['points']=$points;$branch['profiles']=$profiles;$out[]=$branch;
+            if(!$loop)$parentEnds[$branch['name']]=end($points);
+        }
+        $prepared['roads']=$out;
+        if(isset($prepared['turnarounds'])){$actual=count(array_filter($out,static fn($r)=>isset($r['turnaround_for'])));$prepared['turnarounds']['skipped']+=$prepared['turnarounds']['created']-$actual;$prepared['turnarounds']['created']=$actual;}
+        $prepared['final_clearance']=['raised_samples'=>$raised,'maximum_raise_m'=>$maxRaise,'shortened_branches'=>count($shortened),'skipped_surfaces'=>$skipped,
+            'method'=>'Conform side surfaces to final terrain, checking both terrain triangle diagonals; never alter the primary road.'];
+        return $prepared;
     }
 
     public static function exclusions(array $data,array $bounds): array

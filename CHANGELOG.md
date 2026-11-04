@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix intersecting roads being covered by later apron/terrain passes: anchor entrances to their original main-road junction plane, stop branches re-entering the primary pavement, and audit final side-road clearance against both terrain diagonals without moving the main road. Add connected minimap/AI graphs and conservative synthetic turnaround loops at suitable two-way stub ends; reject water, buildings, steep terrain and road conflicts.
+- Keep BeamNG export progress monotonic per job and retain the reached stage when reopening it; generic or repeated status messages no longer reset the staged bar.
+
 - Upgrade BeamNG side roads to lane-aware MeshRoad surfaces with matched entrance elevations, native terrain shoulders and clearance correction; extend the cap to 600 feet. Suppress main/side-road markings at junctions and join angled entrances with native terrain aprons, avoiding overlapping collision meshes and bridge interiors.
 - Use verified East Coast beech forest/group meshes with built-in detail levels in dense eastern woodland interiors; retain individual trees at road edges and existing regional conifer choices.
 

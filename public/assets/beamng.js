@@ -12,7 +12,7 @@
       [/Preparing terrain|Validating elevation|building|intersecting road|aerial shadows/i,3],
       [/NAIP|aerial|Aligning aerial/i,2],[/USGS elevation|Aligning dem/i,1]
     ];
-    return stages.find(([pattern])=>pattern.test(message))?.[1]??0;
+    return stages.find(([pattern])=>pattern.test(message))?.[1]??null;
   }
 
   let timer,view=0;
@@ -34,7 +34,7 @@
     const user=window.SweepLineAccount?.user?.id;
     const baseStorageKey='sweepline:beamng:'+user+':'+(road.geometry_key||road.id)+':'+(context.orientation||'forward')+':'+(context.preferredName||road.name||'');
     const storageKey=baseStorageKey+':stock',noticeKey=storageKey+':notice';
-    let jobId=null,busy=false,ready=false,expires=0;
+    let jobId=null,busy=false,ready=false,expires=0,lastStage=0;
     const paint=job=>{
       if(!['queued','running'].includes(job.status)){try{window.sessionStorage?.removeItem(storageKey);}catch(_){}}
       busy=['queued','running'].includes(job.status);
@@ -48,7 +48,8 @@
       section.hidden=false;section.classList.toggle('beam-error',failed);
       cancel.hidden=!busy;spinner.hidden=!busy;
       progress.hidden=!busy&&!ready;
-      const stage=stageFor(job),complete=stage===steps.length;
+      const stage=Math.max(lastStage,stageFor(job)??lastStage),complete=stage===steps.length;lastStage=stage;
+      if(busy&&jobId){try{window.sessionStorage?.setItem(storageKey,JSON.stringify({id:jobId,stage:lastStage}));}catch(_){}}
       stepLabel.textContent=complete?'All export steps complete':`Step ${stage+1} of ${steps.length} · ${steps[stage]}`;
       track.setAttribute('aria-label',stepLabel.textContent+'. Steps indicate stages, not elapsed time or percentage.');
       segments.forEach((segment,index)=>{segment.classList.toggle('is-complete',complete||index<stage);segment.classList.toggle('is-current',!complete&&index===stage);});
@@ -69,7 +70,7 @@
     };
     action.onclick=async event=>{
       if(ready&&(!expires||Date.now()<expires))return;
-      event.preventDefault();if(busy)return;clearTimeout(timer);paint({status:'queued',progress:'Queueing map generation…'});
+      event.preventDefault();if(busy)return;lastStage=0;clearTimeout(timer);paint({status:'queued',progress:'Queueing map generation…'});
       try{
         const payload={terrain_style:'stock',padding_miles:0.5,resolution:2048,orientation:context.orientation||'forward',...(context.preferredName?{preferred_name:context.preferredName}:{})};
         if(context.customId)payload.custom_id=context.customId;
@@ -87,6 +88,6 @@
       catch(e){if(current===view)status.textContent=e.message;}finally{cancel.disabled=false;}
     };
     try{const notice=window.sessionStorage?.getItem(noticeKey);if(notice)paint({status:'failed',error:notice});}catch(_){}
-    try{const saved=JSON.parse(window.sessionStorage?.getItem(storageKey)||'null');if(saved&&/^[a-f0-9]{32}$/.test(saved.id)){jobId=saved.id;poll(true);}}catch(_){}
+    try{const saved=JSON.parse(window.sessionStorage?.getItem(storageKey)||'null');if(saved&&/^[a-f0-9]{32}$/.test(saved.id)){jobId=saved.id;lastStage=Number.isInteger(saved.stage)&&saved.stage>=0&&saved.stage<steps.length?saved.stage:0;poll(true);}}catch(_){}
   };
 })();
