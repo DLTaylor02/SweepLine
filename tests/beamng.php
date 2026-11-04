@@ -341,7 +341,7 @@ try{
     check(isset($stockReport['shadow_correction']['corrected_pixels'])&&$stockReport['shadow_correction']['corrected_pixels']===0,'Generated export records shadow correction while leaving well-lit fixture colors intact');
     check($stockReport['intersection_context']['rendered_branches']===1,'Generated ZIP report includes the connected side-road context');
     $contextScene=$stockZip->getFromName($stockBase.'main/MissionGroup/items.level.json');
-    check(str_contains($contextScene,'"class":"MeshRoad","name":"intersection_context_0_')&&str_contains($contextScene,'intersection_apron_0'),'Generated level includes a real side-road mesh and its terrain junction apron');
+    check(str_contains($contextScene,'"class":"TSStatic","name":"intersection_context_0_surface"')&&$stockZip->locateName($stockBase.'art/roads/side-0.dae')!==false,'Generated level includes one welded pavement mesh for the side road and connector');
     $stockTer=$stockZip->getFromName($stockBase.'theTerrain.ter');$offset=5+3*$n*$n;
     check(unpack('V',substr($stockTer,$offset,4))[1]===8,'Stock terrain writes seven physical classes plus aerial fallback');
     $stockMaterials=json_decode($stockZip->getFromName($stockBase.'art/terrains/main.materials.json'),true);

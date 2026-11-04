@@ -37,7 +37,9 @@ final class BeamRoadSurface
                 if(is_infinite($best))$count++;
                 $bytes=pack('g',$distance);for($j=0;$j<4;$j++)$nearest[$offset+$j]=$bytes[$j];
                 $fade=max(0,min(1,($edge-$inner)/$blend));$fade=$fade*$fade*(3-2*$fade);
-                $before=$original->cell($x,$y);$target=$a[2]+($b[2]-$a[2])*$t+$origin-0.05;
+                $before=$original->cell($x,$y);$cross=($profiles[$i-1]['cross_grade']??0)*(1-$t)+($profiles[$i]['cross_grade']??0)*$t;
+                $lateral=(($wx-$a[0]-$dx*$t)*$dy-($wy-$a[1]-$dy*$t)*$dx)/sqrt($length2);
+                $target=$a[2]+($b[2]-$a[2])*$t+$cross*$lateral+$origin-0.05;
                 $height=$target*(1-$fade)+$before*$fade;
                 $raster->put($x,$y,$height);$maxChange=max($maxChange,abs($height-$before));
             }
@@ -100,7 +102,8 @@ final class BeamRoadSurface
                     foreach($weights as $w){
                         $height=0.0;$norm=0.0;
                         foreach($ids as $n=>$id){$height+=$raster->cell($id%$raster->size,intdiv($id,$raster->size))*$w[$n];if($editable[$n]){$norm+=$w[$n]*$w[$n];$checked[$id]=true;}}
-                        $excess=$height-($z+$origin-0.05);
+                        $cross=($profiles[$i-1]['cross_grade']??0)*(1-$t)+($profiles[$i]['cross_grade']??0)*$t;
+                        $excess=$height-($z+$cross*$offset+$origin-0.05);
                         if($excess<=0.0001||$norm<0.05)continue;
                         foreach($ids as $n=>$id)if($editable[$n]&&$w[$n]>0){
                             $xx=$id%$raster->size;$yy=intdiv($id,$raster->size);$delta=$excess*$w[$n]/$norm;

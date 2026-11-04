@@ -55,19 +55,28 @@ final class BeamBuildings
 
     public static function place(array $footprints,array $road,array $profiles,BeamRaster $raster,array $exclusions=[]): array
     {
-        $geometry=new BeamScenery($road,$profiles,$exclusions);$out=[];$rejected=0;
-        foreach($footprints as $footprint){$points=$footprint["points"];array_pop($points);if(count($points)<3||count($points)>50){$rejected++;continue;}
-            $cx=array_sum(array_column($points,0))/count($points);$cy=array_sum(array_column($points,1))/count($points);$radius=0.0;$area=0.0;$sign=0;$convex=true;
-            foreach($points as $i=>$p){$b=$points[($i+1)%count($points)];$c=$points[($i+2)%count($points)];$cross=($b[0]-$p[0])*($c[1]-$b[1])-($b[1]-$p[1])*($c[0]-$b[0]);if(abs($cross)>0.001){$s=$cross>0?1:-1;if($sign&&$s!==$sign)$convex=false;$sign=$s;}$area+=$p[0]*$b[1]-$b[0]*$p[1];$radius=max($radius,hypot($p[0]-$cx,$p[1]-$cy));}
-            $area=abs($area)/2;
-            if(!$convex||$area<12||$area>1500||$radius>25||!$geometry->allows($cx,$cy,$radius)||$cx-$radius<0||$cy-$radius<0||$cx+$radius>=$raster->side||$cy+$radius>=$raster->side){$rejected++;continue;}
-            $ground=array_map(static fn($p)=>$raster->height($p[0],$p[1]),$points);if(max($ground)-min($ground)>1.5){$rejected++;continue;}
-            $overlap=false;foreach($out as $existing)if(hypot($cx-$existing["position"][0],$cy-$existing["position"][1])<$radius+$existing["radius"])$overlap=true;if($overlap){$rejected++;continue;}
-            $tags=$footprint["tags"];$height=6.0;
-            if(preg_match("/^([0-9]+(?:\\.[0-9]+)?)(?: m)?$/",(string)($tags["height"]??""),$m))$height=(float)$m[1];elseif(is_numeric($tags["building:levels"]??null))$height=(float)$tags["building:levels"]*3;
+        $geometry=new BeamScenery($road,$profiles,$exclusions);$out=[];$reasons=[];
+        $reject=static function($reason)use(&$reasons){$reasons[$reason]=($reasons[$reason]??0)+1;};
+        foreach($footprints as $footprint){
+            $points=BeamPolygon::clean($footprint['points']);
+            if(count($points)<3||count($points)>100||!BeamPolygon::triangles($points)){$reject('invalid_geometry');continue;}
+            $cx=array_sum(array_column($points,0))/count($points);$cy=array_sum(array_column($points,1))/count($points);$radius=0;
+            foreach($points as $p)$radius=max($radius,hypot($p[0]-$cx,$p[1]-$cy));
+            if(BeamPolygon::area($points)<12||BeamPolygon::area($points)>5000||$radius>75){$reject('size');continue;}
+            $bounds=false;foreach($points as $p)if($p[0]<0||$p[1]<0||$p[0]>=$raster->side||$p[1]>=$raster->side)$bounds=true;
+            if($bounds){$reject('outside_map');continue;}
+            $reason=$geometry->polygonReason($points);if($reason!==null){$reject($reason);continue;}
+            $ground=array_map(static fn($p)=>$raster->height($p[0],$p[1]),$points);$variation=max($ground)-min($ground);
+            if($variation>3){$reject('ground_variation');continue;}
+            $overlap=false;foreach($out as $existing)if(BeamPolygon::overlaps($points,$existing['world_footprint'])){$overlap=true;break;}
+            if($overlap){$reject('overlapping_building');continue;}
+            $tags=$footprint['tags'];$height=6.0;
+            if(preg_match('/^([0-9]+(?:\.[0-9]+)?)(?: m)?$/',(string)($tags['height']??''),$m))$height=(float)$m[1];
+            elseif(is_numeric($tags['building:levels']??null))$height=(float)$tags['building:levels']*3;
             $height=max(3,min(30,$height));
-            $out[]=["kind"=>"building","position"=>[$cx,$cy,min($ground)-0.2],"points"=>array_map(static fn($p)=>[$p[0]-$cx,$p[1]-$cy],$points),"radius"=>$radius,"height"=>$height+(max($ground)-min($ground)),"mapped"=>true];
+            $out[]=['kind'=>'building','position'=>[$cx,$cy,min($ground)-0.2],'points'=>array_map(static fn($p)=>[$p[0]-$cx,$p[1]-$cy],$points),
+                'world_footprint'=>$points,'radius'=>$radius,'height'=>$height+$variation,'foundation_height_m'=>$variation,'mapped'=>true];
         }
-        return ["objects"=>$out,"rejected"=>$rejected];
+        return ['objects'=>$out,'rejected'=>array_sum($reasons),'rejection_reasons'=>$reasons];
     }
 }

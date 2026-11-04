@@ -30,6 +30,27 @@ final class BeamScenery
         $distance=$this->edgeDistance($x,$y);
         return $distance+1e-8>=$radius && $distance+$radius<=self::RANGE_M+1e-8;
     }
+
+    private function polygonHitsRoad(array $points): bool
+    {
+        $seen=[];
+        for($x=(int)floor(min(array_column($points,0))/64);$x<=(int)floor(max(array_column($points,0))/64);$x++)
+            for($y=(int)floor(min(array_column($points,1))/64);$y<=(int)floor(max(array_column($points,1))/64);$y++)
+                foreach($this->index[$x.':'.$y]??[] as $id)$seen[$id]=true;
+        foreach(array_keys($seen) as $id){[$a,$b,$half]=$this->segments[$id];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy);if($length<0.001)continue;
+            $ox=$dy/$length*$half;$oy=-$dx/$length*$half;
+            if(BeamPolygon::overlaps($points,[[$a[0]+$ox,$a[1]+$oy],[$b[0]+$ox,$b[1]+$oy],[$b[0]-$ox,$b[1]-$oy],[$a[0]-$ox,$a[1]-$oy]]))return true;
+        }
+        return false;
+    }
+    public function polygonReason(array $points): ?string
+    {
+        if($this->polygonHitsRoad($points))return 'pavement_overlap';
+        foreach($this->exclusions as $road)if($road->polygonHitsRoad($points))return 'pavement_overlap';
+        foreach($points as $p)if($this->edgeDistance($p[0],$p[1])>self::RANGE_M)return 'outside_roadside_range';
+        return null;
+    }
+
     public static function radius(string $kind,float $scale,?string $asset=null): float
     {
         if($asset!==null)return BeamVegetation::CATALOG[$asset]['radius']*$scale;
@@ -42,7 +63,12 @@ final class BeamScenery
         $length=$chain[count($chain)-1];$target=min(12000,max(400,(int)ceil($length/1000*250)));$baseTarget=$target;$extraTreeTarget=0;$limit=min(400000,$target*50);
         $random=static function()use(&$seed): float {$seed=($seed*1664525+1013904223)&0xFFFFFFFF;return $seed/4294967296;};
         $out=[];$occupied=[];$types=["tree"=>0,"bush"=>0,"rock"=>0,"building"=>0];$zones=[];$variants=[];$skipped=["water"=>0,"footprint"=>0,"slope"=>0,"spacing"=>0,"bounds"=>0];
-        foreach($reserved as $building){[$x,$y]=$building['position'];$occupied[(int)floor($x/20).':'.(int)floor($y/20)][]=[$x,$y,$building['radius']];}
+        foreach($reserved as $building){
+            [$x,$y]=$building['position'];$radius=$building['radius'];
+            for($ix=(int)floor(($x-$radius)/20);$ix<=(int)floor(($x+$radius)/20);$ix++)
+                for($iy=(int)floor(($y-$radius)/20);$iy<=(int)floor(($y+$radius)/20);$iy++)
+                    $occupied[$ix.':'.$iy][]=[$x,$y,$radius,'building'];
+        }
         for($attempt=0;$attempt<$limit && count($out)<$target;$attempt++){
             if($attempt%100===0)$progress(null);
             $distance=$random()*$length;$lo=1;$hi=count($chain)-1;

@@ -126,15 +126,16 @@ final class BeamIntersections
             if($bridge||$sine<0.2){$out['skipped']++;continue;}
             $profile=$branch['profile']??BeamLanes::infer(['width'=>(string)$branch['width_m']],'residential',0);
             $profile['width_m']=$branch['width_m'];
-            $trim=($join['half_width']+$profile['width_m']/2*$cosine)/$sine+0.05;
+            $trim=($join['half_width']+$profile['width_m']/2*$cosine)/$sine+max(8,$profile['width_m']/2);
             $surface=self::after($local,$trim);if(count($surface)<2){$out['skipped']++;continue;}
-            $sampled=BeamPlan::sample($surface);$raw=[];$chain=[0.0];
+            $sampled=BeamPlan::sample($surface,2);$raw=[];$chain=[0.0];
             foreach($sampled as $i=>$p){$raw[]=$raster->roadHeight($p[0],$p[1]);if($i)$chain[]=$chain[$i-1]+hypot($p[0]-$sampled[$i-1][0],$p[1]-$sampled[$i-1][1]);}
             $nodes=[];$branchProfiles=[];
             foreach($sampled as $i=>$p){
                 if($p[0]<0||$p[1]<0||$p[0]>=$raster->side||$p[1]>=$raster->side)break;
                 $sum=0.0;$weights=0.0;
-                for($j=max(0,$i-6);$j<count($sampled)&&$chain[$j]-$chain[$i]<40;$j++){
+                $left=$i;while($left>0&&$chain[$i]-$chain[$left-1]<40)$left--;
+                for($j=$left;$j<count($sampled)&&$chain[$j]-$chain[$i]<40;$j++){
                     if(abs($chain[$j]-$chain[$i])>=40)continue;
                     $weight=exp(-0.5*(($chain[$j]-$chain[$i])/12)**2);$sum+=$raw[$j]*$weight;$weights+=$weight;
                 }
@@ -143,9 +144,10 @@ final class BeamIntersections
                 $anchor=$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade'];
                 $z=$anchor*(1-$fade)+$z*$fade;
                 $nearMain=self::nearest($p,$road,$profiles);
-                if($i>1&&$nearMain['distance']<$nearMain['half_width']+$profile['width_m']/2+0.25)break;
+                if($i){$hx=$p[0]-$sampled[$i-1][0];$hy=$p[1]-$sampled[$i-1][1];$hl=hypot($hx,$hy)?:1;$across=abs(($hx*$nearMain['dx']+$hy*$nearMain['dy'])/$hl);
+                    if($nearMain['distance']<$nearMain['half_width']+$profile['width_m']/2*$across+0.02)break;}
                 if($i&&abs($z-$nodes[$i-1][2])/max(0.01,$chain[$i]-$chain[$i-1])>0.35)break;
-                $nodes[]=[$p[0],$p[1],$z];$branchProfiles[]=$profile+['unmarked'=>$chain[$i]<max(8,$profile['width_m'])];
+                $nodes[]=[$p[0],$p[1],$z];$branchProfiles[]=$profile+['unmarked'=>false];
             }
             if(count($nodes)<2){$out['skipped']++;continue;}
             $connector=array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample(self::clip($local,$trim)));
@@ -153,7 +155,7 @@ final class BeamIntersections
             $apron=self::clip($local,$trim+1);
             $apronSurface=array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample($apron));
             $out['aprons'][]=['points'=>$apron,'width_m'=>$profile['width_m'],'surface'=>$apronSurface];
-            $out['junctions'][]=$join+['radius'=>max(8,($profile['width_m']/2+3)/$sine)];
+            $out['junctions'][]=$join+['radius'=>$profile['width_m']/2/$sine];
         }
         return $out;
     }
@@ -162,23 +164,45 @@ final class BeamIntersections
         $along=0.0;
         foreach($road as $i=>$p){
             if($i)$along+=hypot($p[0]-$road[$i-1][0],$p[1]-$road[$i-1][1]);
-            foreach($junctions as $join)if(abs($along-$join['along'])<=$join['radius']+8){$profiles[$i]['unmarked']=true;break;}
+            foreach($junctions as $join)if(abs($along-$join['along'])<=$join['radius']){$profiles[$i]['unmarked']=true;break;}
         }
         return $profiles;
     }
+
+    /** Split only at marking boundaries; all new points lie on the original centreline. */
+    public static function markingSections(array $road,array $profiles,array $junctions): array
+    {
+        if(!$junctions)return ['points'=>$road,'profiles'=>$profiles];
+        $cuts=[];foreach($junctions as $j){$cuts[]=max(0,$j['along']-$j['radius']);$cuts[]=$j['along']+$j['radius'];}sort($cuts);
+        $points=[$road[0]];$out=[$profiles[0]];$along=0.0;$previous=0.0;
+        for($i=1;$i<count($road);$i++){
+            $a=$road[$i-1];$b=$road[$i];$length=hypot($b[0]-$a[0],$b[1]-$a[1]);if($length<0.001)continue;
+            $at=[];foreach($cuts as $cut)if($cut>$along+0.00001&&$cut<$along+$length-0.00001)$at[]=$cut;$at[]=$along+$length;$at=array_unique($at);
+            foreach($at as $cut){
+                $t=($cut-$along)/$length;$points[]=[$a[0]+($b[0]-$a[0])*$t,$a[1]+($b[1]-$a[1])*$t,$a[2]+($b[2]-$a[2])*$t];
+                $p=$profiles[$i];$p['width_m']=$profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t;$p['unmarked']=false;$mid=($previous+$cut)/2;
+                foreach($junctions as $join)if(abs($mid-$join['along'])<$join['radius']){$p['unmarked']=true;break;}
+                $out[]=$p;$previous=$cut;
+            }
+            $along+=$length;
+        }
+        $out[0]['unmarked']=$out[1]['unmarked']??false;
+        return ['points'=>$points,'profiles'=>$out];
+    }
+
     public static function shape(array $prepared,array $main,array $profiles,BeamRaster $raster,float $origin,string $bridgeMask,callable $progress): array
     {
         $mask=$bridgeMask;$n=$raster->size;$step=$raster->side/$n;
         // Protect existing main-road shoulders and every bridge interior.
         for($i=1;$i<count($main);$i++){
-            $a=$main[$i-1];$b=$main[$i];$radius=max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2+max(1.5,sqrt(2)*$step);
+            $a=$main[$i-1];$b=$main[$i];$radius=max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2+0.05;
             for($y=max(0,(int)floor((min($a[1],$b[1])-$radius)/$step));$y<=min($n-1,(int)ceil((max($a[1],$b[1])+$radius)/$step));$y++)
                 for($x=max(0,(int)floor((min($a[0],$b[0])-$radius)/$step));$x<=min($n-1,(int)ceil((max($a[0],$b[0])+$radius)/$step));$x++)
                     if(BeamLanes::distance([$x*$step,$y*$step],$a,$b)[0]<=$radius)$mask[$y*$n+$x]="\1";
         }
         $reports=[];
         $surfaces=$prepared['roads'];
-        foreach($prepared['aprons'] as $apron)$surfaces[]=['points'=>$apron['surface'],'profiles'=>array_fill(0,count($apron['surface']),['width_m'=>$apron['width_m']])];
+        foreach($prepared['aprons'] as $apron)$surfaces[]=['points'=>$apron['surface'],'profiles'=>$apron['profiles']??array_fill(0,count($apron['surface']),['width_m'=>$apron['width_m']])];
         foreach($surfaces as $branch){
             $progress(null);
             $reports[]=['shoulders'=>BeamRoadSurface::blendTerrain($branch['points'],$branch['profiles'],$raster,$origin,$mask,$progress),
@@ -198,40 +222,20 @@ final class BeamIntersections
         return max($raster->height($x,$y),$one,$two);
     }
     /** Final clearance audit occurs after every terrain/apron pass; main road is immutable. */
-    public static function conform(array $prepared,BeamRaster $raster,float $origin,callable $progress): array
+    public static function conform(array $prepared,BeamRaster $raster,float $origin,callable $progress,array $main=[],array $mainProfiles=[],string $bridgeMask=""): array
     {
-        $out=[];$shortened=[];$parentEnds=[];$raised=0;$maxRaise=0.0;$skipped=0;
-        foreach($prepared['roads'] as $branch){
-            $progress(null);$loop=isset($branch['turnaround_for']);$parent=$branch['turnaround_for']??null;
-            if($loop&&(!isset($parentEnds[$parent])||isset($shortened[$parent]))){$skipped++;continue;}
-            $zShift=$loop?$parentEnds[$parent][2]-$branch['points'][0][2]:0;
-            $points=[];$profiles=[];$originalEnd=end($branch['points']);$failed=false;
-            for($i=1;$i<count($branch['points']);$i++){
-                $a=$branch['points'][$i-1];$b=$branch['points'][$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy);if($length<0.001)continue;
-                $count=max(1,(int)ceil($length));
-                for($j=$i===1?0:1;$j<=$count;$j++){
-                    $t=$j/$count;$x=$a[0]+$dx*$t;$y=$a[1]+$dy*$t;$z=$a[2]+($b[2]-$a[2])*$t+$zShift;
-                    $profile=$branch['profiles'][$i];$half=$profile['width_m']/2;$required=-INF;
-                    for($s=-$half;$s<=$half+0.001;$s+=min(1,$profile['width_m']/2)){
-                        $xx=$x+$dy/$length*$s;$yy=$y-$dx/$length*$s;
-                        $required=max($required,self::terrainTop($raster,$xx,$yy)-$origin+0.05);
-                    }
-                    $up=max(0,$required-$z);$candidate=$z+$up;
-                    $last=$points?end($points):null;
-                    if($up>2||($last&&abs($candidate-$last[2])/max(0.01,hypot($x-$last[0],$y-$last[1]))>0.35)){$failed=true;break 2;}
-                    if($up>0.0001){$raised++;$maxRaise=max($maxRaise,$up);}
-                    $points[]=[$x,$y,$candidate];$profiles[]=$profile;
-                }
+        $mask=$bridgeMask?:str_repeat("\0",$raster->size*$raster->size);$reports=[];$lowered=0;$maxCut=0.0;
+        // Lower final contact terrain rather than lifting road surfaces away from their shoulders.
+        $surfaces=$prepared['roads'];foreach($prepared['aprons']??[] as $a)$surfaces[]=['points'=>$a['surface'],'profiles'=>$a['profiles']??array_fill(0,count($a['surface']),['width_m'=>$a['width_m']])];
+        for($pass=0;$pass<2;$pass++){
+            foreach($surfaces as $branch){
+                $progress(null);$report=BeamRoadSurface::clearTerrain($branch['points'],$branch['profiles'],$raster,$origin,$progress,$mask,true);
+                $reports[]=$report;$lowered+=$report['lowered_vertices'];$maxCut=max($maxCut,$report['maximum_cut_m']);
             }
-            if(count($points)<2||($loop&&$failed)){$skipped++;continue;}
-            if($failed)$shortened[$branch['name']]=true;
-            $branch['points']=$points;$branch['profiles']=$profiles;$out[]=$branch;
-            if(!$loop)$parentEnds[$branch['name']]=end($points);
+            if($main){$report=BeamRoadSurface::clearTerrain($main,$mainProfiles,$raster,$origin,$progress,$mask,true);$lowered+=$report['lowered_vertices'];$maxCut=max($maxCut,$report['maximum_cut_m']);}
         }
-        $prepared['roads']=$out;
-        if(isset($prepared['turnarounds'])){$actual=count(array_filter($out,static fn($r)=>isset($r['turnaround_for'])));$prepared['turnarounds']['skipped']+=$prepared['turnarounds']['created']-$actual;$prepared['turnarounds']['created']=$actual;}
-        $prepared['final_clearance']=['raised_samples'=>$raised,'maximum_raise_m'=>$maxRaise,'shortened_branches'=>count($shortened),'skipped_surfaces'=>$skipped,
-            'method'=>'Conform side surfaces to final terrain, checking both terrain triangle diagonals; never alter the primary road.'];
+        $prepared['final_clearance']=['raised_samples'=>0,'maximum_raise_m'=>0.0,'lowered_vertices'=>$lowered,'maximum_cut_m'=>$maxCut,
+            'method'=>'Final terrain contact correction; main and side road surfaces remain unchanged.'];
         return $prepared;
     }
 

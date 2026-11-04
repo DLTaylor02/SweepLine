@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Replace raised side-road surfaces and lower terrain decals with one welded pavement mesh per branch and connector. Preserve primary-road centreline/elevation/width, use smooth junction crossfall, and shape native side shoulders after all primary-road terrain passes; final clearance lowers contact terrain rather than lifting pavement. End lane markings at exact junction boundaries and continue side-road markings through the connector.
+- Replace circular/convex building placement filters with polygon pavement/neighbor clearance, ear-clipped concave roofs, larger practical footprint limits and a 3 m foundation-variation allowance. Record rejection reasons. A live 95 m Canal Road corridor audit placed 142 of 289 footprints versus 75 with the old filters; most remaining buildings were beyond the retained 200 ft range.
+
 - Fix intersecting roads being covered by later apron/terrain passes: anchor entrances to their original main-road junction plane, stop branches re-entering the primary pavement, and audit final side-road clearance against both terrain diagonals without moving the main road. Add connected minimap/AI graphs and conservative synthetic turnaround loops at suitable two-way stub ends; reject water, buildings, steep terrain and road conflicts.
 - Keep BeamNG export progress monotonic per job and retain the reached stage when reopening it; generic or repeated status messages no longer reset the staged bar.
 

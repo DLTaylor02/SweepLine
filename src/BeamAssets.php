@@ -14,7 +14,7 @@ final class BeamAssets
         if($kind==='mapped-building') {
             $area=0.0;foreach($footprint as $i=>$p){$next=$footprint[($i+1)%count($footprint)];$area+=$p[0]*$next[1]-$next[0]*$p[1];}if($area<0)$footprint=array_reverse($footprint);
             $n=count($footprint);foreach([0,$height] as $z)foreach($footprint as $p)$vertices[]=[$p[0],$p[1],$z];
-            for($i=1;$i<$n-1;$i++){$triangles[]=[0,$i+1,$i];$triangles[]=[$n,$n+$i,$n+$i+1];}
+            foreach(BeamPolygon::triangles($footprint) as [$a,$b,$c]){$triangles[]=[$a,$c,$b];$triangles[]=[$n+$a,$n+$b,$n+$c];}
             for($i=0;$i<$n;$i++){$j=($i+1)%$n;$triangles[]=[$i,$j,$n+$j];$triangles[]=[$i,$n+$j,$n+$i];}
         } elseif($kind==='bridge-pier') {
             $box(-0.5,-0.5,0,1,1,1);
