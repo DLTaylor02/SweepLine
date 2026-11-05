@@ -5,7 +5,7 @@ namespace SweepLine;
 /** One welded top surface per side road, including its junction connector. */
 final class BeamPavement
 {
-    public static function key(array $p): string {return $p['lanes'].'_'.$p['backward'].'_'.(int)$p['oneway'].(!empty($p['unmarked'])?'_junction':'').(isset($p['shoulder_m'])?'_s'.(int)round(255*$p['shoulder_m']/$p['width_m']):'');}
+    public static function key(array $p): string {return $p['lanes'].'_'.$p['backward'].'_'.(int)$p['oneway'].(!empty($p['unmarked'])?'_junction':'').(!empty($p['keep_edge_left'])?'_edgeL':'').(!empty($p['keep_edge_right'])?'_edgeR':'').(isset($p['shoulder_m'])?'_s'.(int)round(255*$p['shoulder_m']/$p['width_m']):'');}
     public static function section(array $points,array $profiles,int $i): array
     {
         $a=$points[max(0,$i-1)];$b=$points[min(count($points)-1,$i+1)];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy)?:1;$half=$profiles[$i]['width_m']/2;$p=$points[$i];
@@ -37,8 +37,24 @@ final class BeamPavement
             $quad($a,$b,$c,$d,$prefix.'_road_'.self::key($profiles[0]),[[0,$v0],[1,$v0],[1,$v1],[0,$v1]]);
         }
         if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles);
-        return ['xml'=>self::collada($vertices,$triangles,$origin),'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
+        return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge'),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
             'connector_end_seam_m'=>($connector?0.0:null),'method'=>'Exact ribbon boundary; overlapping side pavement removed; contact heights shared with primary surface.'];
+    }
+
+    /** Visible thickness only. Never add collision sidewalls at pavement seams. */
+    private static function fascia(array $vertices,array $triangles,array $origin,string $material): string
+    {
+        $edges=[];foreach($triangles as $triangle)foreach([[0,1],[1,2],[2,0]] as [$a,$b]){
+            $x=$triangle['v'][$a];$y=$triangle['v'][$b];$key=min($x,$y).':'.max($x,$y);
+            if(isset($edges[$key]))$edges[$key]['count']++;else $edges[$key]=['count'=>1,'a'=>$x,'b'=>$y];
+        }
+        $points=[];$faces=[];
+        foreach($edges as $edge)if($edge['count']===1){
+            $a=$vertices[$edge['a']];$b=$vertices[$edge['b']];if(hypot($b[0]-$a[0],$b[1]-$a[1])<0.001)continue;$base=count($points);
+            foreach([$a,[$a[0],$a[1],$a[2]-0.18],[$b[0],$b[1],$b[2]-0.18],$b] as $p)$points[]=[$p[0]-$origin[0],$p[1]-$origin[1],$p[2]-$origin[2]];
+            $faces[]=[$base,$base+1,$base+2];$faces[]=[$base,$base+2,$base+3];
+        }
+        return BeamAssets::mesh($points,$faces,$material);
     }
 
     public static function connectorRings(array $branch,array $main,array $mainProfiles): array

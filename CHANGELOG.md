@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Fix primary-road terrain being excavated by final side-road cleanup: protect all supporting grid corners during every branch pass, bound secondary clearance cuts and shorten/omit unsupported context stretches instead of disturbing main-road support. Report these limits and remove stale turnarounds.
+- Add render-only 18 cm pavement edges to explicit road meshes; preserve top-surface collision without physical seam/shoulder walls.
+- Retain the opposite white edge line at T-junctions, including reversed route orientations; interrupt both edges only for opposing entrances.
+
+
+- Double eligible BeamNG curve-rounding radius/trim limits, with a 0.70 m deviation cap and enlarged-round junction/structure protection.
+- Improve mapped-building appearance with deterministic siding/tint/roof variants, stock normal/specular maps, generic framed windows and entrances, and cornice/base trim. Keep mapped footprints and cap decorative detail work; record estimated-architecture limitations.
+- Distinguish guardrail fetch outcome from empty mapped coverage and placement rejection in export reports.
+
+
 - Texture mapped building walls with stock residential/business/industrial/neutral materials and physical-scale UVs, keeping roofs separate. Prefer building tags over optional mapped land-use hints; preserve buildings if land-use fetching fails. Record appearance provenance and coverage limits.
 - Add two-foot paved shoulders on each side of primary and mapped side roads, preserving lane widths/markings and spawn offsets. Blend native terrain to the new outer pavement edge; retain junction clipping and bridge protection.
 - Refine small road direction changes using bounded quadratic corner rounds and fine angle supports. Protect sharp turns, endpoints, junctions and structure corridors; use explicit pavement for rounded roads to avoid independent engine spline overshoot.

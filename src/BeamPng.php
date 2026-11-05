@@ -16,7 +16,8 @@ final class BeamPng
     {
         return self::rgb(256,256,static function($x,$y)use($profile) {
             $noise=(($x*17+$y*31)%11)-5;$color=[62+$noise,63+$noise,65+$noise];
-            if(!empty($profile['unmarked']))return $color;
+            $edgeMargin=isset($profile['shoulder_m'])?(int)round(255*$profile['shoulder_m']/$profile['width_m']):0;
+            if(!empty($profile['unmarked'])){if((!empty($profile['keep_edge_left'])&&abs($x-$edgeMargin)<=1)||(!empty($profile['keep_edge_right'])&&abs($x-(255-$edgeMargin))<=1))return [235,235,225];return $color;}
             $margin=isset($profile['shoulder_m'])?(int)round(255*$profile['shoulder_m']/$profile['width_m']):0;
             if($margin?abs($x-$margin)<=1||abs($x-(255-$margin))<=1:$x<5||$x>250)return [235,235,225];
             for($lane=1;$lane<$profile['lanes'];$lane++) {

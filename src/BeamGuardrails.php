@@ -18,14 +18,14 @@ final class BeamGuardrails
             $data=BeamOsm::download(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$dir.'/guardrails.json',
                 http_build_query(['data'=>'[out:json][timeout:90][maxsize:16777216];way[barrier=guard_rail](poly:"'.$poly.'");out geom 1001;']),$progress,$download,null,'guardrails');
             $parsed=self::parse($data);
-            if(!$parsed['lines'])return $parsed+['source'=>'OpenStreetMap barrier=guard_rail ways'];
+            if(!$parsed['lines'])return $parsed+['source'=>'OpenStreetMap barrier=guard_rail ways','fetch_status'=>'complete'];
             $q=$db->prepare('SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?),4326),CAST(? AS integer)),6)');
             $q->execute([json_encode(['type'=>'GeometryCollection','geometries'=>array_map(static fn($line)=>['type'=>'LineString','coordinates'=>$line['points']],$parsed['lines'])],JSON_THROW_ON_ERROR),$plan['epsg']]);
             $projected=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['geometries'];
             foreach($projected as $i=>$g)$parsed['lines'][$i]['points']=array_map(static fn($p)=>[$p[0]-$plan['bounds'][0],$p[1]-$plan['bounds'][1]],$g['coordinates']);
-            return $parsed+['source'=>'OpenStreetMap barrier=guard_rail ways'];
+            return $parsed+['source'=>'OpenStreetMap barrier=guard_rail ways','fetch_status'=>'complete'];
         }catch(JobCancelled $e){throw $e;}
-        catch(\Throwable $e){return ['lines'=>[],'source'=>'OpenStreetMap barrier=guard_rail ways','warning'=>'Mapped guardrails were unavailable; no inferred roadside barriers were substituted.','failure_kind'=>$e instanceof DownloadFailure?'provider':'processing'];}
+        catch(\Throwable $e){return ['lines'=>[],'source'=>'OpenStreetMap barrier=guard_rail ways','fetch_status'=>'unavailable','warning'=>'Mapped guardrails were unavailable; no inferred roadside barriers were substituted.','failure_kind'=>$e instanceof DownloadFailure?'provider':'processing'];}
     }
 
     public static function parse(array $data): array
@@ -116,6 +116,8 @@ final class BeamGuardrails
             $flush();if($limited)break;
         }
         $report=$data;unset($report['lines']);$report+=['source'=>'OpenStreetMap barrier=guard_rail ways'];
+        $report['fetch_status']??=isset($data['source_ways'])?'complete':'not_requested';
+        if($report['fetch_status']==='complete'&&($data['source_ways']??count($data['lines']??[]))===0)$report['coverage_note']='No mapped guardrail ways were returned for the queried corridor; real barriers may still exist.';
         $report['placed_runs']=count($out);$report['length_m']=round($length,2);$report['terminals']=$terminals;$report['rejection_reasons']=$reasons;$report['truncated']=!empty($data['truncated'])||$limited;
         $report['placement']='Mapped horizontal geometry; estimated terrain/pavement-relative height. Steel rails/posts with rigid capped ends; no crash-energy model. Existing estimated bridge rails retained.';
         if($report['truncated'])$report['warning']=trim(($report['warning']??'').' Guardrail coverage was limited by the export geometry budget.');

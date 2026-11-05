@@ -1,5 +1,5 @@
 <?php
-use SweepLine\{BeamBuildings,BeamRaster,BeamLanes,BeamPolygon,BeamPavement,BeamIntersections};
+use SweepLine\{BeamBuildings,BeamRaster,BeamLanes,BeamPolygon,BeamPavement,BeamIntersections,BeamRoadSurface};
 $broad=[[0,100,100],[400,100,100]];$bp=array_fill(0,2,['width_m'=>8]);$br=new BeamRaster(128,400,str_repeat(pack('g',100),16384),str_repeat(chr(100),49152));
 $foot=static fn($p)=>['points'=>$p,'tags'=>['building'=>'yes']];
 $long=$foot([[20,108],[100,108],[100,112],[20,112],[20,108]]);
@@ -100,3 +100,24 @@ foreach($trimmedTriangles as $t){
     }
 }
 check($outside,'Independent half-plane checks find no retained branch triangle centres or edges inside the primary pavement');
+
+$tMark=BeamIntersections::markingSections($main,$mp,[['along'=>100,'radius'=>4,'side'=>'left']]);
+$tProfile=array_values(array_filter($tMark['profiles'],static fn($p)=>!empty($p['unmarked'])))[0];
+$tImage=imagecreatefromstring(SweepLine\BeamPng::road($tProfile));
+check(!empty($tProfile['keep_edge_right'])&&empty($tProfile['keep_edge_left'])&&(imagecolorat($tImage,255,128)&0xffffff)===0xebebe1&&(imagecolorat($tImage,0,128)&0xffffff)!==0xebebe1,'T-junction preserves the far-side white line while opening the entrance edge');
+$xMark=BeamIntersections::markingSections($main,$mp,[['along'=>100,'radius'=>4,'side'=>'left'],['along'=>100,'radius'=>4,'side'=>'right']]);
+$xProfile=array_values(array_filter($xMark['profiles'],static fn($p)=>!empty($p['unmarked'])))[0];
+check(empty($xProfile['keep_edge_right'])&&empty($xProfile['keep_edge_left'])&&BeamPavement::key($xProfile)!==BeamPavement::key($tProfile),'Opposing junction arms suppress both edges and cannot reuse the T-junction paint material');
+$edgeXml=simplexml_load_string($mesh['fascia_xml'],SimpleXMLElement::class,LIBXML_NONET);
+check($edgeXml!==false&&$mesh['visual_edge_depth_m']===0.18,'Pavement has a separate visual edge mesh while its top collision geometry remains unchanged');
+$supportRaster=new BeamRaster(64,256,str_repeat(pack('g',100.2),4096),str_repeat(chr(100),12288));
+$supportRoad=[[10,100,100.25],[240,100,100.25]];$supportProfiles=BeamRoadSurface::shoulders(array_fill(0,2,$profile));
+$lowBranch=['name'=>'low_branch','points'=>[[100,108,95],[100,190,95]],'profiles'=>array_fill(0,2,$profile)];
+$unprotected=clone $supportRaster;
+BeamRoadSurface::clearTerrain($lowBranch['points'],$lowBranch['profiles'],$unprotected,0,static fn($m)=>null,str_repeat("\0",4096),true);
+$fixed=BeamIntersections::conform(['roads'=>[$lowBranch],'aprons'=>[],'junctions'=>[],'skipped'=>0],$supportRaster,0,static fn($m)=>null,$supportRoad,$supportProfiles,str_repeat("\0",4096));
+check($unprotected->height(100,104.6)<99.7&&abs($supportRaster->height(100,104.6)-100.2)<0.001,'Regression reproduces branch excavation under the main edge and verifies full-cell protection preserves its terrain support');
+check($fixed['final_clearance']['limited_branches']===1&&$fixed['roads']===[],'A side road incompatible with protected main-road terrain is omitted instead of exposed through an excavated gap');
+$bounded=new BeamRaster(32,128,str_repeat(pack('g',105),1024),str_repeat(chr(100),3072));
+$boundedResult=BeamRoadSurface::clearTerrain([[20,60,100],[100,60,100]],array_fill(0,2,$profile),$bounded,0,static fn($m)=>null,str_repeat("\0",1024),true,0.5);
+check($boundedResult['maximum_cut_m']<=0.500001&&$boundedResult['clamped_vertices']>0,'Secondary clearance cannot excavate a terrain vertex by more than its explicit per-pass cut budget');

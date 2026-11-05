@@ -21,6 +21,19 @@ final class BeamRoadSurface
         foreach($profiles as $i=>&$profile){$width=$baseWidth;$profile["transition"]=false;foreach($changes as [$at,$delta]){if(abs($chain[$i]-$at)<30.48)$profile["transition"]=true;$t=max(0,min(1,($chain[$i]-$at+30.48)/60.96));$width+=$delta*($t*$t*(3-2*$t));}$profile["width_m"]=max(2.4,$width);}unset($profile);
         return $profiles;
     }
+    /** Protect every terrain cell corner supporting primary pavement during branch passes. */
+    public static function primaryContactMask(array $road,array $profiles,BeamRaster $raster,string $base=""): string
+    {
+        $n=$raster->size;$step=$raster->side/$n;$mask=$base?:str_repeat("\0",$n*$n);
+        for($i=1;$i<count($road);$i++){
+            $a=$road[$i-1];$b=$road[$i];$radius=max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2+0.25+sqrt(2)*$step;
+            for($y=max(0,(int)floor((min($a[1],$b[1])-$radius)/$step));$y<=min($n-1,(int)ceil((max($a[1],$b[1])+$radius)/$step));$y++)
+                for($x=max(0,(int)floor((min($a[0],$b[0])-$radius)/$step));$x<=min($n-1,(int)ceil((max($a[0],$b[0])+$radius)/$step));$x++)
+                    if(BeamLanes::distance([$x*$step,$y*$step],$a,$b)[0]<=$radius)$mask[$y*$n+$x]="\1";
+        }
+        return $mask;
+    }
+
     /** Blend native terrain to pavement height without adding collision objects. */
     public static function blendTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,string $protected,callable $progress,array $bridges=[]): array
     {
@@ -88,9 +101,9 @@ final class BeamRoadSurface
     }
 
     /** Correct interpolated road contact heights without flattening graded cells. */
-    public static function clearTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,callable $progress,string $protected="",bool $partialCells=false): array
+    public static function clearTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,callable $progress,string $protected="",bool $partialCells=false,float $maxCutPerVertex=INF): array
     {
-        $step=$raster->side/$raster->size;$checked=[];$lowered=[];$cut=0.0;$checks=0;
+        $step=$raster->side/$raster->size;$checked=[];$lowered=[];$clamped=[];$cut=0.0;$checks=0;
         for($i=1;$i<count($road);$i++){
             $a=$road[$i-1];$b=$road[$i];$len=hypot($b[0]-$a[0],$b[1]-$a[1]);if($len<0.001)continue;
             $steps=max(1,(int)ceil($len/min(1.0,$step/2)));
@@ -116,7 +129,7 @@ final class BeamRoadSurface
                         $excess=$height-($z+$cross*$offset+$origin-0.05);
                         if($excess<=0.0001||$norm<0.05)continue;
                         foreach($ids as $n=>$id)if($editable[$n]&&$w[$n]>0){
-                            $xx=$id%$raster->size;$yy=intdiv($id,$raster->size);$delta=$excess*$w[$n]/$norm;
+                            $xx=$id%$raster->size;$yy=intdiv($id,$raster->size);$delta=$excess*$w[$n]/$norm;$remaining=$maxCutPerVertex-($lowered[$id]??0);if($delta>$remaining){$clamped[$id]=true;$delta=max(0,$remaining);}if($delta<=0)continue;
                             $raster->put($xx,$yy,$raster->cell($xx,$yy)-$delta);
                             $lowered[$id]=($lowered[$id]??0)+$delta;$cut=max($cut,$lowered[$id]);
                         }
@@ -126,7 +139,7 @@ final class BeamRoadSurface
                 if(count($checked)>1500000)throw new \RuntimeException("Road terrain-overlap check exceeds the safe cell limit.");
             }
         }
-        return ["checked_vertices"=>count($checked),"lowered_vertices"=>count($lowered),"maximum_cut_m"=>$cut,"clearance_m"=>0.05,
+        return ["clamped_vertices"=>count($clamped),"checked_vertices"=>count($checked),"lowered_vertices"=>count($lowered),"maximum_cut_m"=>$cut,"clearance_m"=>0.05,
             "method"=>"Interpolated contact correction; preserve graded terrain cells"];
     }
 }

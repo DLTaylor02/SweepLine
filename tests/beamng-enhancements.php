@@ -61,3 +61,22 @@ try{
         static function($url,$file,$limit,$post)use(&$calls,$response){if(++$calls===2)throw new SweepLine\DownloadFailure('Fixture optional provider failure',false);file_put_contents($file,json_encode(['elements'=>[$response['elements'][0]]]));});
     check(count($fetched['footprints'])===1&&isset($fetched['landuse_warning'])&&$fetched['footprints'][0]['style']['category']==='generic','Land-use provider failure retains downloaded real buildings with a neutral facade');
 }finally{foreach(glob($directory.'/*') as $file)unlink($file);rmdir($directory);}
+
+$oldAngle=acos(50/hypot(50,20));$oldTrim=min(6,50*0.25,hypot(50,20)*0.25,0.7/sin($oldAngle/2));$roundedTwice=BeamCurve::smooth([[0,0],[50,0],[100,20]]);
+check(abs(hypot($roundedTwice[1][0]-50,$roundedTwice[1][1])-2*$oldTrim)<1e-7,'Curve rounding uses twice the previous trim/radius where the same corner is eligible');
+$appearance=BeamBuildingStyle::appearance('residential','123,456');
+check($appearance===BeamBuildingStyle::appearance('residential','123,456')&&isset($appearance['normal'],$appearance['specular']),'Building facade variants and shading maps are deterministic for the same mapped location');
+$variants=[];for($i=0;$i<30;$i++)$variants[BeamBuildingStyle::appearance('residential',(string)$i)['key']]=true;
+check(count($variants)>3,'Nearby residential buildings can receive multiple stable facade variants rather than identical walls');
+$detailOptions=['details'=>true,'category'=>'residential','levels'=>2,'foundation'=>0,'front'=>[15,-100],'trim'=>'trim_detail','glass'=>'glass_detail','door'=>'door_detail'];
+$detail=BeamBuildingStyle::mesh($footprint,6,'wall_detail','roof_detail',$detailOptions);
+$detailDoc=simplexml_load_string($detail,SimpleXMLElement::class,LIBXML_NONET);
+check($detailDoc!==false&&count($detailDoc->xpath('//*[local-name()="triangles"][@material="glass_detail"]'))===1&&count($detailDoc->xpath('//*[local-name()="triangles"][@material="door_detail"]'))===1,'Detailed residential mesh contains windows and a road-facing entrance');
+$detailValues=array_map('floatval',preg_split('/\s+/',trim((string)$detailDoc->xpath('//*[local-name()="source"][@id="positions"]/*[local-name()="float_array"]')[0])));
+$detailPositions=array_chunk($detailValues,3);
+check(min(array_column($detailPositions,0))>=9.967&&max(array_column($detailPositions,0))<=20.033&&min(array_column($detailPositions,1))>=9.967&&max(array_column($detailPositions,1))<=20.033&&max(array_column($detailPositions,2))<=6,'Facade details stay within a few centimetres of the existing footprint and below the roof');
+$emptyRails=SweepLine\BeamGuardrails::prepare(['lines'=>[],'source_ways'=>0,'fetch_status'=>'complete'],[[0,0,0],[100,0,0]],[['width_m'=>8],['width_m'=>8]],$raster??$native,0,[],[],static fn($m)=>null);
+check($emptyRails['report']['fetch_status']==='complete'&&isset($emptyRails['report']['coverage_note'])&&!isset($emptyRails['report']['warning']),'Empty successful guardrail fetch is explicitly distinguished from provider failure');
+
+$nearProtected=[[0,0],[50,0],[100,20]];
+check(BeamCurve::smooth($nearProtected,[[29,0]])===$nearProtected,'Larger curve rounds cannot intrude into the protected junction neighborhood from an adjacent corner');

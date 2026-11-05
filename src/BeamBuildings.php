@@ -85,7 +85,7 @@ final class BeamBuildings
             elseif(is_numeric($tags['building:levels']??null))$height=(float)$tags['building:levels']*3;
             $height=max(3,min(30,$height));
             $out[]=['kind'=>'building','position'=>[$cx,$cy,min($ground)-0.2],'points'=>array_map(static fn($p)=>[$p[0]-$cx,$p[1]-$cy],$points),
-                'style'=>$footprint['style']??BeamBuildingStyle::classify($tags),'world_footprint'=>$points,'radius'=>$radius,'height'=>$height+$variation,'foundation_height_m'=>$variation,'mapped'=>true];
+                'levels'=>max(1,min(10,is_numeric($tags['building:levels']??null)?(int)$tags['building:levels']:(int)round($height/3))),'style'=>$footprint['style']??BeamBuildingStyle::classify($tags),'world_footprint'=>$points,'radius'=>$radius,'height'=>$height+$variation,'foundation_height_m'=>$variation,'mapped'=>true];
         }
         return ['objects'=>$out,'rejected'=>array_sum($reasons),'rejection_reasons'=>$reasons];
     }

@@ -33,7 +33,8 @@ foreach([0,1,2] as $id){
 $terrainZip->close();
 require dirname(__DIR__)."/src/BeamBuildingStyle.php";
 $buildingZip=new ZipArchive();if($buildingZip->open($root."/content/assets/materials/tileable.zip")!==true)throw new RuntimeException("Missing stock tileable material library.");
-foreach(SweepLine\BeamBuildingStyle::TEXTURES as $path){if($buildingZip->locateName(ltrim($path,"/"))===false)throw new RuntimeException("Missing stock building facade texture: ".$path);$checks++;}
+$facadePaths=[];foreach(array_unique(array_merge(array_values(SweepLine\BeamBuildingStyle::TEXTURES),SweepLine\BeamBuildingStyle::SIDING_VARIANTS)) as $path)foreach(["_d.dds","_n.dds","_s.dds"] as $channel)$facadePaths[]=str_replace("_d.dds",$channel,$path);
+foreach($facadePaths as $path){if($buildingZip->locateName(ltrim($path,"/"))===false)throw new RuntimeException("Missing stock building facade texture: ".$path);$checks++;}
 $buildingZip->close();
 
 echo $checks." installed stock asset and shader-color checks passed; no game files modified.\n";

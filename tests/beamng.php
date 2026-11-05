@@ -345,6 +345,9 @@ try{
     check(($stockReport['building_data']['facade_counts']['residential']??0)===1,'Generated ZIP classifies mapped residential building facades');
     $buildingMesh=$stockZip->getFromName($stockBase.'art/shapes/building_0.dae');
     check(str_contains($buildingMesh,'semantic="TEXCOORD"')&&str_contains($buildingMesh,'_building_residential')&&str_contains($buildingMesh,'_building_roof'),'Generated building has textured walls and an independent roof material');
+    check(str_contains($buildingMesh,'_building_glass')&&str_contains($buildingMesh,'_building_trim')&&str_contains($buildingMesh,'_building_door'),'Generated residential building includes architectural detail materials');
+    $facadeMaterial=array_values($stockReport['building_data']['facade_materials'])[0];
+    check(isset($facadeMaterial['normal'],$facadeMaterial['specular']),'Export report records the actual facade texture and shading channels');
     $contextScene=$stockZip->getFromName($stockBase.'main/MissionGroup/items.level.json');
     check($stockReport['guardrail_data']['placed_runs']===1&&$stockReport['guardrail_data']['terminals']===2,'Generated ZIP report includes mapped guardrail placement and rigid terminals');
     check($stockZip->locateName($stockBase.'art/guardrails/rail-0.dae')!==false&&str_contains($contextScene,'"name":"mapped_guardrail_0"'),'Generated BeamNG scene references its mapped guardrail collision mesh');
@@ -355,6 +358,9 @@ try{
     $junctionObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($contextScene)));
     check($stockZip->locateName($stockBase.'art/roads/primary.dae')!==false&&count(array_filter($junctionObjects,static fn($o)=>($o['class']??'')==='TSStatic'&&($o['name']??'')==='road_surface'))===1,'Junction exports use one explicit primary collision surface sharing side-road boundaries');
     check(count(array_filter($junctionObjects,static fn($o)=>($o['class']??'')==='MeshRoad'&&str_starts_with($o['name']??'','road_')))===0,'Junction exports contain no independent smoothed primary MeshRoad overlapping the shared ribbon');
+    $visualEdges=array_values(array_filter($junctionObjects,static fn($o)=>str_ends_with($o['name']??'','visual_edge')));
+    check(count($visualEdges)>=2&&count(array_filter($visualEdges,static fn($o)=>$o['collisionType']!=='None'))===0,'Primary and side pavement edges render with thickness but have no seam collision sidewalls');
+    check($stockZip->locateName($stockBase.'art/roads/primary-edge.dae')!==false,'Generated map includes primary pavement visual-edge geometry');
     $stockTer=$stockZip->getFromName($stockBase.'theTerrain.ter');$offset=5+3*$n*$n;
     check(unpack('V',substr($stockTer,$offset,4))[1]===8,'Stock terrain writes seven physical classes plus aerial fallback');
     $stockMaterials=json_decode($stockZip->getFromName($stockBase.'art/terrains/main.materials.json'),true);
