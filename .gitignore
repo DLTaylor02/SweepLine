@@ -7,3 +7,5 @@
 *.zip
 !/tests/fixture.osm
 /.sweepline-deployment
+
+!/tests/fixture-divided.osm
