@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix queued exports waiting behind obsolete-import startup deletion. Add migration 018 with missing foreign-key/cleanup indexes, and prune inactive import payloads in resumable, timeout-bounded idle batches after queued work.
+- Keep large cancelled-import deletion out of web requests while immediately freeing cancelled queue entries. Preserve active coverage, manual imports and the seven-day automatic retention period; defer locked/busy cleanup safely.
+- Show current worker activity on Manage and log cleanup stages/deferred attempts to the worker journal. Add batching/rollback unit tests and disposable-PostGIS retention/cascade integration coverage.
+
+
 - Automatically include confidently matched opposite carriageways in BeamNG exports using local OSM identity, class, direction and parallel alignment. Preserve distinct lanes, legal traffic direction, full road geometry and the selected start/finish spawns.
 - Add independent road/structure/intersection processing, shared terrain and tunnel excavation, exact clipping of overlapping cross-street pavement, mapped at-grade traffic connections, and deduplicated scenery with shared resource budgets. Record matching and per-road provenance; retain existing export formats and discovery behavior.
 - Add generated dual-carriageway matching, direction, complete ZIP, bridge/tunnel, terrain, scenery-budget and crossing-street collision regressions, plus disposable-PostGIS matching coverage.

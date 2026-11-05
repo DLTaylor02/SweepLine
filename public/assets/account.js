@@ -254,7 +254,8 @@
         el('database-budget').dataset.loaded='true';
       }
       el('worker-status').textContent='Worker last seen: '+(data.worker_heartbeat || 'waiting for startup')+
-        '. ZIP coordinates updated: '+(data.zip_last_sync || 'preparing automatically')+'.';
+        '. ZIP coordinates updated: '+(data.zip_last_sync || 'preparing automatically')+'.'+
+        (data.worker_activity?' Activity: '+data.worker_activity:'');
       el('task-list').replaceChildren();
       el('job-counts').textContent=(data.counts || []).map(item=>item.count+' '+item.status).join(' · ');
       const jobs=[...data.tasks.map(t=>({...t,source:'tasks'})),...(data.beamng || []).map(t=>({...t,source:'beamng'})),...(data.imports || []).map(t=>({...t,task_key:t.name,source:'imports'}))];

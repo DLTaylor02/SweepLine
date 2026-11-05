@@ -116,6 +116,7 @@ final class DataQueue
         return ['beamng'=>$this->db->query("SELECT id,name AS task_key,'beamng' AS kind,status,progress,error,cancel_requested,created_at FROM beamng_exports WHERE status NOT IN ('cancelled','expired') ORDER BY CASE WHEN status IN ('queued','running') THEN 0 ELSE 1 END,created_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),'settings'=>(new StorageSettings($this->db))->read(),'storage'=>StorageUsage::read($this->db),'tasks'=>$this->db->query("SELECT id,task_key,kind,status,attempts,progress,error,cancel_requested,next_attempt_at,updated_at FROM data_tasks WHERE cancel_requested=false AND status<>'cancelled' ORDER BY CASE WHEN status IN ('running','queued','retry') THEN 0 ELSE 1 END,updated_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
             'imports'=>$this->db->query("SELECT j.id,r.name,j.status,j.progress,j.error,j.cancel_requested,j.created_at FROM import_jobs j JOIN regions r ON r.id=j.region_id WHERE j.cancel_requested=false AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id) ORDER BY CASE WHEN j.status IN ('queued','running') THEN 0 ELSE 1 END,j.id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
             'counts'=>$this->db->query('SELECT status,count(*) AS count FROM data_tasks WHERE cancel_requested=false GROUP BY status')->fetchAll(PDO::FETCH_ASSOC),
+            'worker_activity'=>$this->db->query("SELECT value FROM app_settings WHERE key='worker_activity'")->fetchColumn()?:null,
             'worker_heartbeat'=>$this->db->query("SELECT value FROM app_settings WHERE key='worker_heartbeat'")->fetchColumn()?:null,
             'zip_last_sync'=>$this->db->query("SELECT value FROM app_settings WHERE key='zip_last_sync'")->fetchColumn()?:null];
     }
@@ -136,6 +137,10 @@ final class DataQueue
             SELECT j.id FROM import_jobs j WHERE j.cancel_requested AND j.status NOT IN ('running','complete')
             AND NOT EXISTS(SELECT 1 FROM regions r WHERE r.active_job_id=j.id)
             AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id)
+            AND NOT EXISTS(SELECT 1 FROM road_candidates c WHERE c.job_id=j.id)
+            AND NOT EXISTS(SELECT 1 FROM road_segments s WHERE s.job_id=j.id)
+            AND NOT EXISTS(SELECT 1 FROM road_connectivity c WHERE c.job_id=j.id)
+            AND NOT EXISTS(SELECT 1 FROM osm_nodes n WHERE n.job_id=j.id)
             FOR UPDATE OF j SKIP LOCKED
         ) DELETE FROM import_jobs j USING disposable WHERE j.id=disposable.id");
     }

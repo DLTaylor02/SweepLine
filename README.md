@@ -671,3 +671,23 @@ Matching is conservative and depends on local OSM completeness. Corresponding st
 The ZIP report's carriageways section records matched road names/references, source candidate IDs, road lengths, structure estimates, terrain corrections, junction links and per-road surfaces. Fresh generation is required after updating. No new dependency, database migration, operator import or persistent runtime is required.
 
 Offline tests use generated roads to cover matching/rejection, reverse one-way tags, two-way approaches, overlapping widths, both traffic directions, distinct scene names, two-carriageway bridges/tunnels, preserved valleys/overburden, and a street crossing both roads with one collision surface at every sampled junction point. Disposable-PostGIS integration tests additionally exercise matching against imported OSM candidates; they require the existing dedicated test database workflow.
+
+### Queued exports and obsolete-import cleanup
+
+The worker claims queued BeamNG exports, due data-preparation tasks and manual imports before pruning obsolete geographic data. Large import deletion runs only in idle time, as short resumable batches. Each statement has a transaction-local two-second deadline and a 250 ms lock timeout; busy batches roll back and defer rather than blocking queue processing. Old active datasets remain protected. Nonactive automatic imports retain the existing seven-day grace period; stopped cancelled imports can be pruned sooner once queue references are gone. Cancelled queue entries still disappear immediately and later searches can enqueue fresh attempts. Their large geographic payloads are removed gradually during idle time.
+
+Migration 018 adds supporting indexes for candidate_segments.segment_id, data_tasks.import_job_id, regions.active_job_id and import_jobs.region_id, plus obsolete-import age lookup. PostgreSQL does not automatically create indexes on referencing foreign-key columns; repeated cascading deletion without them can require expensive scans ([PostgreSQL documentation](https://www.postgresql.org/docs/17/ddl-constraints.html#DDL-CONSTRAINTS-FK)). The installer applies these indexes automatically. The first index build can take time on a large database.
+
+Manage shows worker activity as well as the heartbeat. Cleanup batches and deferred attempts are logged by the CLI service:
+`sudo journalctl -u sweepline-worker.service -n 100 --no-pager`
+The application PHP error log is for PHP-FPM web requests; CLI worker errors normally appear in the service journal.
+
+If an older release is already executing its bulk startup DELETE, stop only the application worker, cancel that specific application cleanup, then install the updated checkout:
+
+```bash
+sudo systemctl stop sweepline-worker.service
+sudo -u postgres psql -d sweepline -c "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND usename='sweepline' AND state='active' AND pid<>pg_backend_pid() AND query LIKE 'DELETE FROM import_jobs j USING regions r%';"
+sudo ./setup.sh
+```
+
+Use the deployment's configured database/service names if customized. Cancelling this statement rolls back that in-progress cleanup; queued jobs and active coverage remain. The installer then applies the indexes and starts the updated worker. No PostgreSQL restart or unrelated service changes are required.

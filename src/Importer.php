@@ -25,7 +25,7 @@ final class Importer
     {
         $this->checkpoint();
         $this->db->prepare('UPDATE import_jobs SET progress=? WHERE id=?')->execute([$message,$id]);
-        $this->db->prepare("INSERT INTO app_settings(key,value) VALUES ('worker_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=now()")->execute([date('c')]);
+        WorkerStatus::heartbeat($this->db,$message);
         echo date('c')." job $id: $message\n";
     }
     public function run(array $job): void

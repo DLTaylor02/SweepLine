@@ -112,7 +112,12 @@ $queue->purgeCancelled();
 check((int)$db->query("SELECT count(*) FROM data_tasks WHERE task_key='auto-legacy-cancelled'")->fetchColumn()===0,'Previously cancelled tasks are purged');
 check($queue->ensure('auto-legacy-cancelled','roads',['key'=>'auto-legacy-cancelled','bounds'=>[-120,39.5,-119.5,40]])['status']==='queued','Previously cancelled area can be queued again');
 $db->exec("UPDATE data_tasks SET status='complete' WHERE task_key='auto-legacy-cancelled'");
-check((int)$db->query('SELECT count(*) FROM import_jobs WHERE id='.(int)$cancelImport['id'])->fetchColumn()===0,'Cancelled inactive manual imports are removed');
+check((int)$db->query('SELECT count(*) FROM import_jobs WHERE id='.(int)$cancelImport['id'])->fetchColumn()===1,'Bulk cancelled-import data is deferred instead of blocking queue cleanup');
+for($step=0;$step<20;$step++){
+    if(!(int)$db->query('SELECT count(*) FROM import_jobs WHERE id='.(int)$cancelImport['id'])->fetchColumn())break;
+    (new SweepLine\ImportCleanup($db))->runOne();
+}
+check((int)$db->query('SELECT count(*) FROM import_jobs WHERE id='.(int)$cancelImport['id'])->fetchColumn()===0,'Idle cleanup removes cancelled inactive manual imports in resumable batches');
 $settings=new SweepLine\StorageSettings($db);
 $oldBudget=$settings->read()['database_budget_mb'];
 $db->exec("UPDATE data_tasks SET status='failed',error='Application data storage limit reached. SuperAdmin: review data storage settings.' WHERE task_key='auto-city-limit'");

@@ -4,11 +4,13 @@ require dirname(__DIR__).'/src/bootstrap.php';
 
 $db=SweepLine\Database::connect();
 if (!$db->query('SELECT pg_try_advisory_lock(73019422)')->fetchColumn()) { exit("Another data worker is active\n"); }
+$worker=new SweepLine\DataWorker($db);$worker->heartbeat('Starting worker recovery');
 $exports=new SweepLine\BeamJobs($db);$exports->recover();$exports->maintain();
-$worker=new SweepLine\DataWorker($db); $worker->recover(); $worker->maintain();
+$worker->recover(); $worker->maintain();
+$cleanup=new SweepLine\ImportCleanup($db);
 $once=in_array('--once',$argv,true); $lastMaintenance=time();
 do {
-    $worker->heartbeat();
+    $worker->heartbeat('Checking queued work');
     $handled=$exports->runOne() || $worker->runOne();
     if (!$handled) {
         // Retain the explicit local import tools for diagnostics and advanced provisioning.
@@ -17,7 +19,10 @@ do {
         if ($job) { $db->prepare("UPDATE import_jobs SET status='running',started_at=now() WHERE id=?")->execute([$job['id']]); }
         $db->commit();
         if ($job) { try { (new SweepLine\Importer($db))->run($job); } catch (Throwable $e) { error_log($e->getMessage()); if ($once) { exit(1); } } }
-        elseif (!$once) { sleep(3); }
+        else {
+            $pruned=$cleanup->runOne();
+            if(!$once)sleep($pruned?1:3);
+        }
     }
     if (time()-$lastMaintenance>3600) { $worker->maintain(); $lastMaintenance=time(); }
 } while (!$once);

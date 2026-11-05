@@ -47,11 +47,11 @@ final class DataWorker
     {
         $this->checkpoint($id);
         $this->db->prepare('UPDATE data_tasks SET progress=?,updated_at=now() WHERE id=?')->execute([$message,$id]);
-        $this->heartbeat(); echo date('c')." task $id: $message\n";
+        $this->heartbeat($message); echo date('c')." task $id: $message\n";
     }
-    public function heartbeat(): void
+    public function heartbeat(?string $activity=null): void
     {
-        $this->db->prepare("INSERT INTO app_settings(key,value) VALUES ('worker_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=now()")->execute([date('c')]);
+        WorkerStatus::heartbeat($this->db,$activity);
     }
     public function runOne(): bool
     {
@@ -148,8 +148,7 @@ final class DataWorker
     {
         $queue=new DataQueue($this->db); $queue->purgeCancelled(); $queue->ensure('us-zips','zips',[],true);
         // Keep old active data, prune only nonactive automatic attempts after a week.
-        $this->db->exec("DELETE FROM import_jobs j USING regions r WHERE j.region_id=r.id AND r.slug LIKE 'auto-%'
-            AND j.id IS DISTINCT FROM r.active_job_id AND j.created_at<now()-interval '7 days' AND j.status IN ('complete','failed')");
+        // Bulk import pruning runs only in short idle-time ImportCleanup steps.
         $this->db->exec("DELETE FROM auth_attempts WHERE window_start<now()-interval '1 day'");
         $this->db->exec("DELETE FROM road_combination_cache WHERE created_at<now()-interval '7 days'");
         foreach (glob(SWEEPLINE_ROOT.'/var/downloads/*') as $file) {

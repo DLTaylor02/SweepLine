@@ -131,7 +131,7 @@ final class BeamJobs
             $q=$this->db->prepare('SELECT cancel_requested FROM beamng_exports WHERE id=?');$q->execute([$id]);$state=$q->fetch(PDO::FETCH_ASSOC);
             if(!$state || $state['cancel_requested'])throw new JobCancelled('Export cancelled.');
             if($message!==null)$this->db->prepare('UPDATE beamng_exports SET progress=?,updated_at=now() WHERE id=?')->execute([$message,$id]);
-            if(time()-$lastHeartbeat>=3){$this->db->prepare("INSERT INTO app_settings(key,value) VALUES ('worker_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=now()")->execute([date('c')]);$lastHeartbeat=time();}
+            if(time()-$lastHeartbeat>=3){WorkerStatus::heartbeat($this->db,$message===null?'BeamNG export processing':$message);$lastHeartbeat=time();}
         };
         try {
             if(!is_dir($dir) && !mkdir($dir,0700))throw new \RuntimeException('Cannot create job workspace.');
