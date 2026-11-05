@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix visible/collision holes beside tunnel portals: preserve lower original ground and retain a textured ground surface beneath excavated areas. Add full replacement-area and roadside coverage regressions; validate a read-only replay of the supplied Lake Tahoe export with zero gaps across 56 roadside samples.
+
+
 - Extend BeamNG fixed beam/slab bridge and viaduct estimates to 2,000 m, with longer approach anchors, bounded curvature/grade/clearance and span budgets. Retain under-bridge terrain protection and short-bridge sampling; add concrete collision material and large-valley ZIP regression coverage. Suspension, arch, cable-stayed and movable structures remain refused.
 
 

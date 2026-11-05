@@ -32,7 +32,7 @@ $tXml=simplexml_load_string($tBuilt['terrain']);$tXml->registerXPathNamespace('c
 $tPositions=$tXml->xpath('//c:source/c:float_array')[0];
 $tValues=array_map('floatval',preg_split('/\s+/',trim((string)$tPositions)));
 $tTop=false;$tIntrusion=false;
-for($i=0;$i<count($tValues);$i+=3){[$x,$y,$z]=array_slice($tValues,$i,3);if($x>145&&$x<175&&abs($y-160)<8&&$z>20)$tTop=true;if($x>122&&$x<198&&abs($y-160)<4.5&&$z<14.79)$tIntrusion=true;}
+for($i=0;$i<count($tValues);$i+=3){[$x,$y,$z]=array_slice($tValues,$i,3);if($x>145&&$x<175&&abs($y-160)<8&&$z>20)$tTop=true;if($x>122&&$x<198&&abs($y-160)<4.5&&$z>10.001&&$z<14.79)$tIntrusion=true;}
 check($tTop,'Replacement terrain retains overburden above tunnel roof');
 check(!$tIntrusion,'Replacement terrain does not close tunnel drivable bore');
 $tShell=simplexml_load_string($tBuilt['shell']);check($tShell!==false,'Tunnel concrete interior is valid COLLADA');
@@ -68,3 +68,33 @@ try{BeamTunnels::samples($tPoints,$tChain,$tHeights,$tSpans,$tSteep);check(false
 catch(RuntimeException $e){check(str_contains($e->getMessage(),'12%'),'Unreliable approach grade is explicitly rejected');}
 $tCombined=$tSource;$tCombined[]=['points'=>[[65,160],[90,160]],'tags'=>['bridge'=>'yes']];
 check(rejects(fn()=>BeamTunnels::spans($tRoad,$tCombined)),'Overlapping bridge and tunnel approaches are rejected');
+
+$tFlat=new BeamRaster($tn,$tside,str_repeat(pack('g',100),$tn*$tn),str_repeat(chr(90),$tn*$tn*3));
+$tFlatRoad=array_map(static fn($p)=>[$p[0],$p[1],10.25],$tPoints);
+$tPreserved=BeamTunnels::build($tFlatRoad,$tProfiles,$tSpans,$tFlat,90,str_repeat(chr(0),$tn*$tn),'test_tunnel','test_patch',static function($m){});
+$tPreservedXml=simplexml_load_string($tPreserved['terrain']);$tPreservedXml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
+$tGroundValues=array_map('floatval',preg_split('/\s+/',trim((string)$tPreservedXml->xpath('//c:source[@id="positions"]/c:float_array')[0])));
+$tLowUnchanged=true;for($i=2;$i<count($tGroundValues);$i+=3)if(abs($tGroundValues[$i]-10)>0.00001)$tLowUnchanged=false;
+check($tLowUnchanged&&count($tGroundValues)>0,'Tunnel replacement preserves terrain already below the road');
+$tCutRoad=array_map(static fn($p)=>[$p[0],$p[1],9.],$tPoints);
+$tCut=BeamTunnels::build($tCutRoad,$tProfiles,$tSpans,$tFlat,90,str_repeat(chr(0),$tn*$tn),'test_tunnel','test_patch',static function($m){});
+$tCutXml=simplexml_load_string($tCut['terrain']);$tCutXml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
+$tCutValues=array_map('floatval',preg_split('/\s+/',trim((string)$tCutXml->xpath('//c:source[@id="positions"]/c:float_array')[0])));
+$tCoverage=static function(array $values,float $x,float $y):?float{
+ for($i=0;$i<count($values);$i+=9){
+  $a=array_slice($values,$i,3);$b=array_slice($values,$i+3,3);$c=array_slice($values,$i+6,3);
+  $den=($b[1]-$c[1])*($a[0]-$c[0])+($c[0]-$b[0])*($a[1]-$c[1]);if(abs($den)<1e-10)continue;
+  $u=(($b[1]-$c[1])*($x-$c[0])+($c[0]-$b[0])*($y-$c[1]))/$den;
+  $v=(($c[1]-$a[1])*($x-$c[0])+($a[0]-$c[0])*($y-$c[1]))/$den;$w=1-$u-$v;
+  if(min($u,$v,$w)>=-1e-8)return $u*$a[2]+$v*$b[2]+$w*$c[2];
+ }return null;
+};
+foreach([[90,164.4],[110,155.6],[210,164.4],[230,155.6]] as [$x,$y]){
+ $height=$tCoverage($tCutValues,$x,$y);
+ check($height!==null&&abs($height-8.95)<0.00001,'Portal-side ground has textured collision surface at '.$x.','.$y);
+}
+check($tCut['report']['excavated_floor_pieces']>0&&$tCut['report']['floor_clearance_m']===0.05,'Tunnel report records replacement ground beneath excavation');
+
+$tProjectedArea=0.;
+for($i=0;$i<count($tCutValues);$i+=9)$tProjectedArea+=abs(SweepLine\BeamPolygon::cross(array_slice($tCutValues,$i,3),array_slice($tCutValues,$i+3,3),array_slice($tCutValues,$i+6,3)))/2;
+check(abs($tProjectedArea-$tCut['report']['hole_cells']*($tside/$tn)**2)<0.0001,'Replacement terrain covers the full native-hole area after excavation');

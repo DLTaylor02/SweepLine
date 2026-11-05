@@ -62,7 +62,7 @@ final class BeamTunnels
         }throw new \RuntimeException('Tunnel station lies outside the selected road.');
     }
     /** Convex-prism subtraction preserves interpolated terrain positions and UVs. */
-    private static function subtract(array $polygon,array $planes): array
+    private static function subtract(array $polygon,array $planes,?array &$removed=null): array
     {
         $out=[];$inside=$polygon;
         foreach($planes as $plane){
@@ -74,7 +74,7 @@ final class BeamTunnels
                 if(($dp>0&&$dq<0)||($dp<0&&$dq>0)){$t=$dp/($dp-$dq);$v=[];foreach($p as $axis=>$value)$v[]=$value+($q[$axis]-$value)*$t;$keep[]=$v;$reject[]=$v;}
             }
             if(count($reject)>=3)$out[]=$reject;$inside=$keep;
-        }return $out;
+        }$removed=count($inside)>=3?$inside:[];return $out;
     }
     public static function build(array $road,array $profiles,array $spans,BeamRaster $raster,float $origin,string $layers,string $material,string $terrainMaterial,callable $progress): array
     {
@@ -123,7 +123,9 @@ final class BeamTunnels
                 $planes=[[$ux,$uy,0,-$ux*$a[0]-$uy*$a[1]],[-$ux,-$uy,0,$ux*$b[0]+$uy*$b[1]],
                     [$change*$ux-$uy,$change*$uy+$ux,0,$ha-($change*$ux-$uy)*$a[0]-($change*$uy+$ux)*$a[1]],
                     [$change*$ux+$uy,$change*$uy-$ux,0,$ha-($change*$ux+$uy)*$a[0]-($change*$uy-$ux)*$a[1]],
-                    [$slope*$ux,$slope*$uy,-1,$a[2]+$span['clearance_m']+0.15-$slope*($ux*$a[0]+$uy*$a[1])]];
+                    [$slope*$ux,$slope*$uy,-1,$a[2]+$span['clearance_m']+0.15-$slope*($ux*$a[0]+$uy*$a[1])],
+                    // Preserve terrain already below pavement; only excavate the open bore.
+                    [-$slope*$ux,-$slope*$uy,1,-$a[2]+0.025+$slope*($ux*$a[0]+$uy*$a[1])]];
                 $id=count($volumes);$volumes[]=$planes;$margin=max($ha,$hb)+$step;
                 for($y=max(0,(int)floor((min($a[1],$b[1])-$margin)/$step));$y<=min($n-2,(int)floor((max($a[1],$b[1])+$margin)/$step));$y++)
                     for($x=max(0,(int)floor((min($a[0],$b[0])-$margin)/$step));$x<=min($n-2,(int)floor((max($a[0],$b[0])+$margin)/$step));$x++){
@@ -132,12 +134,23 @@ final class BeamTunnels
                     }
             }
         }
-        $terrainVertices=[];$terrainFaces=[];$terrainUv=[];$counter=0;
+        $terrainVertices=[];$terrainFaces=[];$terrainUv=[];$counter=0;$floorPieces=0;
         foreach($cells as $key=>$ids){
             if(++$counter%100===0)$progress(null);$x=$key%$n;$y=intdiv($key,$n);$layers[$key]=chr(255);$corners=[];
             foreach([[0,0],[1,0],[1,1],[0,1]] as [$ox,$oy]){$wx=($x+$ox)*$step;$wy=($y+$oy)*$step;$corners[]=[$wx,$wy,$raster->cell($x+$ox,$y+$oy)-$origin,$wx/$raster->side,$wy/$raster->side];}
             foreach([[$corners[0],$corners[1],$corners[2]],[$corners[0],$corners[2],$corners[3]]] as $triangle){
-                $pieces=[$triangle];foreach(array_unique($ids) as $id){$next=[];foreach($pieces as $piece)array_push($next,...self::subtract($piece,$volumes[$id]));$pieces=$next;if(!$pieces)break;}
+                $pieces=[$triangle];foreach(array_unique($ids) as $id){
+                    $next=[];foreach($pieces as $piece){
+                        $removed=[];array_push($next,...self::subtract($piece,$volumes[$id],$removed));
+                        if($removed){
+                            // A tunnel hole must still have ground below its open volume.
+                            // Reuse clipped UVs and keep the floor 5 cm below pavement.
+                            $floor=$volumes[$id][5];
+                            foreach($removed as &$p)$p[2]=min($p[2],-($floor[0]*$p[0]+$floor[1]*$p[1]+$floor[3])-0.025);
+                            unset($p);$next[]=$removed;$floorPieces++;
+                        }
+                    }$pieces=$next;if(!$pieces)break;
+                }
                 foreach($pieces as $piece)for($j=1;$j<count($piece)-1;$j++){
                     $points3=[$piece[0],$piece[$j],$piece[$j+1]];if(abs(BeamPolygon::cross(...$points3))<1e-8)continue;
                     $base=count($terrainVertices);foreach($points3 as $p)$terrainVertices[]=array_slice($p,0,3);$terrainFaces[]=[$base,$base+1,$base+2];$terrainUv[]=array_map(static fn($p)=>array_slice($p,3,2),$points3);
@@ -145,7 +158,7 @@ final class BeamTunnels
             }
         }
         return ['layers'=>$layers,'shell'=>BeamAssets::mesh($vertices,$faces,$material,$uv),'terrain'=>BeamAssets::mesh($terrainVertices,$terrainFaces,$terrainMaterial,$terrainUv),
-            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['spans'=>$spans,'hole_cells'=>count($cells),'terrain_patch_triangles'=>count($terrainFaces),'estimated'=>true,
+            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['spans'=>$spans,'hole_cells'=>count($cells),'terrain_patch_triangles'=>count($terrainFaces),'excavated_floor_pieces'=>$floorPieces,'floor_clearance_m'=>0.05,'estimated'=>true,
                 'method'=>'Approach-derived floor; generic concrete single bore and portals; native holes with clipped replacement terrain preserving overburden.','limitations'=>'Underground grade, clearance, portals and lighting are estimates. Not a surveyed tunnel model.']];
     }
 }
