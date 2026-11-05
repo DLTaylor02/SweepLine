@@ -6,7 +6,7 @@ final class BeamStructures
     public const MAX_LENGTH_M=200;
     private static function tagged(array $tags,string $key): bool {return isset($tags[$key])&&!in_array(strtolower((string)$tags[$key]),["no","false","0"],true);}
     /** Match collinear overlap, not merely a crossing or proximity. Distances are planar meters. */
-    public static function spans(array $road,array $sources): array
+    public static function spans(array $road,array $sources,bool $allowTunnels=false): array
     {
         $structures=[];
         foreach($sources as $source){$tags=$source["tags"]??[];if(!self::tagged($tags,"bridge")&&!self::tagged($tags,"tunnel"))continue;
@@ -22,6 +22,7 @@ final class BeamStructures
                 if($crossC>0.1||$crossD>0.1)continue;
                 $tc=(($c[0]-$a[0])*$dx+($c[1]-$a[1])*$dy)/$length;$td=(($d[0]-$a[0])*$dx+($d[1]-$a[1])*$dy)/$length;
                 $lo=max(0,min($tc,$td));$hi=min($length,max($tc,$td));if($hi-$lo<0.01)continue;
+                if(self::tagged($tags,"tunnel")&&$allowTunnels)continue;
                 if(self::tagged($tags,"tunnel"))throw new \InvalidArgumentException("The selected stretch includes a mapped tunnel. Terrain openings and tunnel interiors are not supported yet.");
                 if(($tags["bridge"]??"")!=="yes" || !in_array($tags["bridge:structure"]??"beam",["beam","slab"],true) || isset($tags["bridge:movable"]) || abs((float)($tags["layer"]??0))>1)
                     throw new \InvalidArgumentException("The selected stretch includes a complex bridge. Only short, simple beam/slab bridges can currently be estimated.");

@@ -129,6 +129,27 @@ final class Importer
         $this->db->commit();
         if ($missing>0) { throw new \RuntimeException("$missing ways have missing nodes; use osmium complete_ways extraction"); }
     }
+    /** Rebuild only derived candidates from retained local OSM, atomically. */
+    public function rebuild(int $id): void
+    {
+        if($this->db->inTransaction())throw new \LogicException('Candidate rebuild requires its own transaction.');
+        $this->jobId=$id;$this->db->beginTransaction();
+        try{
+            $q=$this->db->prepare('SELECT j.analysis_version FROM regions r JOIN import_jobs j ON j.id=r.active_job_id WHERE j.id=? AND j.status=\'complete\' FOR UPDATE OF r,j');
+            $q->execute([$id]);$version=$q->fetchColumn();
+            if($version===false||(int)$version>=RoadGraph::VERSION){$this->db->commit();return;}
+            $q=$this->db->prepare('SELECT count(*) FROM road_candidates WHERE job_id=?');$q->execute([$id]);$before=(int)$q->fetchColumn();
+            $this->db->prepare('DELETE FROM road_candidates WHERE job_id=?')->execute([$id]);
+            $this->analyze($id);
+            $q->execute([$id]);
+            if($before>0&&(int)$q->fetchColumn()===0)throw new \RuntimeException('Candidate rebuild produced no roads; previous candidates retained.');
+            $this->db->prepare("UPDATE road_candidates SET geometry_key=md5(encode(ST_AsEWKB(ST_Normalize(geom::geometry)),'hex')) WHERE job_id=?")->execute([$id]);
+            $this->db->exec('DELETE FROM road_combination_cache');
+            $this->db->commit();
+            echo "Rebuilt local road connectivity for import $id\n";
+        }catch(\Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}
+    }
+
     private function analyze(int $id): void
     {
         $profiles=Scorer::profiles();
@@ -165,5 +186,6 @@ final class Importer
             foreach ($profiles as $slug=>$_) { $s=Scorer::score($metrics,$slug); $score->execute([$cid,$slug,$s['score'],$s['confidence'],json_encode($s['dimensions'])]); }
             if (++$count%500===0) { $this->progress($id,"Scored $count candidates"); }
         }
+        $this->db->prepare('UPDATE import_jobs SET analysis_version=? WHERE id=?')->execute([RoadGraph::VERSION,$id]);
     }
 }

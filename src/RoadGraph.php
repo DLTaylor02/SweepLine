@@ -4,6 +4,7 @@ namespace SweepLine;
 
 final class RoadGraph
 {
+    public const VERSION=2;
     public static function identity(array $road): string
     {
         return strtolower(trim($road['ref'] ?: ($road['name'] ?: '')));
@@ -37,28 +38,34 @@ final class RoadGraph
                 $start=$i;
             }
         }
+        // Seed legal one-way corridors first. Opposite carriageways may share
+        // two-way approaches, so global coverage only suppresses redundant seeds.
+        $seeds=array_keys($edges);
+        usort($seeds,static fn($a,$b)=>(abs($edges[$b]['direction'])<=>abs($edges[$a]['direction']))?:($a<=>$b));
         $visited=[];
-        foreach ($edges as $seed=>$edge) {
+        foreach ($seeds as $seed) {
+            $edge=$edges[$seed];
             if ($checkpoint) { $checkpoint(); }
             if (isset($visited[$seed])) { continue; }
-            $visited[$seed]=true; $chain=[$edge]; $length=Geometry::length($edge['points']);
+            $visited[$seed]=true; $local=[$seed=>true]; $chain=[$edge]; $length=Geometry::length($edge['points']);
             // Extend both ends. Reversing the chain preserves each way's legal direction.
             for ($side=0;$side<2;$side++) {
+                $direction=self::direction($chain);
                 while ($length<40000) {
                     $tail=$chain[count($chain)-1]; $node=$tail['nodes'][count($tail['nodes'])-1];
-                    $choices=[];
+                    $choices=[]; if($checkpoint){$checkpoint();}
                     foreach (array_unique($adj[$node]??[]) as $id) {
-                        if (isset($visited[$id])) { continue; }
+                        if (isset($local[$id])) { continue; }
                         $next=$edges[$id];
                         if ($next['nodes'][0]!==$node) { $next=self::reverse($next); }
-                        if (!self::compatible($tail,$next)) { continue; }
+                        if (!self::compatible($tail,$next) || ($direction!==0 && $next['direction']!==0 && $direction!==$next['direction'])) { continue; }
                         $choices[$id]=$next;
                     }
                     if (count($choices)!==1) { break; }
                     $id=array_key_first($choices); $next=$choices[$id];
                     $nextLength=Geometry::length($next['points']);
                     if ($length+$nextLength>50000) { break; }
-                    $visited[$id]=true; $chain[]=$next; $length+=$nextLength;
+                    $visited[$id]=true; $local[$id]=true; if($next['direction']!==0)$direction=$next['direction']; $chain[]=$next; $length+=$nextLength;
                 }
                 $chain=array_map([self::class,'reverse'],array_reverse($chain));
             }
@@ -70,6 +77,16 @@ final class RoadGraph
             yield ['parts'=>$chain,'points'=>$points,'nodes'=>$nodes,'uses'=>$junctions];
         }
     }
+    /** Legal direction relative to the entire chain, including two-way ends. */
+    public static function direction(array $parts): int
+    {
+        $direction=0;
+        foreach($parts as $part){
+            $d=(int)$part['direction'];
+            if($d!==0){if($direction!==0&&$direction!==$d)throw new \LogicException('Inconsistent road traversal directions.');$direction=$d;}
+        }
+        return $direction;
+    }
     public static function reverse(array $r): array
     {
         $r['points']=array_reverse($r['points']); $r['nodes']=array_reverse($r['nodes']);
@@ -78,7 +95,7 @@ final class RoadGraph
     public static function compatible(array $a,array $b): bool
     {
         if (self::identity($a)==='' || self::identity($a)!==self::identity($b) || $a['highway']!==$b['highway']) { return false; }
-        if ($a['direction']!==$b['direction']) { return false; }
+        if ($a['direction']!==0 && $b['direction']!==0 && $a['direction']!==$b['direction']) { return false; }
         $p=$a['points']; $q=$b['points'];
         return abs(Geometry::turn(Geometry::bearing($p[max(0,count($p)-2)],$p[count($p)-1]),Geometry::bearing($q[0],$q[1]))) < 55;
     }

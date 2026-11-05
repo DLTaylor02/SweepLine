@@ -216,3 +216,5 @@ $intersectionPlan=SweepLine\BeamPlan::project($db,$api->exportRoad((int)$sourceI
 $intersectionContext=SweepLine\BeamIntersections::fetch($db,$intersectionPlan,static fn($m)=>null);
 check(count($intersectionContext['branches'])>=1,'Shared-node local topology supplies the synthetic side road to BeamNG context');
 foreach($intersectionContext['branches'] as $arm){$length=0;for($i=1;$i<count($arm['points']);$i++)$length+=hypot($arm['points'][$i][0]-$arm['points'][$i-1][0],$arm['points'][$i][1]-$arm['points'][$i-1][1]);check($length<=182.88001,'Database context branches stop at 600 feet');}
+
+require __DIR__.'/divided-roads-integration.php';

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix continuous-road candidates across two-way/one-way split and rejoin sections. Preserve distinct carriageways, whole-path direction constraints and shared approaches; prefer the matching custom click direction and correct API/export direction metadata. Add migration 017 and transactional local candidate refresh during installer rescoring, with offline graph/export and disposable-PostGIS regression coverage.
+
+
+- Add bounded single-bore BeamNG tunnel exports: approach-derived estimated floor, generic concrete interior/open portals, lighting, native terrain holes and clipped replacement overburden. Preserve ordinary shoulders and bridge behavior, report estimates, reject unsupported tunnels, and add offline geometry/ZIP regression coverage.
+
 - Apply the primary-road native terrain shoulder method to side roads/connectors/turnarounds in a shared nearest-corridor pass. Prevent later blends and clearance checks from removing earlier side-road edge support; retain primary-road and bridge protection, paved widths, clearance targets and cut limits. Add overlapping-road regression coverage and shared terrain-pass reporting.
 
 

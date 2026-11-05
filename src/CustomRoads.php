@@ -44,19 +44,25 @@ final class CustomRoads
 
         $preparation=$queue->prepareCustom($a,$b);
         if($preparation['state']!=='ready')return ['preparation'=>$preparation];
-        // Both clicks must snap to the same continuous candidate; no junction routing.
+        // Prefer the legal carriageway matching click order on shared approaches.
         $q=$this->db->prepare("WITH clicks AS (
             SELECT ST_SetSRID(ST_MakePoint(?,?),4326) a,ST_SetSRID(ST_MakePoint(?,?),4326) b
-        ) SELECT c.id,ST_LineLocatePoint(c.geom::geometry,p.a) AS first,
-            ST_LineLocatePoint(c.geom::geometry,p.b) AS last
+        ), nearby AS (
+            SELECT c.id,c.geom,p.a,p.b,ST_LineLocatePoint(c.geom::geometry,p.a) AS first,
+                ST_LineLocatePoint(c.geom::geometry,p.b) AS last,
+                COALESCE((SELECT s.direction*CASE WHEN m.reversed THEN -1 ELSE 1 END
+                    FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id
+                    WHERE m.candidate_id=c.id AND s.direction<>0 ORDER BY m.position LIMIT 1),0) AS direction
             FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id CROSS JOIN clicks p
             WHERE ST_DWithin(c.geom,p.a::geography,50) AND ST_DWithin(c.geom,p.b::geography,50)
               AND ST_Distance(c.geom,p.a::geography)<=(SELECT min(ST_Distance(n.geom,p.a::geography)) FROM road_candidates n JOIN regions nr ON nr.active_job_id=n.job_id WHERE ST_DWithin(n.geom,p.a::geography,50))+5
               AND ST_Distance(c.geom,p.b::geography)<=(SELECT min(ST_Distance(n.geom,p.b::geography)) FROM road_candidates n JOIN regions nr ON nr.active_job_id=n.job_id WHERE ST_DWithin(n.geom,p.b::geography,50))+5
               AND ST_NPoints(c.geom::geometry)<=200000 AND ST_IsSimple(c.geom::geometry)
-            ORDER BY ST_Distance(c.geom,p.a::geography)+ST_Distance(c.geom,p.b::geography),c.id LIMIT 1");
+        ) SELECT id,first,last FROM nearby
+            ORDER BY CASE WHEN direction*(last-first)<0 THEN 1 ELSE 0 END,
+                ST_Distance(geom,a::geography)+ST_Distance(geom,b::geography),id LIMIT 1");
         $q->execute([$a[0],$a[1],$b[0],$b[1]]);$match=$q->fetch(PDO::FETCH_ASSOC);
-        if(!$match)throw new HttpException(422,'These points do not lie on one supported continuous road. Click within 165 feet of the same road; junctions, separate carriageways and gaps cannot be joined.');
+        if(!$match)throw new HttpException(422,'These points do not lie on one supported continuous road. Click within 165 feet of the same road; ambiguous forks, disconnected carriageways and gaps cannot be joined. Divided sections must follow a connected mapped path.');
         $first=(float)$match['first'];$last=(float)$match['last'];
         if(abs($first-$last)<0.0000001)throw new \InvalidArgumentException('Both points snap to the same position. Choose a longer stretch.');
         $q=$this->db->prepare('SELECT ST_AsGeoJSON(ST_LineSubstring(geom::geometry,?,?),9) FROM road_candidates WHERE id=?');

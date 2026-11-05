@@ -45,7 +45,7 @@ final class Api
         if($planned) {
             $ids=array_column($planned,'id');$marks=implode(',',array_fill(0,count($ids),'?'));
             $q=$this->db->prepare("SELECT c.*,s.score,s.confidence,s.dimensions,
-                COALESCE((SELECT rs.direction*CASE WHEN m.reversed THEN -1 ELSE 1 END FROM candidate_segments m JOIN road_segments rs ON rs.id=m.segment_id WHERE m.candidate_id=c.id ORDER BY m.position LIMIT 1),0) AS travel_direction,
+                COALESCE((SELECT rs.direction*CASE WHEN m.reversed THEN -1 ELSE 1 END FROM candidate_segments m JOIN road_segments rs ON rs.id=m.segment_id WHERE m.candidate_id=c.id AND rs.direction<>0 ORDER BY m.position LIMIT 1),0) AS travel_direction,
                 ST_AsGeoJSON(c.geom::geometry,9) AS geometry
                 FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id
                 JOIN road_scores s ON s.candidate_id=c.id AND s.profile=?
@@ -79,7 +79,7 @@ final class Api
             if(count($groups)!==1)throw new \InvalidArgumentException('Selected road pieces do not form one overlapping, direction-compatible continuous stretch.');
             return (new RoadConsolidator($this->db))->combine($groups[0],$profile);
         }
-        $q=$this->db->prepare('SELECT c.*,s.score,s.confidence,s.dimensions,COALESCE((SELECT rs.direction*CASE WHEN m.reversed THEN -1 ELSE 1 END FROM candidate_segments m JOIN road_segments rs ON rs.id=m.segment_id WHERE m.candidate_id=c.id ORDER BY m.position LIMIT 1),0) AS travel_direction,ST_AsGeoJSON(c.geom::geometry,9) AS geometry FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id JOIN road_scores s ON s.candidate_id=c.id AND s.profile=? WHERE c.id=?'); $q->execute([$profile,$id]);
+        $q=$this->db->prepare('SELECT c.*,s.score,s.confidence,s.dimensions,COALESCE((SELECT rs.direction*CASE WHEN m.reversed THEN -1 ELSE 1 END FROM candidate_segments m JOIN road_segments rs ON rs.id=m.segment_id WHERE m.candidate_id=c.id AND rs.direction<>0 ORDER BY m.position LIMIT 1),0) AS travel_direction,ST_AsGeoJSON(c.geom::geometry,9) AS geometry FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id JOIN road_scores s ON s.candidate_id=c.id AND s.profile=? WHERE c.id=?'); $q->execute([$profile,$id]);
         $row=$q->fetch(PDO::FETCH_ASSOC) ?: throw new \OutOfBoundsException('Road not found in active coverage'); unset($row['geom']);
         return $this->decode($row);
     }

@@ -49,7 +49,7 @@ $control=Controls::analyze([1,2,3],[2=>['highway'=>'stop']],$joined[0]['uses']);
 check($control['mandatory_stops']===0 && $control['uncertain_controls']===1,'Ambiguous junction stop stays uncertain');
 check(Controls::analyze([2],[2=>['highway'=>'stop','stop'=>'all']],[])['mandatory_stops']===1,'Explicit all-way stop');
 $b['direction']=1;
-check(count(iterator_to_array(RoadGraph::candidates([$a,$b])))===2,'Direction changes break candidates');
+check(count(iterator_to_array(RoadGraph::candidates([$a,$b])))===1,'Two-way to one-way transition preserves a legal continuous candidate');
 $m=$winding+['highway'=>'secondary','intersections'=>1,'mandatory_stops'=>0,'uncertain_controls'=>0,'speed_mph'=>45,'paved'=>true];
 $good=Scorer::score($m,'twisty'); $bad=$m; $bad['intersections']=30; $bad['mandatory_stops']=10;
 check($good['score']>Scorer::score($bad,'twisty')['score'],'Dense interruptions lower score');
@@ -405,6 +405,7 @@ foreach(SweepLine\CoveragePlanner::children($customArea) as $child)check(SweepLi
 check(SweepLine\CoveragePlanner::canSplit(['bounds'=>[0,0,0.01,0.5]]),'Long narrow custom extracts can split when too dense');
 check(rejects(fn()=>SweepLine\CoveragePlanner::customArea([179.9,52],[-179.9,52])),'Date-line custom selection cannot accidentally request a world-wide rectangle');
 
+require __DIR__.'/divided-roads.php';
 require __DIR__.'/elevations.php';
 require __DIR__.'/buildings.php';
 require __DIR__.'/guardrails.php';
@@ -413,6 +414,7 @@ require __DIR__.'/shadows.php';
 require __DIR__.'/intersections.php';
 require __DIR__.'/pavement.php';
 require __DIR__.'/compute.php';
+require __DIR__.'/tunnels.php';
 require __DIR__.'/beamng.php';
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);
