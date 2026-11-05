@@ -156,7 +156,7 @@ final class BeamTunnels
                                 $lowA=$a;$lowB=$b;
                                 $lowA[2]=-($floor[0]*$a[0]+$floor[1]*$a[1]+$floor[3])-0.025;
                                 $lowB[2]=-($floor[0]*$b[0]+$floor[1]*$b[1]+$floor[3])-0.025;
-                                $walls[]=['polygon'=>[$a,$b,$lowB,$lowA],'volume'=>$id,'ceiling'=>abs($volumes[$id][4][0]*$a[0]+$volumes[$id][4][1]*$a[1]-$a[2]+$volumes[$id][4][3])<1e-6&&abs($volumes[$id][4][0]*$b[0]+$volumes[$id][4][1]*$b[1]-$b[2]+$volumes[$id][4][3])<1e-6];
+                                $walls[]=['polygon'=>[$a,$b,$lowB,$lowA],'volume'=>$id];
                             }
                             foreach($removed as &$p)$p[2]=min($p[2],-($floor[0]*$p[0]+$floor[1]*$p[1]+$floor[3])-0.025);
                             unset($p);$next[]=$removed;$floorPieces++;
@@ -184,7 +184,9 @@ final class BeamTunnels
                 $next=[];foreach($pieces as $piece)array_push($next,...self::subtract($piece,array_slice($volumes[$id],0,5)));
                 $pieces=$next;if(!$pieces)break;
             }
-            if($wall['ceiling']){
+            {
+                // Every connecting face must respect the open bore, including
+                // side/end faces on curved, overlapping excavation sections.
                 $neighbors[$wall['volume']]=true;
                 foreach(array_keys($neighbors) as $id){
                     // The excavation is 15 cm wider/higher than the usable bore.

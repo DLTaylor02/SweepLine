@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix terrain connecting faces entering the tunnel roadway: apply usable-bore clearance clipping to every side/end/portal face, including its owning excavation volume. Retain exterior joins and add curved, sloped, changing-width, reverse-direction regressions that reproduce the previous bug. Supplied Tahoe (2) replay detects 222 intruding faces before and zero after the repair.
+
+
 - Repair vertical cracks left between tunnel excavation floors and surrounding terrain, diagnosed from the refreshed Lake Tahoe export. Stitch excavation boundaries and portal rims, clip internal faces, preserve the usable driving bore, and add horizontal-ray seam/opening regressions alongside area-coverage checks.
 
 

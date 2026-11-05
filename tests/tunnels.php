@@ -117,3 +117,32 @@ check($tCut['report']['excavation_wall_triangles']>0,'Tunnel report records vert
 
 check($tWallCrosses($tValues,0,164.85,12,110,145),'Portal rim joins the hillside beside the usable tunnel opening');
 check(!$tWallCrosses($tValues,0,160,12,110,145),'Portal rim leaves the centre of the driving opening clear');
+
+$tCurvedPoints=[[40,160,8.5],[100,160,8.7],[140,170,9],[180,190,9.2],[220,210,9.4],[280,210,9.5]];
+$tCurvedWidth=[8,9,10,9,8,8];
+$tWallIntrusions=static function(array $built,array $road,array $profiles):int{
+ $xml=simplexml_load_string($built['terrain']);$xml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
+ $values=array_map('floatval',preg_split('/\s+/',trim((string)$xml->xpath('//c:source[@id="positions"]/c:float_array')[0])));
+ $count=0;
+ for($i=count($values)-9*$built['report']['excavation_wall_triangles'];$i<count($values);$i+=9){
+  $a=array_slice($values,$i,3);$b=array_slice($values,$i+3,3);$c=array_slice($values,$i+6,3);$samples=[$a,$b,$c];
+  foreach([[1/3,1/3,1/3],[0.5,0.5,0],[0.5,0,0.5],[0,0.5,0.5]] as [$u,$v,$w])$samples[]=[$a[0]*$u+$b[0]*$v+$c[0]*$w,$a[1]*$u+$b[1]*$v+$c[1]*$w,$a[2]*$u+$b[2]*$v+$c[2]*$w];
+  $bad=false;foreach($samples as $p)for($j=1;$j<count($road);$j++){
+   $a=$road[$j-1];$b=$road[$j];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$d=$dx*$dx+$dy*$dy;if($d<1e-9)continue;
+   $t=max(0,min(1,(($p[0]-$a[0])*$dx+($p[1]-$a[1])*$dy)/$d));
+   $distance=hypot($p[0]-$a[0]-$dx*$t,$p[1]-$a[1]-$dy*$t);$z=$a[2]+($b[2]-$a[2])*$t;
+   $half=($profiles[$j-1]['width_m']*(1-$t)+$profiles[$j]['width_m']*$t)/2;
+   if($distance<$half-0.1&&$p[2]>$z+0.025&&$p[2]<$z+4.65){$bad=true;break;}
+  }
+  if($bad)$count++;
+ }return $count;
+};
+foreach([false,true] as $reverse){
+ $points=$reverse?array_reverse($tCurvedPoints):$tCurvedPoints;$widths=$reverse?array_reverse($tCurvedWidth):$tCurvedWidth;
+ $profiles=array_map(static fn($width)=>['width_m'=>$width],$widths);
+ $length=0.;for($i=1;$i<count($points);$i++)$length+=hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);
+ $span=['start_m'=>$reverse?$length-160:80,'end_m'=>$reverse?$length-80:160,'clearance_m'=>4.8];
+ $built=BeamTunnels::build($points,$profiles,[$span],$tFlat,90,str_repeat(chr(0),$tn*$tn),'test_tunnel','test_patch',static function($m){});
+ check($tWallIntrusions($built,$points,$profiles)===0,'All connecting faces stay outside a curved, sloped, varying-width driving corridor; reverse='.(int)$reverse);
+ check($built['report']['excavation_wall_triangles']>0,'Curved tunnel retains exterior terrain connections; reverse='.(int)$reverse);
+}
