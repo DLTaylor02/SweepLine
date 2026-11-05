@@ -115,8 +115,16 @@ final class BeamTunnels
             $exclusions[]=['points'=>array_slice($points,0,min(12,count($points))),'width_m'=>$stations[0]['width']+2*$step+3];
             $exclusions[]=['points'=>array_slice($points,-min(12,count($points))),'width_m'=>$stations[count($stations)-1]['width']+2*$step+3];
             // Extend excavation into the approaches so protected portal cells cannot block the entrance.
-            $cutStations=[];for($at=$span['start_m']-40;$at<$span['end_m']+40;$at+=2)$cutStations[]=self::station($road,$profiles,$at);
-            $cutStations[]=self::station($road,$profiles,$span['end_m']+40);
+            $cutDistances=[$span['start_m']-40,$span['end_m']+40];
+            for($at=$span['start_m']-40;$at<$span['end_m']+40;$at+=2)$cutDistances[]=$at;
+            // Keep exact pavement heading/grade breaks; a uniform 2 m chord can
+            // cut across an original bend and leave ground above the road edge.
+            $at=0.;foreach($road as $i=>$point){
+                if($i)$at+=hypot($point[0]-$road[$i-1][0],$point[1]-$road[$i-1][1]);
+                if($at>$span['start_m']-40&&$at<$span['end_m']+40)$cutDistances[]=$at;
+            }
+            sort($cutDistances,SORT_NUMERIC);$cutStations=[];$previous=-INF;
+            foreach($cutDistances as $at){if($at-$previous<1e-7)continue;$cutStations[]=self::station($road,$profiles,$at);$previous=$at;}
             for($i=1;$i<count($cutStations);$i++){
                 $a=$cutStations[$i-1]['point'];$b=$cutStations[$i]['point'];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy);if($length<0.001)continue;$ux=$dx/$length;$uy=$dy/$length;
                 $ha=$cutStations[$i-1]['width']/2+0.9;$hb=$cutStations[$i]['width']/2+0.9;$slope=($b[2]-$a[2])/$length;$change=($hb-$ha)/$length;
@@ -126,10 +134,21 @@ final class BeamTunnels
                     [$slope*$ux,$slope*$uy,-1,$a[2]+$span['clearance_m']+0.15-$slope*($ux*$a[0]+$uy*$a[1])],
                     // Preserve terrain already below pavement; only excavate the open bore.
                     [-$slope*$ux,-$slope*$uy,1,-$a[2]+0.025+$slope*($ux*$a[0]+$uy*$a[1])]];
-                $id=count($volumes);$volumes[]=$planes;$margin=max($ha,$hb)+$step;
+                // Independent square-ended strips leave wedges at bends. Extend each
+                // internal end by the offset needed for its neighboring heading.
+                $padding=static function(array $a,array $b,array $c,float $width):float{
+                    $u=[$b[0]-$a[0],$b[1]-$a[1]];$v=[$c[0]-$b[0],$c[1]-$b[1]];
+                    $length=hypot(...$u)*hypot(...$v);if($length<1e-9)return 0.;
+                    $cos=max(-0.99,min(1,($u[0]*$v[0]+$u[1]*$v[1])/$length));
+                    return min(20,$width*sqrt(max(0,(1-$cos)/(1+$cos))));
+                };
+                $startPad=$i>1?$padding($cutStations[$i-2]['point'],$a,$b,max($ha,$hb)):0.;
+                $endPad=$i<count($cutStations)-1?$padding($a,$b,$cutStations[$i+1]['point'],max($ha,$hb)):0.;
+                $planes[0][3]+=$startPad;$planes[1][3]+=$endPad;
+                $id=count($volumes);$volumes[]=$planes;$margin=max($ha,$hb)+$step+max($startPad,$endPad);
                 for($y=max(0,(int)floor((min($a[1],$b[1])-$margin)/$step));$y<=min($n-2,(int)floor((max($a[1],$b[1])+$margin)/$step));$y++)
                     for($x=max(0,(int)floor((min($a[0],$b[0])-$margin)/$step));$x<=min($n-2,(int)floor((max($a[0],$b[0])+$margin)/$step));$x++){
-                        if(BeamLanes::distance([($x+0.5)*$step,($y+0.5)*$step],$a,$b)[0]>max($ha,$hb)+sqrt(2)*$step)continue;
+                        if(BeamLanes::distance([($x+0.5)*$step,($y+0.5)*$step],$a,$b)[0]>max($ha,$hb)+sqrt(2)*$step+max($startPad,$endPad))continue;
                         $cells[$y*$n+$x][]=$id;if(count($cells)>self::MAX_PATCH_CELLS)throw new \RuntimeException('Tunnel terrain patch exceeds the export cell budget.');
                     }
             }

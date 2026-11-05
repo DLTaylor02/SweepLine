@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Replace the location-specific tunnel regression dataset with generated curves, grades, widths and terrain at several orientations. Export behavior remains location-independent.
+
+
+- Close residual tunnel ground wedges at bends by retaining exact pavement heading/grade breaks and adaptively overlapping excavation sections. Keep bore clearance and native terrain intact. Add generated road fixtures at multiple orientations and check all replacement faces against actual pavement triangles, including edge samples, rather than relying only on wall/centerline checks.
+
+
 - Fix terrain connecting faces entering the tunnel roadway: apply usable-bore clearance clipping to every side/end/portal face, including its owning excavation volume. Retain exterior joins and add curved, sloped, changing-width, reverse-direction regressions that reproduce the previous bug. Supplied Tahoe (2) replay detects 222 intruding faces before and zero after the repair.
 
 

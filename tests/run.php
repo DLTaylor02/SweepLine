@@ -415,6 +415,7 @@ require __DIR__.'/intersections.php';
 require __DIR__.'/pavement.php';
 require __DIR__.'/compute.php';
 require __DIR__.'/tunnels.php';
+require __DIR__.'/tunnel-clearance.php';
 require __DIR__.'/beamng.php';
 require __DIR__.'/large-bridges.php';
 require __DIR__.'/bridge-deck.php';
