@@ -412,6 +412,7 @@ require __DIR__.'/beamng-enhancements.php';
 require __DIR__.'/shadows.php';
 require __DIR__.'/intersections.php';
 require __DIR__.'/pavement.php';
+require __DIR__.'/compute.php';
 require __DIR__.'/beamng.php';
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

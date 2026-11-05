@@ -121,3 +121,23 @@ check($fixed['final_clearance']['limited_branches']===1&&$fixed['roads']===[],'A
 $bounded=new BeamRaster(32,128,str_repeat(pack('g',105),1024),str_repeat(chr(100),3072));
 $boundedResult=BeamRoadSurface::clearTerrain([[20,60,100],[100,60,100]],array_fill(0,2,$profile),$bounded,0,static fn($m)=>null,str_repeat("\0",1024),true,0.5);
 check($boundedResult['maximum_cut_m']<=0.500001&&$boundedResult['clamped_vertices']>0,'Secondary clearance cannot excavate a terrain vertex by more than its explicit per-pass cut budget');
+
+$pairedProfiles=BeamRoadSurface::shoulders(array_fill(0,2,$profile));
+$aRoad=['name'=>'side-a','points'=>[[20,100,10],[220,100,10]],'profiles'=>$pairedProfiles];
+$bRoad=['name'=>'side-b','points'=>[[20,114,5],[220,114,5]],'profiles'=>$pairedProfiles];
+$basePair=new BeamRaster(256,256,str_repeat(pack('g',0),65536),str_repeat(chr(100),196608));
+$oldPair=clone $basePair;$pairMask=str_repeat("\0",65536);
+BeamRoadSurface::blendTerrain($aRoad['points'],$pairedProfiles,$oldPair,0,$pairMask,static fn($m)=>null);
+BeamRoadSurface::blendTerrain($bRoad['points'],$pairedProfiles,$oldPair,0,$pairMask,static fn($m)=>null);
+$pairMain=[[10,20,0.05],[240,20,0.05]];$pairMainProfiles=array_fill(0,2,$profile);
+$paired=['roads'=>[$aRoad,$bRoad],'aprons'=>[],'junctions'=>[],'skipped'=>0];$pairRaster=clone $basePair;
+$pairReport=BeamIntersections::shape($paired,$pairMain,$pairMainProfiles,$pairRaster,0,$pairMask,static fn($m)=>null);
+$paired=BeamIntersections::conform($paired,$pairRaster,0,static fn($m)=>null,$pairMain,$pairMainProfiles,$pairMask);
+$half=$pairedProfiles[0]['width_m']/2;
+check($oldPair->height(100,100+$half)<9.8,'Regression reproduces a later side-road blend lowering an earlier road edge');
+$matched=true;foreach([[100,10],[114,5]] as [$y,$z])foreach([-1,1] as $sign)$matched=$matched&&abs($pairRaster->height(100,$y+$sign*$half)-($z-0.05))<0.001;
+check($matched&&count($paired['roads'])===2,'Both side roads retain the same native terrain contact at their full paved edges after every clearance pass');
+$reversePair=clone $basePair;BeamIntersections::shape(['roads'=>[$bRoad,$aRoad],'aprons'=>[]],$pairMain,$pairMainProfiles,$reversePair,0,$pairMask,static fn($m)=>null);
+check(abs($reversePair->height(100,100+$half)-$pairRaster->height(100,100+$half))<0.001&&abs($reversePair->height(100,114-$half)-$pairRaster->height(100,114-$half))<0.001,'Side-road ordering cannot overwrite another road shoulder');
+check($pairRaster->height(100,90)>0&&$pairRaster->height(100,90)<9.95&&$pairRaster->height(100,80)===0.0&&$pairRaster->height(100,20)===0.0,'Side shoulders blend gradually to original ground while leaving distant terrain and primary support unchanged');
+check($pairReport[0]['shoulders']['surface_count']===2,'Terrain report identifies the shared side-road corridor blend');

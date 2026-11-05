@@ -9,6 +9,17 @@ final class BeamRaster
         if(strlen($heights)!==$size*$size*4 || strlen($colors)!==$size*$size*3)throw new \RuntimeException('Raster dimensions or band layout do not match the map.');
     }
     private ?self $sourceElevation=null;
+    /** Preserve original elevation sampling when sending read-only data to CLI helpers. */
+    public function snapshot(): array
+    {
+        return ['size'=>$this->size,'side'=>$this->side,'heights'=>$this->heights,'colors'=>$this->colors,'source'=>$this->sourceElevation?->snapshot()];
+    }
+    public static function restore(array $state): self
+    {
+        $raster=new self($state['size'],$state['side'],$state['heights'],$state['colors']);
+        if($state['source']!==null)$raster->sourceElevation=self::restore($state['source']);return $raster;
+    }
+
     public static function fromElevation(int $size,float $side,string $heights,string $colors,int $elevationSize,callable $progress): self
     {
         if($size===$elevationSize)return new self($size,$side,$heights,$colors);

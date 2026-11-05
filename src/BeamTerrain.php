@@ -37,10 +37,18 @@ final class BeamTerrain
         return $out;
     }
     /** North-up, gently filtered imagery shared by all material base textures. */
-    public static function tintPixels(BeamRaster $raster,callable $progress): string
+    public static function tintPixels(BeamRaster $raster,callable $progress,?BeamCompute $compute=null): string
+    {
+        if($compute&&$compute->workers()>1){
+            $tasks=[];foreach($compute->rows(self::TEXTURE_SIZE) as $row)$tasks[]=$row+['kind'=>'tint_rows'];
+            return implode('',$compute->map($tasks,['raster'=>$raster->snapshot()],static fn($task)=>self::tintRows($raster,$task['start'],$task['end'],$progress)));
+        }
+        return self::tintRows($raster,0,self::TEXTURE_SIZE,$progress);
+    }
+    public static function tintRows(BeamRaster $raster,int $start,int $end,callable $progress): string
     {
         $size=self::TEXTURE_SIZE;$pixels="";
-        for($y=0;$y<$size;$y++){
+        for($y=$start;$y<$end;$y++){
             if($y%16===0)$progress(null);
             for($x=0;$x<$size;$x++){
                 $sx=(int)($x/$size*$raster->size);$sy=$raster->size-1-(int)($y/$size*$raster->size);$rgb=[0,0,0];
@@ -52,7 +60,6 @@ final class BeamTerrain
         }
         return $pixels;
     }
-
     public static function paths(): array
     {
         $paths=[];foreach(self::PALETTE as $entry)if($entry["prefix"]!==null)foreach(["_b.png","_nm.png","_r.png","_ao.png","_h.png"] as $suffix)$paths[]=$entry["prefix"].$suffix;return $paths;
@@ -82,32 +89,52 @@ final class BeamTerrain
         }
         return 5;
     }
-    public static function classify(BeamRaster $raster,array $center,array $buildings,callable $progress): array
+    public static function classify(BeamRaster $raster,array $center,array $buildings,callable $progress,?BeamCompute $compute=null): array
     {
-        $size=$raster->size;$grid="";$spacing=$raster->side/$size;
-        for($y=0;$y<$size;$y++){
-            if($y%8===0)$progress(null);
-            for($x=0;$x<$size;$x++){$wx=($x+0.5)*$spacing;$wy=($y+0.5)*$spacing;$pixels=[];
-                foreach([[0,0],[-1,0],[1,0],[0,-1],[0,1]] as [$dx,$dy])$pixels[]=$raster->rgb($x+$dx,$y+$dy);
-                $h=$raster->roadHeight($wx,$wy);$slope=max(abs($raster->roadHeight(min($raster->side-1,$wx+$spacing),$wy)-$h),abs($raster->roadHeight($wx,min($raster->side-1,$wy+$spacing))-$h))/$spacing;
-                $grid.=chr(self::category($pixels,$slope,$center,$h));
-            }
-        }
-        $smooth=$grid;
-        for($y=0;$y<$size;$y++){
-            if($y%8===0)$progress(null);
-            for($x=0;$x<$size;$x++){
-            $votes=array_fill(0,count(self::PALETTE),0);for($dy=-1;$dy<=1;$dy++)for($dx=-1;$dx<=1;$dx++)$votes[ord($grid[max(0,min($size-1,$y+$dy))*$size+max(0,min($size-1,$x+$dx))])]++;
-            $current=ord($grid[$y*$size+$x]);$winner=array_search(max($votes),$votes,true);
-            $smooth[$y*$size+$x]=chr($current!==5&&$votes[$current]<3&&$votes[$winner]>=7?$winner:$current);
-        }
-        }
+        $size=$raster->size;$spacing=$raster->side/$size;
+        if($compute&&$compute->workers()>1&&$size>=256){
+            $tasks=[];foreach($compute->rows($size) as $row)$tasks[]=$row+['kind'=>'classify_rows'];
+            $grid=implode('',$compute->map($tasks,['raster'=>$raster->snapshot(),'center'=>$center],static fn($task)=>self::classifyRows($raster,$center,$task['start'],$task['end'],$progress)));
+        }else $grid=self::classifyRows($raster,$center,0,$size,$progress);
+        if($compute&&$compute->workers()>1&&$size>=256){
+            $tasks=[];foreach($compute->rows($size) as $row)$tasks[]=$row+['kind'=>'filter_rows'];
+            $smooth=implode('',$compute->map($tasks,['grid'=>$grid,'size'=>$size],static fn($task)=>self::filterRows($grid,$size,$task['start'],$task['end'],$progress)));
+        }else $smooth=self::filterRows($grid,$size,0,$size,$progress);
         // Mapped roofs are not terrain/stone evidence. Keep imagery underneath them.
         foreach($buildings as $building){$xs=array_column($building["points"],0);$ys=array_column($building["points"],1);if(!$xs)continue;
             for($y=max(0,(int)floor(min($ys)/$spacing));$y<=min($size-1,(int)floor(max($ys)/$spacing));$y++)for($x=max(0,(int)floor(min($xs)/$spacing));$x<=min($size-1,(int)floor(max($xs)/$spacing));$x++)$smooth[$y*$size+$x]=chr(5);
         }
         $counts=[];foreach(self::PALETTE as $id=>$entry)$counts[$entry["name"]]=substr_count($smooth,chr($id));
         return ["layers"=>$smooth,"counts"=>$counts,"analysis_resolution"=>$size,"cell_spacing_m"=>$spacing,"filter"=>"Full-resolution classification; isolated speckles only; no coarse-grid enlargement."];
+    }
+    public static function classifyRows(BeamRaster $raster,array $center,int $start,int $end,callable $progress): string
+    {
+        $size=$raster->size;$grid="";$spacing=$raster->side/$size;
+        for($y=$start;$y<$end;$y++){
+            if($y%8===0)$progress(null);
+            for($x=0;$x<$size;$x++){
+                $wx=($x+0.5)*$spacing;$wy=($y+0.5)*$spacing;$pixels=[];
+                foreach([[0,0],[-1,0],[1,0],[0,-1],[0,1]] as [$dx,$dy])$pixels[]=$raster->rgb($x+$dx,$y+$dy);
+                $h=$raster->roadHeight($wx,$wy);$slope=max(abs($raster->roadHeight(min($raster->side-1,$wx+$spacing),$wy)-$h),abs($raster->roadHeight($wx,min($raster->side-1,$wy+$spacing))-$h))/$spacing;
+                $grid.=chr(self::category($pixels,$slope,$center,$h));
+            }
+        }
+        return $grid;
+    }
+    /** Full input grid supplies the neighbor halo for every independently filtered row strip. */
+    public static function filterRows(string $grid,int $size,int $start,int $end,callable $progress): string
+    {
+        $smooth=substr($grid,$start*$size,($end-$start)*$size);
+        for($y=$start;$y<$end;$y++){
+            if($y%8===0)$progress(null);
+            for($x=0;$x<$size;$x++){
+                $votes=array_fill(0,count(self::PALETTE),0);
+                for($dy=-1;$dy<=1;$dy++)for($dx=-1;$dx<=1;$dx++)$votes[ord($grid[max(0,min($size-1,$y+$dy))*$size+max(0,min($size-1,$x+$dx))])]++;
+                $current=ord($grid[$y*$size+$x]);$winner=array_search(max($votes),$votes,true);
+                $smooth[($y-$start)*$size+$x]=chr($current!==5&&$votes[$current]<3&&$votes[$winner]>=7?$winner:$current);
+            }
+        }
+        return $smooth;
     }
     public static function material(string $name,int $id,string $path,int $gridSize,float $step): array
     {

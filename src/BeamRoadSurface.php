@@ -37,9 +37,15 @@ final class BeamRoadSurface
     /** Blend native terrain to pavement height without adding collision objects. */
     public static function blendTerrain(array $road,array $profiles,BeamRaster $raster,float $origin,string $protected,callable $progress,array $bridges=[]): array
     {
+        return self::blendTerrainSet([['points'=>$road,'profiles'=>$profiles,'bridges'=>$bridges]],$raster,$origin,$protected,$progress);
+    }
+    /** Resolve overlapping road/connector corridors against one untouched terrain baseline. */
+    public static function blendTerrainSet(array $surfaces,BeamRaster $raster,float $origin,string $protected,callable $progress): array
+    {
         $step=$raster->side/$raster->size;$original=clone $raster;
         $nearest=str_repeat(pack('g',INF),$raster->size*$raster->size);$count=0;$maxChange=0.0;
-        $inner=max(1.5,sqrt(2)*$step);$blend=max(6,3*$step);$chainage=0.0;
+        $inner=max(1.5,sqrt(2)*$step);$blend=max(6,3*$step);
+        foreach($surfaces as $surface){$road=$surface['points'];$profiles=$surface['profiles'];$bridges=$surface['bridges']??[];$chainage=0.0;
         for($i=1;$i<count($road);$i++){
             if($i%50===0)$progress(null);
             $a=$road[$i-1];$b=$road[$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length2=$dx*$dx+$dy*$dy;
@@ -67,7 +73,8 @@ final class BeamRoadSurface
                 $raster->put($x,$y,$height);$maxChange=max($maxChange,abs($height-$before));
             }
         }
-        return ['method'=>'Native terrain only; no shoulder or supporting collision meshes','clearance_target_m'=>0.05,
+        }
+        return ['surface_count'=>count($surfaces),'method'=>'Native terrain only; shared nearest-corridor blend; no shoulder or supporting collision meshes','clearance_target_m'=>0.05,
             'inner_margin_m'=>$inner,'blend_width_m'=>$blend,'changed_vertices'=>$count,'maximum_height_change_m'=>$maxChange];
     }
 

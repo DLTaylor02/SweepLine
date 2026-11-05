@@ -338,7 +338,9 @@ try{
     $stockPlan['guardrail_data']=['lines'=>[['points'=>[[300,408],[500,408]],'osm_ids'=>[123],'tags'=>['barrier'=>'guard_rail']]],'source'=>'Offline explicit guardrail fixture'];
     $stockPlan['intersection_data']=['branches'=>[['points'=>[[1900,2400],[2100,2400]],'width_m'=>8]],'truncated'=>false,'limit_ft'=>600];
     $stockRaster=new BeamRaster($n,$side,$heights,$colors);
-    $stockReport=BeamMap::build($stockPlan,$stockRaster,str_repeat('d',32),$stockFile,fn($m)=>null);
+    $stockPool=new SweepLine\BeamCompute(dirname($stockFile),static fn()=>null,2);
+    $stockReport=BeamMap::build($stockPlan,$stockRaster,str_repeat('d',32),$stockFile,fn($m)=>null,$stockPool);
+    check($stockReport['cpu_processing']['peak_children']===2,'Generated stock-terrain export actually uses concurrent PHP helper processes');
     $stockZip=new ZipArchive();$stockZip->open($stockFile);$stockBase='levels/sweepline_dddddddddddddddd/';
     check(isset($stockReport['shadow_correction']['corrected_pixels'])&&$stockReport['shadow_correction']['corrected_pixels']===0,'Generated export records shadow correction while leaving well-lit fixture colors intact');
     check($stockReport['intersection_context']['rendered_branches']===1,'Generated ZIP report includes the connected side-road context');

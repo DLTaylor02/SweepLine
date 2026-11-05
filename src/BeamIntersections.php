@@ -192,20 +192,45 @@ final class BeamIntersections
         return ['points'=>$points,'profiles'=>$out];
     }
 
+    /** Group a branch, its connector and turnaround as one continuous terrain corridor. */
+    private static function surfaces(array $prepared,BeamRaster $raster): array
+    {
+        $surfaces=[];
+        foreach($prepared['roads'] as $i=>$branch){$branch['owner']=$branch['turnaround_for']??$branch['name']??'road_'.$i;$surfaces[]=$branch;}
+        foreach($prepared['aprons']??[] as $i=>$apron){
+            $owner=$apron['owner']??null;
+            if($owner===null){$last=end($apron['surface']);foreach($prepared['roads'] as $j=>$branch){$first=$branch['points'][0];if(hypot($last[0]-$first[0],$last[1]-$first[1])<0.0001){$owner=$branch['name']??'road_'.$j;break;}}}
+            $surfaces[]=['owner'=>$owner??'apron_'.$i,'points'=>$apron['surface'],'profiles'=>$apron['profiles']??array_fill(0,count($apron['surface']),['width_m'=>$apron['width_m']])];
+        }
+        foreach($surfaces as &$surface){
+            $margin=max(array_column($surface['profiles'],'width_m'))/2+0.25+sqrt(2)*$raster->side/$raster->size;
+            $xs=array_column($surface['points'],0);$ys=array_column($surface['points'],1);$surface['bounds']=[min($xs)-$margin,min($ys)-$margin,max($xs)+$margin,max($ys)+$margin];
+        }unset($surface);
+        usort($surfaces,static fn($a,$b)=>strcmp($a['owner'],$b['owner']));
+        return $surfaces;
+    }
+    private static function secondaryMask(array $surface,array $surfaces,BeamRaster $raster,string $primaryMask): string
+    {
+        $mask=$primaryMask;$a=$surface['bounds'];
+        foreach($surfaces as $other){
+            if($other['owner']===$surface['owner'])continue;$b=$other['bounds'];
+            if($a[2]<$b[0]||$a[0]>$b[2]||$a[3]<$b[1]||$a[1]>$b[3])continue;
+            $mask=BeamRoadSurface::primaryContactMask($other['points'],$other['profiles'],$raster,$mask);
+        }
+        return $mask;
+    }
+
     public static function shape(array $prepared,array $main,array $profiles,BeamRaster $raster,float $origin,string $bridgeMask,callable $progress): array
     {
         $mask=BeamRoadSurface::primaryContactMask($main,$profiles,$raster,$bridgeMask);
-        $reports=[];
-        $surfaces=$prepared['roads'];
-        foreach($prepared['aprons'] as $apron)$surfaces[]=['points'=>$apron['surface'],'profiles'=>$apron['profiles']??array_fill(0,count($apron['surface']),['width_m'=>$apron['width_m']])];
-        foreach($surfaces as $branch){
-            $progress(null);
-            $reports[]=['shoulders'=>BeamRoadSurface::blendTerrain($branch['points'],$branch['profiles'],$raster,$origin,$mask,$progress),
-                'clearance'=>BeamRoadSurface::clearTerrain($branch['points'],$branch['profiles'],$raster,$origin,$progress,$mask,true,0.5)];
+        $surfaces=self::surfaces($prepared,$raster);$reports=[];
+        $blend=BeamRoadSurface::blendTerrainSet($surfaces,$raster,$origin,$mask,$progress);
+        foreach($surfaces as $surface){
+            $progress(null);$ownMask=self::secondaryMask($surface,$surfaces,$raster,$mask);
+            $reports[]=['owner'=>$surface['owner'],'shared_blend'=>true,'shoulders'=>$blend,'clearance'=>BeamRoadSurface::clearTerrain($surface['points'],$surface['profiles'],$raster,$origin,$progress,$ownMask,true,0.5)];
         }
         return $reports;
     }
-
 
     public static function terrainTop(BeamRaster $raster,float $x,float $y): float
     {
@@ -221,10 +246,10 @@ final class BeamIntersections
     {
         $mask=$bridgeMask?:str_repeat("\0",$raster->size*$raster->size);$branchMask=$main?BeamRoadSurface::primaryContactMask($main,$mainProfiles,$raster,$mask):$mask;$reports=[];$lowered=0;$maxCut=0.0;$clamped=0;
         // Lower final contact terrain rather than lifting road surfaces away from their shoulders.
-        $surfaces=$prepared['roads'];foreach($prepared['aprons']??[] as $a)$surfaces[]=['points'=>$a['surface'],'profiles'=>$a['profiles']??array_fill(0,count($a['surface']),['width_m'=>$a['width_m']])];
+        $surfaces=self::surfaces($prepared,$raster);
         for($pass=0;$pass<2;$pass++){
             foreach($surfaces as $branch){
-                $progress(null);$report=BeamRoadSurface::clearTerrain($branch['points'],$branch['profiles'],$raster,$origin,$progress,$branchMask,true,0.5);
+                $progress(null);$ownMask=self::secondaryMask($branch,$surfaces,$raster,$branchMask);$report=BeamRoadSurface::clearTerrain($branch['points'],$branch['profiles'],$raster,$origin,$progress,$ownMask,true,0.5);
                 $reports[]=$report;$clamped+=$report['clamped_vertices'];$lowered+=$report['lowered_vertices'];$maxCut=max($maxCut,$report['maximum_cut_m']);
             }
             if($main){$report=BeamRoadSurface::clearTerrain($main,$mainProfiles,$raster,$origin,$progress,$mask,true);$lowered+=$report['lowered_vertices'];$maxCut=max($maxCut,$report['maximum_cut_m']);}
@@ -246,7 +271,7 @@ final class BeamIntersections
             $before=count($kept);$kept=array_values(array_filter($kept,static fn($b)=>!isset($b['turnaround_for'])||!isset($limited[$b['turnaround_for']])));
             if(isset($prepared['turnarounds'])){$removed=$before-count($kept);$prepared['turnarounds']['created']=max(0,$prepared['turnarounds']['created']-$removed);$prepared['turnarounds']['skipped']+=$removed;}
             $prepared['roads']=$kept;$prepared['aprons']=[];
-            foreach($kept as $branch){$contact=BeamPavement::contact($branch,$main,$mainProfiles);if($contact)$prepared['aprons'][]=$contact;}
+            foreach($kept as $branch){$contact=BeamPavement::contact($branch,$main,$mainProfiles);if($contact){$contact['owner']=$branch['name'];$prepared['aprons'][]=$contact;}}
             $active=array_fill_keys(array_column($kept,'name'),true);
             $prepared['junctions']=array_values(array_filter($prepared['junctions']??[],static fn($j)=>!isset($j['branch_name'])||isset($active[$j['branch_name']])));
         }

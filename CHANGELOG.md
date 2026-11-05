@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Apply the primary-road native terrain shoulder method to side roads/connectors/turnarounds in a shared nearest-corridor pass. Prevent later blends and clearance checks from removing earlier side-road edge support; retain primary-road and bridge protection, paved widths, clearance targets and cut limits. Add overlapping-road regression coverage and shared terrain-pass reporting.
+
+
+- Use bounded PHP CLI helper processes for BeamNG terrain classification/filtering, aerial tint filtering and terrain texture generation. Preserve serial pixel output and original elevation sampling; keep terrain mutation, database sessions and ZIP writes in the parent.
+- Add automatic CPU/affinity/cgroup/memory limits and an application-specific BEAMNG_CPU_WORKERS override, with serial fallback, cancellation/failure cleanup, private phase files and export concurrency reporting.
+- Add real subprocess concurrency, byte-equivalence, cancellation, failure and cleanup tests; benchmark four palette textures at 2.76x faster with four helpers on the development machine.
+
+
 - Fix primary-road terrain being excavated by final side-road cleanup: protect all supporting grid corners during every branch pass, bound secondary clearance cuts and shorten/omit unsupported context stretches instead of disturbing main-road support. Report these limits and remove stale turnarounds.
 - Add render-only 18 cm pavement edges to explicit road meshes; preserve top-surface collision without physical seam/shoulder walls.
 - Retain the opposite white edge line at T-junctions, including reversed route orientations; interrupt both edges only for opposing entrances.
