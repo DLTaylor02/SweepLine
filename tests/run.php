@@ -417,5 +417,6 @@ require __DIR__.'/compute.php';
 require __DIR__.'/tunnels.php';
 require __DIR__.'/beamng.php';
 require __DIR__.'/large-bridges.php';
+require __DIR__.'/bridge-deck.php';
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
 echo "$checks checks, $failures failures\n"; exit($failures?1:0);

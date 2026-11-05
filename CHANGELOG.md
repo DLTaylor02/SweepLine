@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix see-through bridge decks when the main road uses explicit pavement: add a closed, correctly wound concrete underside shell at mapped span boundaries. Preserve existing driving collision and terrain; add closure, normals, endpoint and generated-ZIP regression coverage. Diagnosed from the supplied Dwight D. Eisenhower Highway export.
+
+
 - Fix visible/collision holes beside tunnel portals: preserve lower original ground and retain a textured ground surface beneath excavated areas. Add full replacement-area and roadside coverage regressions; validate a read-only replay of the supplied Lake Tahoe export with zero gaps across 56 roadside samples.
 
 
