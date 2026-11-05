@@ -3,7 +3,8 @@ declare(strict_types=1);
 namespace SweepLine;
 final class BeamStructures
 {
-    public const MAX_LENGTH_M=200;
+    public const MAX_LENGTH_M=2000;
+    public const SIMPLE_LENGTH_M=200;
     private static function tagged(array $tags,string $key): bool {return isset($tags[$key])&&!in_array(strtolower((string)$tags[$key]),["no","false","0"],true);}
     /** Match collinear overlap, not merely a crossing or proximity. Distances are planar meters. */
     public static function spans(array $road,array $sources,bool $allowTunnels=false): array
@@ -24,20 +25,23 @@ final class BeamStructures
                 $lo=max(0,min($tc,$td));$hi=min($length,max($tc,$td));if($hi-$lo<0.01)continue;
                 if(self::tagged($tags,"tunnel")&&$allowTunnels)continue;
                 if(self::tagged($tags,"tunnel"))throw new \InvalidArgumentException("The selected stretch includes a mapped tunnel. Terrain openings and tunnel interiors are not supported yet.");
-                if(($tags["bridge"]??"")!=="yes" || !in_array($tags["bridge:structure"]??"beam",["beam","slab"],true) || isset($tags["bridge:movable"]) || abs((float)($tags["layer"]??0))>1)
-                    throw new \InvalidArgumentException("The selected stretch includes a complex bridge. Only short, simple beam/slab bridges can currently be estimated.");
+                if(!in_array($tags["bridge"]??"",["yes","viaduct"],true) || !in_array($tags["bridge:structure"]??"beam",["beam","slab"],true) || isset($tags["bridge:movable"]) || abs((float)($tags["layer"]??0))>1)
+                    throw new \InvalidArgumentException("The selected stretch includes a complex bridge. Only fixed beam/slab bridges and viaducts can currently be estimated.");
                 $hits[]=[$chain+$lo,$chain+$hi];
             }
             $chain+=$length;
         }
         usort($hits,static fn($a,$b)=>$a[0]<=>$b[0]);$spans=[];
         foreach($hits as [$lo,$hi]){$last=count($spans)-1;if($last>=0&&$lo<=$spans[$last]["end_m"]+0.2)$spans[$last]["end_m"]=max($spans[$last]["end_m"],$hi);else $spans[]=["start_m"=>$lo,"end_m"=>$hi];}
+        if(count($spans)>16)throw new \InvalidArgumentException("This export exceeds the 16-bridge limit.");
         foreach($spans as &$span){$span["length_m"]=$span["end_m"]-$span["start_m"];
             if($span["length_m"]<8)throw new \InvalidArgumentException("A selected bridge is shorter than the reliable eight-meter deck sampling limit.");
-            if($span["length_m"]>self::MAX_LENGTH_M)throw new \InvalidArgumentException("A selected bridge is longer than the 200-meter simple-bridge export limit.");
-            if($span["start_m"]<25||$chain-$span["end_m"]<25)throw new \InvalidArgumentException("A selected bridge lacks at least 25 meters of road approach at both ends. Choose a longer stretch that includes both approaches.");
+            if($span["length_m"]>self::MAX_LENGTH_M)throw new \InvalidArgumentException("A selected bridge is longer than the 2000-meter estimated-bridge export limit.");
+            $span["estimated"]=true;$span["large"]=$span["length_m"]>self::SIMPLE_LENGTH_M;
+            $span["approach_m"]=$span["large"]?50:25;
+            if($span["start_m"]<$span["approach_m"]||$chain-$span["end_m"]<$span["approach_m"])throw new \InvalidArgumentException("A selected bridge lacks the required approach road at both ends (25 meters for short bridges, 50 meters for large bridges). Choose a longer stretch that includes both approaches.");
             $a=self::at($road,$span["start_m"]);$b=self::at($road,$span["end_m"]);
-            if(hypot($b[0]-$a[0],$b[1]-$a[1])/$span["length_m"]<0.95)throw new \InvalidArgumentException("A selected bridge is too curved for a simple estimated deck.");
+            if(hypot($b[0]-$a[0],$b[1]-$a[1])/$span["length_m"]<($span["large"]?0.85:0.95))throw new \InvalidArgumentException("A selected bridge is too curved for a simple estimated deck.");
         }unset($span);
         return $spans;
     }
@@ -56,11 +60,12 @@ final class BeamStructures
     /** Replace valley-floor samples only around bridge spans; ordinary road analysis is unchanged. */
     public static function deckSamples(array $points,array $chain,array $heights,array $spans,BeamRaster $raster): array
     {
-        foreach($spans as $span){$lo=max(0,$span["start_m"]-20);$hi=min($chain[count($chain)-1],$span["end_m"]+20);
+        foreach($spans as $span){$anchor=!empty($span["large"])?50:20;$lo=max(0,$span["start_m"]-$anchor);$hi=min($chain[count($chain)-1],$span["end_m"]+$anchor);
             $a=self::at($points,$lo);$b=self::at($points,$hi);$za=$raster->roadHeight(...$a);$zb=$raster->roadHeight(...$b);
             if(abs($zb-$za)/max(1,$hi-$lo)>0.12)throw new \RuntimeException("Bridge approach elevations imply a grade above 12%; a reliable deck cannot be estimated.");
             foreach($chain as $i=>$distance)if($distance>=$lo&&$distance<=$hi){$z=$za+($zb-$za)*(($distance-$lo)/($hi-$lo));
                 if($distance>=$span["start_m"]&&$distance<=$span["end_m"]&&$raster->roadHeight(...$points[$i])>$z+0.15)throw new \RuntimeException("Terrain rises above the estimated bridge deck. Accurate structure elevations are required for this bridge.");
+                if($distance>=$span["start_m"]&&$distance<=$span["end_m"]&&$z-$raster->roadHeight(...$points[$i])>150)throw new \RuntimeException("Estimated bridge clearance exceeds 150 meters; surveyed structure elevations are required.");
                 $heights[$i]=$z;
             }
         }

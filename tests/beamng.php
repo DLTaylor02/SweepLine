@@ -211,8 +211,8 @@ check(SweepLine\BeamStructures::spans($structRoad,[$structSource([[700,0],[800,0
 check(SweepLine\BeamStructures::spans($structRoad,[$structSource([[150,-50],[150,50]],['tunnel'=>'yes'])])===[],'Crossing tunnel does not imply the selected road enters a tunnel');
 check(SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,3],[200,3]],['bridge'=>'yes'])])===[],'Parallel nearby bridge is not attributed to selected carriageway');
 check(rejects(fn()=>SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[200,0]],['tunnel'=>'yes'])])),'Actual selected tunnel is rejected');
-check(rejects(fn()=>SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[200,0]],['bridge'=>'viaduct'])])),'Complex bridge rejected explicitly');
-check(rejects(fn()=>SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[350,0]],['bridge'=>'yes'])])),'Bridge over 200 meters is rejected');
+check(rejects(fn()=>SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[200,0]],['bridge'=>'yes','bridge:structure'=>'suspension'])])),'Complex bridge rejected explicitly');
+check(SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[350,0]],['bridge'=>'yes'])])[0]['large'],'Bridge over 200 meters uses bounded large-bridge support');
 check(rejects(fn()=>SweepLine\BeamStructures::spans($structRoad,[$structSource([[0,0],[100,0]],['bridge'=>'yes'])])),'Bridge without start approach is rejected');
 $spans=SweepLine\BeamStructures::spans($structRoad,[$structSource([[100,0],[150,0]],['bridge'=>'yes']),$structSource([[150,0],[200,0]],['bridge'=>'yes'])]);
 check(count($spans)===1 && abs($spans[0]['length_m']-100)<0.001,'Contiguous mapped bridge pieces form one span');

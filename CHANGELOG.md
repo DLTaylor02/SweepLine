@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Extend BeamNG fixed beam/slab bridge and viaduct estimates to 2,000 m, with longer approach anchors, bounded curvature/grade/clearance and span budgets. Retain under-bridge terrain protection and short-bridge sampling; add concrete collision material and large-valley ZIP regression coverage. Suspension, arch, cable-stayed and movable structures remain refused.
+
+
 - Fix continuous-road candidates across two-way/one-way split and rejoin sections. Preserve distinct carriageways, whole-path direction constraints and shared approaches; prefer the matching custom click direction and correct API/export direction metadata. Add migration 017 and transactional local candidate refresh during installer rescoring, with offline graph/export and disposable-PostGIS regression coverage.
 
 
