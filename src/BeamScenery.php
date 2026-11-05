@@ -56,11 +56,12 @@ final class BeamScenery
         if($asset!==null)return BeamVegetation::CATALOG[$asset]['radius']*$scale;
         return match($kind){"tree"=>7.0,"building"=>sqrt(41),"bush"=>1.2,default=>2.0}*$scale;
     }
-    public static function place(array $road,array $profiles,BeamRaster $raster,int $seed,callable $progress,array $center=[-119,39],array $reserved=[],array $exclusions=[]): array
+    public static function place(array $road,array $profiles,BeamRaster $raster,int $seed,callable $progress,array $center=[-119,39],array $reserved=[],array $exclusions=[],int $objectBudget=24000): array
     {
         $geometry=new self($road,$profiles,$exclusions);$chain=[0.0];
         for($i=1;$i<count($road);$i++)$chain[]=$chain[$i-1]+hypot($road[$i][0]-$road[$i-1][0],$road[$i][1]-$road[$i-1][1]);
-        $length=$chain[count($chain)-1];$target=min(12000,max(400,(int)ceil($length/1000*250)));$baseTarget=$target;$extraTreeTarget=0;$limit=min(400000,$target*50);
+        $objectBudget=max(2,min(24000,$objectBudget));
+        $length=$chain[count($chain)-1];$target=min((int)floor($objectBudget/2),12000,max(400,(int)ceil($length/1000*250)));$baseTarget=$target;$extraTreeTarget=0;$limit=min(400000,$target*50);
         $random=static function()use(&$seed): float {$seed=($seed*1664525+1013904223)&0xFFFFFFFF;return $seed/4294967296;};
         $out=[];$occupied=[];$types=["tree"=>0,"bush"=>0,"rock"=>0,"building"=>0];$zones=[];$variants=[];$skipped=["water"=>0,"footprint"=>0,"slope"=>0,"spacing"=>0,"bounds"=>0];
         foreach($reserved as $building){
@@ -97,7 +98,7 @@ final class BeamScenery
             $occupied[$cx.":".$cy][]=[$x,$y,$radius,$kind];$types[$kind]++;
             $zones[$biome['zone']]=($zones[$biome['zone']]??0)+1;if($asset!==null)$variants[$asset]=($variants[$asset]??0)+1;
             $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale,"asset"=>$asset];
-            if(count($out)===$baseTarget){$extraTreeTarget=$types['tree'];$target=min(24000,$baseTarget+$extraTreeTarget);}
+            if(count($out)===$baseTarget){$extraTreeTarget=$types['tree'];$target=min($objectBudget,$baseTarget+$extraTreeTarget);}
         }
         return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"forest_asset_policy"=>"Eastern dense-canopy interiors use stock beech forest/group LOD assets; road edges retain individual trees.","tree_density_multiplier"=>2,"additional_tree_target"=>$extraTreeTarget,"additional_trees_placed"=>max(0,count($out)-$baseTarget),"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"biome_counts"=>$zones,"asset_counts"=>$variants,"biome_method"=>"Regional elevation prior plus nine raw aerial-color samples; heuristic, not surveyed land cover.","building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
     }

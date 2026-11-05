@@ -48,7 +48,7 @@ final class BeamJobs
         $road=RoadNames::prefer($road,$input['preferred_name']??null);
         $plan=BeamPlan::project($this->db,$road,$options);$payload=json_encode($plan,JSON_THROW_ON_ERROR);
         if(strlen($payload)>2097152)throw new \InvalidArgumentException('This road contains too much geometry for BeamNG export. Choose a shorter stretch.');
-        $fingerprint=hash('sha256','beamng-v0.40-62'.$payload);
+        $fingerprint=hash('sha256','beamng-v0.40-63'.$payload);
         $this->db->beginTransaction();
         try {
             $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
@@ -71,8 +71,10 @@ final class BeamJobs
         $q->execute([$id,$user]);$row=$q->fetch(PDO::FETCH_ASSOC)?:throw new \OutOfBoundsException('Export not found.');
         if($row['status']==='complete' && strtotime($row['expires_at'])<=time()){$row['status']='expired';$row['progress']='Download expired. Generate a new export.';}
         $row['report']=$row['report']?json_decode($row['report'],true,512,JSON_THROW_ON_ERROR):null;
-        if((int)$row['bridge_count']>0 || !empty($row['report']['bridges']))$row['warning']='Bridge decks and generic structures will be estimated from approach elevations.';
-        if((int)($row['tunnel_count']??0)>0||!empty($row['report']['tunnels']))$row['warning']=trim(($row['warning']??'').' Tunnel profile, clearance and portals are estimated from approach elevations, not surveyed.');
+        if((int)$row['bridge_count']>0 || !empty($row['report']['bridges'])||array_filter($row['report']['carriageways']['tracks']??[],static fn($t)=>!empty($t['bridges'])))$row['warning']='Bridge decks and generic structures will be estimated from approach elevations.';
+        if((int)($row['tunnel_count']??0)>0||!empty($row['report']['tunnels'])||!empty($row['report']['tunnel_data']['spans']))$row['warning']=trim(($row['warning']??'').' Tunnel profile, clearance and portals are estimated from approach elevations, not surveyed.');
+        foreach($row['report']['carriageways']['tracks']??[] as $track)if(!empty($track['intersection_context']['warning']))$row['warning']=trim(($row['warning']??'').' '.$track['intersection_context']['warning']);
+        if(!empty($row['report']['carriageways']['matching']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['carriageways']['matching']['warning']);
         if(!empty($row['report']['building_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['building_data']['warning']);
         if(!empty($row['report']['intersection_context']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['intersection_context']['warning']);
         if(!empty($row['report']['guardrail_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['guardrail_data']['warning']);
@@ -137,11 +139,36 @@ final class BeamJobs
             $budget=(new StorageSettings($this->db))->read()['database_budget_mb']*1048576;
             if((int)$this->db->query('SELECT pg_database_size(current_database())')->fetchColumn()>$budget)throw new \RuntimeException('Database storage budget reached. SuperAdmin can raise it on Manage.');
             $this->db->exec("SET statement_timeout='0'");$plan=json_decode($job['payload'],true,512,JSON_THROW_ON_ERROR);
+            if(!$this->rasterSource){
+                $plan['carriageway_data']=BeamCarriageways::fetch($this->db,$plan,$progress);
+                $plan['carriageways']=$plan['carriageway_data']['tracks'];unset($plan['carriageway_data']['tracks']);
+                if($plan['carriageways']){$extent=$plan['points'];foreach($plan['carriageways'] as $t)array_push($extent,...$t['points']);$plan['bounds']=BeamPlan::square($extent,$plan['padding_miles']*1609.344);}
+            }
             $raster=$this->rasterSource?($this->rasterSource)($plan,$dir,$progress):(new BeamSources())->fetch($plan,$dir,$progress);
             if(!$this->rasterSource){$plan['building_data']=BeamBuildings::fetch($this->db,$plan,$dir,$progress);$plan['guardrail_data']=BeamGuardrails::fetch($this->db,$plan,$dir,$progress);}
             try{$plan['intersection_data']=BeamIntersections::fetch($this->db,$plan,$progress);}
             catch(JobCancelled $e){throw $e;}
             catch(\Throwable $e){$plan['intersection_data']=['branches'=>[],'warning'=>'Local intersecting-road context could not be prepared.'];}
+            $plan['intersection_data']=BeamCarriageways::filterContext($plan['intersection_data'],$plan['carriageways']??[]);
+            $contextBudget=max(0,256-count($plan['intersection_data']['branches']));
+            foreach($plan['carriageways']??[] as $i=>$track){
+                $other=array_replace($plan,['points'=>$track['points'],'sources'=>$track['sources']]);
+                if(!$this->rasterSource){
+                    $buildings=BeamBuildings::fetch($this->db,$other,$dir,$progress);$rails=BeamGuardrails::fetch($this->db,$other,$dir,$progress);
+                    foreach([['building_data','footprints',$buildings],['guardrail_data','lines',$rails]] as [$key,$field,$data]){
+                        $items=[];foreach(array_merge($plan[$key][$field]??[],$data[$field]??[]) as $item)$items[hash('sha256',json_encode($item['points'],JSON_THROW_ON_ERROR))]=$item;
+                        $plan[$key][$field]=array_values($items);
+                        if(isset($data['warning']))$plan[$key]['warning']=trim(($plan[$key]['warning']??'').' '.$data['warning']);
+                    }
+                }
+                try{$context=BeamIntersections::fetch($this->db,$other,$progress);}
+                catch(JobCancelled $e){throw $e;}
+                catch(\Throwable $e){$context=['branches'=>[],'warning'=>'Opposite-carriageway intersection context was unavailable.'];}
+                $context=BeamCarriageways::filterContext($context,$plan['carriageways']);
+                if(count($context['branches'])>$contextBudget){$context['branches']=array_slice($context['branches'],0,$contextBudget);$context['warning']=trim(($context['warning']??'').' Intersecting-road context reached the shared 256-branch budget.');}
+                $contextBudget-=count($context['branches']);$plan['carriageways'][$i]['intersection_data']=$context;
+            }
+            if(isset($plan['guardrail_data']['lines'])){$railIds=[];foreach($plan['guardrail_data']['lines'] as $line)foreach($line['osm_ids']??[] as $osmId)$railIds[$osmId]=true;$plan['guardrail_data']['source_ways']=count($railIds);}
             $report=BeamMap::build($plan,$raster,$id,$dir.'/map.zip.part',$progress);$progress(null);
             $this->db->beginTransaction();
             $q=$this->db->prepare('SELECT cancel_requested FROM beamng_exports WHERE id=? FOR UPDATE');$q->execute([$id]);$state=$q->fetch(PDO::FETCH_ASSOC);if(!$state || $state['cancel_requested'])throw new JobCancelled('Export cancelled.');

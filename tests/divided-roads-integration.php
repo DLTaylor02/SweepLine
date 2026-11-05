@@ -42,3 +42,11 @@ try{
  $version=$db->prepare('SELECT analysis_version FROM import_jobs WHERE id=?');$version->execute([$splitJobId]);
  check((int)$version->fetchColumn()===1,'Failed rebuild does not advance analysis version');
 }finally{$db->exec('DROP TRIGGER reject_test_road_refresh ON road_candidates');$db->exec('DROP FUNCTION reject_test_road_refresh()');}
+
+// Opposite-carriageway matching reads active imported OSM only; no provider calls.
+$pairPlan=SweepLine\BeamPlan::project($db,$api->exportRoad((int)$rebuiltIds[0],'open'),SweepLine\BeamPlan::options([]));
+$pair=SweepLine\BeamCarriageways::fetch($db,$pairPlan,static function($m){});
+check(count($pair['tracks'])===1,'PostGIS matching finds the opposite carriageway of the imported divided road');
+check($pair['tracks'][0]['length_m']>1000,'Database matching exports the corresponding carriageway beyond 600-foot side-road context');
+check(count($pair['tracks'][0]['sources'])>0,'Matched opposite carriageway retains real OSM lane and structure tags');
+foreach($pair['tracks'][0]['sources'] as $part)check(isset($part['tags'],$part['osm_id'],$part['direction']),'Projected opposite source attributes preserve identity and direction');

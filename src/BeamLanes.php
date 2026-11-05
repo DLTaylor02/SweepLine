@@ -51,7 +51,9 @@ final class BeamLanes
             }
             $next=$points[min(count($points)-1,$i+1)];$prev=$points[max(0,$i-1)];
             $aligned=$vector===null || ($next[0]-$prev[0])*$vector[1]+($next[1]-$prev[1])*$vector[2]>=0;
-            $out[]=self::infer($chosen['tags']??[],$chosen['highway']??'secondary',(int)($chosen['direction']??0),$aligned);
+            $profile=self::infer($chosen['tags']??[],$chosen['highway']??'secondary',(int)($chosen['direction']??0),$aligned);
+            $profile['legal_forward']=!$profile['oneway']||(((int)($chosen['direction']??0)?:((($chosen['tags']['oneway']??'')==='-1')?-1:1))*($aligned?1:-1)>0);
+            $out[]=$profile;
         }
         return $out;
     }

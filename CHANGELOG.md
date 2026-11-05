@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Automatically include confidently matched opposite carriageways in BeamNG exports using local OSM identity, class, direction and parallel alignment. Preserve distinct lanes, legal traffic direction, full road geometry and the selected start/finish spawns.
+- Add independent road/structure/intersection processing, shared terrain and tunnel excavation, exact clipping of overlapping cross-street pavement, mapped at-grade traffic connections, and deduplicated scenery with shared resource budgets. Record matching and per-road provenance; retain existing export formats and discovery behavior.
+- Add generated dual-carriageway matching, direction, complete ZIP, bridge/tunnel, terrain, scenery-budget and crossing-street collision regressions, plus disposable-PostGIS matching coverage.
+
+
 - Replace the location-specific tunnel regression dataset with generated curves, grades, widths and terrain at several orientations. Export behavior remains location-independent.
 
 

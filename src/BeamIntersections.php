@@ -151,7 +151,7 @@ final class BeamIntersections
             }
             if(count($nodes)<2){$out['skipped']++;continue;}
             $connector=array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample(self::clip($local,$trim)));
-            $out['roads'][]=['name'=>'intersection_context_'.$index,'points'=>$nodes,'profiles'=>$branchProfiles,'join'=>$join,'connector'=>$connector];
+            $out['roads'][]=['name'=>'intersection_context_'.$index,'osm_id'=>$branch['osm_id']??null,'points'=>$nodes,'profiles'=>$branchProfiles,'join'=>$join,'connector'=>$connector];
             $apron=self::clip($local,$trim+1);
             $apronSurface=array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample($apron));
             $out['aprons'][]=['points'=>$apron,'width_m'=>$profile['width_m'],'surface'=>$apronSurface];

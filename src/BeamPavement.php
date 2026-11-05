@@ -16,7 +16,7 @@ final class BeamPavement
     {
         return BeamJunctionBoundary::hit($end,$direction,$road,$profiles,$join);
     }
-    public static function build(array $branch,array $main,array $mainProfiles,string $prefix,?array $surfaceSections=null): array
+    public static function build(array $branch,array $main,array $mainProfiles,string $prefix,?array $surfaceSections=null,array $obstacles=[]): array
     {
         $points=$branch['points'];$profiles=$branch['profiles'];$origin=$points[0];$vertices=[];$lookup=[];$triangles=[];$along=0.0;
         $vertex=static function($p)use(&$vertices,&$lookup){$key=implode(',',array_map(static fn($v)=>sprintf('%.7F',$v),$p));if(isset($lookup[$key]))return $lookup[$key];$id=count($vertices);$vertices[]=$p;$lookup[$key]=$id;return $id;};
@@ -37,6 +37,7 @@ final class BeamPavement
             $quad($a,$b,$c,$d,$prefix.'_road_'.self::key($profiles[0]),[[0,$v0],[1,$v0],[1,$v1],[0,$v1]]);
         }
         if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles);
+        foreach($obstacles as $obstacle)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null);
         return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge'),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
             'connector_end_seam_m'=>($connector?0.0:null),'method'=>'Exact ribbon boundary; overlapping side pavement removed; contact heights shared with primary surface.'];
     }

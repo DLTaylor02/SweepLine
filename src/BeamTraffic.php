@@ -54,6 +54,7 @@ final class BeamTraffic
         $node=static function($name,$p,$width)use(&$waypoints){$waypoints[]=['class'=>'BeamNGWaypoint','name'=>$name,'__parent'=>'MissionGroup','position'=>array_slice($p,0,3),'scale'=>array_fill(0,3,max(0.5,$width/2))];};
         $link=static function($name,$a,$b,$profile,$speed=null,$drivability=1)use(&$segments){
             if($a===$b)return;
+            if($profile['oneway']&&!($profile['legal_forward']??true))[$a,$b]=[$b,$a];
             $segments[$name]=['nodes'=>[$a,$b],'drivability'=>$drivability,'oneWay'=>$profile['oneway'],'autoLanes'=>false,
                 'lanesLeft'=>$profile['backward'],'lanesRight'=>$profile['forward'],'autoJunction'=>false,'hiddenInNavi'=>false]+($speed===null?[]:['speedLimit'=>$speed]);
         };

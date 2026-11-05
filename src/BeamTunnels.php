@@ -76,15 +76,19 @@ final class BeamTunnels
             if(count($reject)>=3&&array_filter($inside,static fn($p)=>$distance($p)<-1e-8))$out[]=$reject;$inside=$keep;
         }$removed=count($inside)>=3?$inside:[];return $out;
     }
-    public static function build(array $road,array $profiles,array $spans,BeamRaster $raster,float $origin,string $layers,string $material,string $terrainMaterial,callable $progress): array
+    public static function build(array $road,array $profiles,array $spans,BeamRaster $raster,float $origin,string $layers,string $material,string $terrainMaterial,callable $progress,array $additional=[]): array
     {
-        if(!$spans)return ['layers'=>$layers,'shell'=>null,'terrain'=>null,'objects'=>[],'report'=>['spans'=>[],'hole_cells'=>0]];
+        $work=[['road'=>$road,'profiles'=>$profiles,'spans'=>$spans]];$reportedSpans=$spans;
+        foreach($additional as $track){$work[]=['road'=>$track['road'],'profiles'=>$track['profiles'],'spans'=>$track['tunnels']];foreach($track['tunnels'] as $s)$reportedSpans[]=$s+['track'=>$track['name']];}
+        if(count($reportedSpans)>4)throw new \RuntimeException('Combined carriageways exceed the four-tunnel export limit.');
+        if(!$reportedSpans)return ['layers'=>$layers,'shell'=>null,'terrain'=>null,'objects'=>[],'report'=>['spans'=>[],'hole_cells'=>0]];
         $n=$raster->size;$step=$raster->side/$n;$vertices=[];$faces=[];$uv=[];$cells=[];$volumes=[];$lights=[];$exclusions=[];
         $quad=static function($a,$b,$c,$d)use(&$vertices,&$faces,&$uv){
             $base=count($vertices);array_push($vertices,$a,$b,$c,$d);$faces[]=[$base,$base+1,$base+2];$faces[]=[$base,$base+2,$base+3];
             $length=hypot($b[0]-$a[0],$b[1]-$a[1]);$uv[]=[[0,0],[$length/4,0],[$length/4,1]];$uv[]=[[0,0],[$length/4,1],[0,1]];
         };
-        foreach($spans as $number=>$span){
+        foreach($work as $trackIndex=>$track){$road=$track['road'];$profiles=$track['profiles'];
+        foreach($track['spans'] as $number=>$span){
             $progress(null);$start=$span['start_m']-2;$end=$span['end_m']+2;$stations=[];$at=$start;
             while($at<$end){$stations[]=self::station($road,$profiles,$at);$at+=2;}$stations[]=self::station($road,$profiles,$end);
             $points=array_column($stations,'point');$widths=array_map(static fn($s)=>['width_m'=>$s['width']+1.5],$stations);
@@ -105,7 +109,7 @@ final class BeamTunnels
                             [$b[0]+$dx*$half*$sign,$b[1]+$dy*$half*$sign,$b[2]-0.02],
                             [$a[0]+$da[0]*($oldHalf+0.75)*$sign,$a[1]+$da[1]*($oldHalf+0.75)*$sign,$a[2]-0.02]];if($sign>0)$band=array_reverse($band);$quad(...$band);}
                 }
-                if($i%20===10)$lights[]=['class'=>'PointLight','name'=>'tunnel_'.$number.'_light_'.$i,'__parent'=>'MissionGroup','position'=>[$p[0],$p[1],$p[2]+$h-0.3],'radius'=>24,'brightness'=>0.8,'color'=>[0.9,0.86,0.78,1],'castShadows'=>false];
+                if($i%20===10)$lights[]=['class'=>'PointLight','name'=>'tunnel_'.$trackIndex.'_'.$number.'_light_'.$i,'__parent'=>'MissionGroup','position'=>[$p[0],$p[1],$p[2]+$h-0.3],'radius'=>24,'brightness'=>0.8,'color'=>[0.9,0.86,0.78,1],'castShadows'=>false];
             }
             foreach([0,count($rings)-1] as $endIndex){
                 $p=$stations[$endIndex]['point'];$half=$stations[$endIndex]['width']/2+0.75;$h=$span['clearance_m'];
@@ -152,6 +156,7 @@ final class BeamTunnels
                         $cells[$y*$n+$x][]=$id;if(count($cells)>self::MAX_PATCH_CELLS)throw new \RuntimeException('Tunnel terrain patch exceeds the export cell budget.');
                     }
             }
+        }
         }
         $terrainVertices=[];$terrainFaces=[];$terrainUv=[];$counter=0;$floorPieces=0;$walls=[];
         foreach($cells as $key=>$ids){
@@ -223,7 +228,7 @@ final class BeamTunnels
             }
         }
         return ['layers'=>$layers,'shell'=>BeamAssets::mesh($vertices,$faces,$material,$uv),'terrain'=>BeamAssets::mesh($terrainVertices,$terrainFaces,$terrainMaterial,$terrainUv),
-            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['spans'=>$spans,'hole_cells'=>count($cells),'terrain_patch_triangles'=>count($terrainFaces),'excavated_floor_pieces'=>$floorPieces,'excavation_wall_triangles'=>$wallFaces,'floor_clearance_m'=>0.05,'estimated'=>true,
+            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['spans'=>$reportedSpans,'hole_cells'=>count($cells),'terrain_patch_triangles'=>count($terrainFaces),'excavated_floor_pieces'=>$floorPieces,'excavation_wall_triangles'=>$wallFaces,'floor_clearance_m'=>0.05,'estimated'=>true,
                 'method'=>'Approach-derived floor; generic concrete single bore and portals; native holes with clipped replacement terrain preserving overburden.','limitations'=>'Underground grade, clearance, portals and lighting are estimates. Not a surveyed tunnel model.']];
     }
 }

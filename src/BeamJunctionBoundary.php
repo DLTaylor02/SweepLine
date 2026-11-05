@@ -45,10 +45,10 @@ final class BeamJunctionBoundary
     }
 
     /** Primary triangles near a branch. Bounded boxes avoid all-pairs triangle clipping. */
-    public static function cutters(array $road,array $profiles,array $vertices): array
+    public static function cutters(array $road,array $profiles,array $vertices,?array $surfaceSections=null): array
     {
         if(!$vertices)return [];
-        $xs=array_column($vertices,0);$ys=array_column($vertices,1);$bounds=[min($xs)-0.01,min($ys)-0.01,max($xs)+0.01,max($ys)+0.01];$s=self::sections($road,$profiles);$out=[];
+        $xs=array_column($vertices,0);$ys=array_column($vertices,1);$bounds=[min($xs)-0.01,min($ys)-0.01,max($xs)+0.01,max($ys)+0.01];$s=$surfaceSections??self::sections($road,$profiles);$out=[];
         for($i=1;$i<count($s);$i++){
             $a=$s[$i-1][0];$b=$s[$i-1][1];$c=$s[$i][1];$d=$s[$i][0];
             foreach([[$a,$b,$c],[$a,$c,$d]] as $triangle){
@@ -78,9 +78,9 @@ final class BeamJunctionBoundary
         return $out;
     }
 
-    public static function trim(array $vertices,array $triangles,array $road,array $profiles): array
+    public static function trim(array $vertices,array $triangles,array $road,array $profiles,?array $surfaceSections=null): array
     {
-        $cutters=self::cutters($road,$profiles,$vertices);$s=self::sections($road,$profiles);$result=[];$out=[];$lookup=[];$edges=[];
+        $cutters=self::cutters($road,$profiles,$vertices,$surfaceSections);$s=$surfaceSections??self::sections($road,$profiles);$result=[];$out=[];$lookup=[];$edges=[];
         $xs=array_column($vertices,0);$ys=array_column($vertices,1);if(!$xs)return [$vertices,$triangles];
         $bounds=[min($xs)-0.01,min($ys)-0.01,max($xs)+0.01,max($ys)+0.01];
         for($i=1;$i<count($s);$i++)foreach([0,1] as $side){
