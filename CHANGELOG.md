@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Repair vertical cracks left between tunnel excavation floors and surrounding terrain, diagnosed from the refreshed Lake Tahoe export. Stitch excavation boundaries and portal rims, clip internal faces, preserve the usable driving bore, and add horizontal-ray seam/opening regressions alongside area-coverage checks.
+
+
 - Fix see-through bridge decks when the main road uses explicit pavement: add a closed, correctly wound concrete underside shell at mapped span boundaries. Preserve existing driving collision and terrain; add closure, normals, endpoint and generated-ZIP regression coverage. Diagnosed from the supplied Dwight D. Eisenhower Highway export.
 
 

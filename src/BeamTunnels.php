@@ -73,7 +73,7 @@ final class BeamTunnels
                 if($dp>=0)$keep[]=$p;if($dp<=0)$reject[]=$p;
                 if(($dp>0&&$dq<0)||($dp<0&&$dq>0)){$t=$dp/($dp-$dq);$v=[];foreach($p as $axis=>$value)$v[]=$value+($q[$axis]-$value)*$t;$keep[]=$v;$reject[]=$v;}
             }
-            if(count($reject)>=3)$out[]=$reject;$inside=$keep;
+            if(count($reject)>=3&&array_filter($inside,static fn($p)=>$distance($p)<-1e-8))$out[]=$reject;$inside=$keep;
         }$removed=count($inside)>=3?$inside:[];return $out;
     }
     public static function build(array $road,array $profiles,array $spans,BeamRaster $raster,float $origin,string $layers,string $material,string $terrainMaterial,callable $progress): array
@@ -134,7 +134,7 @@ final class BeamTunnels
                     }
             }
         }
-        $terrainVertices=[];$terrainFaces=[];$terrainUv=[];$counter=0;$floorPieces=0;
+        $terrainVertices=[];$terrainFaces=[];$terrainUv=[];$counter=0;$floorPieces=0;$walls=[];
         foreach($cells as $key=>$ids){
             if(++$counter%100===0)$progress(null);$x=$key%$n;$y=intdiv($key,$n);$layers[$key]=chr(255);$corners=[];
             foreach([[0,0],[1,0],[1,1],[0,1]] as [$ox,$oy]){$wx=($x+$ox)*$step;$wy=($y+$oy)*$step;$corners[]=[$wx,$wy,$raster->cell($x+$ox,$y+$oy)-$origin,$wx/$raster->side,$wy/$raster->side];}
@@ -146,6 +146,18 @@ final class BeamTunnels
                             // A tunnel hole must still have ground below its open volume.
                             // Reuse clipped UVs and keep the floor 5 cm below pavement.
                             $floor=$volumes[$id][5];
+                            foreach($removed as $edgeIndex=>$a){
+                                $b=$removed[($edgeIndex+1)%count($removed)];
+                                $boundary=false;foreach(array_slice($volumes[$id],0,5) as $plane){
+                                    $da=$plane[0]*$a[0]+$plane[1]*$a[1]+$plane[2]*$a[2]+$plane[3];$db=$plane[0]*$b[0]+$plane[1]*$b[1]+$plane[2]*$b[2]+$plane[3];
+                                    if(abs($da)<1e-6&&abs($db)<1e-6){$boundary=true;break;}
+                                }
+                                if(!$boundary||hypot($b[0]-$a[0],$b[1]-$a[1])<1e-7)continue;
+                                $lowA=$a;$lowB=$b;
+                                $lowA[2]=-($floor[0]*$a[0]+$floor[1]*$a[1]+$floor[3])-0.025;
+                                $lowB[2]=-($floor[0]*$b[0]+$floor[1]*$b[1]+$floor[3])-0.025;
+                                $walls[]=['polygon'=>[$a,$b,$lowB,$lowA],'volume'=>$id,'ceiling'=>abs($volumes[$id][4][0]*$a[0]+$volumes[$id][4][1]*$a[1]-$a[2]+$volumes[$id][4][3])<1e-6&&abs($volumes[$id][4][0]*$b[0]+$volumes[$id][4][1]*$b[1]-$b[2]+$volumes[$id][4][3])<1e-6];
+                            }
                             foreach($removed as &$p)$p[2]=min($p[2],-($floor[0]*$p[0]+$floor[1]*$p[1]+$floor[3])-0.025);
                             unset($p);$next[]=$removed;$floorPieces++;
                         }
@@ -157,8 +169,40 @@ final class BeamTunnels
                 }
             }
         }
+        // Close excavation boundaries, trimming portal rims around the open driving bore.
+        // Clip away internal walls where adjoining excavation segments overlap.
+        $wallFaces=0;
+        foreach($walls as $index=>$wall){
+            if($index%100===0)$progress(null);
+            $polygon=$wall['polygon'];$cx=(int)floor(($polygon[0][0]+$polygon[1][0])/2/$step);$cy=(int)floor(($polygon[0][1]+$polygon[1][1])/2/$step);$neighbors=[];
+            for($oy=-1;$oy<=1;$oy++)for($ox=-1;$ox<=1;$ox++){
+                $x=$cx+$ox;$y=$cy+$oy;if($x<0||$y<0||$x>=$n||$y>=$n)continue;
+                foreach($cells[$y*$n+$x]??[] as $id)if($id!==$wall['volume'])$neighbors[$id]=true;
+            }
+            $pieces=[$polygon];
+            foreach(array_keys($neighbors) as $id){
+                $next=[];foreach($pieces as $piece)array_push($next,...self::subtract($piece,array_slice($volumes[$id],0,5)));
+                $pieces=$next;if(!$pieces)break;
+            }
+            if($wall['ceiling']){
+                $neighbors[$wall['volume']]=true;
+                foreach(array_keys($neighbors) as $id){
+                    // The excavation is 15 cm wider/higher than the usable bore.
+                    $bore=array_slice($volumes[$id],0,5);foreach([2,3,4] as $plane)$bore[$plane][3]-=0.15;
+                    $next=[];foreach($pieces as $piece)array_push($next,...self::subtract($piece,$bore));
+                    $pieces=$next;if(!$pieces)break;
+                }
+            }
+            foreach($pieces as $piece)for($i=1;$i<count($piece)-1;$i++){
+                $triangle=[$piece[0],$piece[$i],$piece[$i+1]];
+                $a=$triangle[0];$b=$triangle[1];$c=$triangle[2];$u=[$b[0]-$a[0],$b[1]-$a[1],$b[2]-$a[2]];$v=[$c[0]-$a[0],$c[1]-$a[1],$c[2]-$a[2]];
+                $area=hypot($u[0]*$v[1]-$u[1]*$v[0],hypot($u[1]*$v[2]-$u[2]*$v[1],$u[2]*$v[0]-$u[0]*$v[2]));if($area<1e-9)continue;
+                $base=count($terrainVertices);foreach($triangle as $p)$terrainVertices[]=array_slice($p,0,3);
+                $terrainFaces[]=[$base,$base+1,$base+2];$terrainUv[]=array_map(static fn($p)=>array_slice($p,3,2),$triangle);$wallFaces++;
+            }
+        }
         return ['layers'=>$layers,'shell'=>BeamAssets::mesh($vertices,$faces,$material,$uv),'terrain'=>BeamAssets::mesh($terrainVertices,$terrainFaces,$terrainMaterial,$terrainUv),
-            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['spans'=>$spans,'hole_cells'=>count($cells),'terrain_patch_triangles'=>count($terrainFaces),'excavated_floor_pieces'=>$floorPieces,'floor_clearance_m'=>0.05,'estimated'=>true,
+            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['spans'=>$spans,'hole_cells'=>count($cells),'terrain_patch_triangles'=>count($terrainFaces),'excavated_floor_pieces'=>$floorPieces,'excavation_wall_triangles'=>$wallFaces,'floor_clearance_m'=>0.05,'estimated'=>true,
                 'method'=>'Approach-derived floor; generic concrete single bore and portals; native holes with clipped replacement terrain preserving overburden.','limitations'=>'Underground grade, clearance, portals and lighting are estimates. Not a surveyed tunnel model.']];
     }
 }

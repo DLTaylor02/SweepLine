@@ -98,3 +98,22 @@ check($tCut['report']['excavated_floor_pieces']>0&&$tCut['report']['floor_cleara
 $tProjectedArea=0.;
 for($i=0;$i<count($tCutValues);$i+=9)$tProjectedArea+=abs(SweepLine\BeamPolygon::cross(array_slice($tCutValues,$i,3),array_slice($tCutValues,$i+3,3),array_slice($tCutValues,$i+6,3)))/2;
 check(abs($tProjectedArea-$tCut['report']['hole_cells']*($tside/$tn)**2)<0.0001,'Replacement terrain covers the full native-hole area after excavation');
+
+$tWallCrosses=static function(array $values,int $axis,float $s,float $height,float $lo,float $hi):bool{
+ $other=$axis===0?1:0;
+ for($i=0;$i<count($values);$i+=9){
+  $a=array_slice($values,$i,3);$b=array_slice($values,$i+3,3);$c=array_slice($values,$i+6,3);
+  $den=($b[2]-$c[2])*($a[$other]-$c[$other])+($c[$other]-$b[$other])*($a[2]-$c[2]);if(abs($den)<1e-10)continue;
+  $u=(($b[2]-$c[2])*($s-$c[$other])+($c[$other]-$b[$other])*($height-$c[2]))/$den;
+  $v=(($c[2]-$a[2])*($s-$c[$other])+($a[$other]-$c[$other])*($height-$c[2]))/$den;$w=1-$u-$v;
+  $at=$u*$a[$axis]+$v*$b[$axis]+$w*$c[$axis];
+  if(min($u,$v,$w)>=-1e-8&&$at>=$lo&&$at<=$hi)return true;
+ }return false;
+};
+foreach([90,110,210,230] as $x)check($tWallCrosses($tCutValues,1,$x,9.5,164,166),'Tunnel excavation connects vertically to hillside at '.$x);
+check(!$tWallCrosses($tCutValues,0,160,9.5,85,235),'Adjacent excavation segments leave no blocking walls across the driving corridor');
+check($tPreserved['report']['excavation_wall_triangles']===0,'Unexcavated lower ground does not acquire vertical terrain walls');
+check($tCut['report']['excavation_wall_triangles']>0,'Tunnel report records vertical terrain stitching');
+
+check($tWallCrosses($tValues,0,164.85,12,110,145),'Portal rim joins the hillside beside the usable tunnel opening');
+check(!$tWallCrosses($tValues,0,160,12,110,145),'Portal rim leaves the centre of the driving opening clear');
