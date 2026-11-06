@@ -15,7 +15,7 @@ final class BeamTrack
         $points=[];$raw=[];$chain=[0.];
         foreach($world as $i=>$p){$local=[$p[0]-$plan['bounds'][0],$p[1]-$plan['bounds'][1]];$points[]=$local;$raw[]=$raster->roadHeight(...$local);if($i)$chain[]=$chain[$i-1]+hypot($local[0]-$points[$i-1][0],$local[1]-$points[$i-1][1]);}
         $bridges=BeamStructures::spans($world,$input['sources'],true);$tunnels=BeamTunnels::spans($world,$input['sources']);
-        $raw=BeamTunnels::samples($points,$chain,$raw,$tunnels,$raster);$raw=BeamStructures::deckSamples($points,$chain,$raw,$bridges,$raster);$road=[];
+        $raw=BeamTunnels::samples($points,$chain,$raw,$tunnels,$raster);$raw=BeamStructures::deckSamples($points,$chain,$raw,$bridges,$raster,'Opposite carriageway ('.($input['road_ref']??$input['road_name']??$input['name']??'unnamed').')');$road=[];
         foreach($points as $i=>$p){
             if($i%100===0)$progress(null);$sum=0.;$weights=0.;$left=$i;
             while($left>0&&$chain[$i]-$chain[$left-1]<40)$left--;
@@ -44,7 +44,7 @@ final class BeamTrack
     public static function write(array $track,array $main,array $mainProfiles,string $prefix,string $path,callable $put,array &$materials,BeamRaster $raster,float $origin,callable $progress,array $otherContext=[]): array
     {
         $key=$track['name'];$road=$track['road'];$profiles=$track['profiles'];$context=$track['context'];$objects=[];$bridgeMaterial=$prefix.'_bridge';
-        $static=static fn($name,$file,$position,$collision='Visible Mesh Final')=>['class'=>'TSStatic','name'=>$name,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>$position,'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>$collision,'decalType'=>'None','castShadows'=>true];
+        $static=static fn($name,$file,$position,$collision='Visible Mesh Final')=>['class'=>'TSStatic','name'=>$name,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>$position,'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>$collision,'decalType'=>($collision==='Visible Mesh Final'?'Visible Mesh Final':'None'),'castShadows'=>true];
         $render=BeamIntersections::markingSections($road,$profiles,$context['junctions']);
         $surfaces=array_merge([['name'=>$key]+$render],$context['roads']);$report=[];
         foreach($surfaces as $i=>$surface){

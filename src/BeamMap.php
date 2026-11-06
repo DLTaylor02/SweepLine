@@ -53,6 +53,7 @@ final class BeamMap
         $compute??=new BeamCompute(dirname($zipPath),\Closure::fromCallable(static fn()=>$progress(null)));
         $name='sweepline_'.substr($id,0,16);$base='levels/'.$name.'/';$path='/'.$base;$n=$raster->size;$side=$raster->side;$step=$side/$n;
         $anchors=[];foreach($plan['intersection_data']['branches']??[] as $branch)if(isset($branch['points'][0]))$anchors[]=$branch['points'][0];
+        foreach($plan['carriageways']??[] as $track)foreach($track['merge_nodes']??[] as $node)$anchors[]=$node;
         $structureSegments=[];foreach($plan['sources'] as $source)if(!in_array($source['tags']['bridge']??'no',['no','false','0'],true)||!in_array($source['tags']['tunnel']??'no',['no','false','0'],true))
             for($i=1;$i<count($source['points']);$i++)$structureSegments[]=[$source['points'][$i-1],$source['points'][$i]];
         $rounded=BeamCurve::smooth($plan['points'],$anchors,$structureSegments);$world=BeamPlan::sample($rounded,8,0.001);
@@ -76,7 +77,7 @@ final class BeamMap
         $bridges=BeamStructures::spans($world,$plan['sources'],true);$tunnels=BeamTunnels::spans($world,$plan['sources']);
         $coveredSpans=array_merge($bridges,$tunnels);
         $rawHeights=BeamTunnels::samples($points,$chain,$rawHeights,$tunnels,$raster);
-        $rawHeights=BeamStructures::deckSamples($points,$chain,$rawHeights,$bridges,$raster);
+        $rawHeights=BeamStructures::deckSamples($points,$chain,$rawHeights,$bridges,$raster,'Selected road ('.$plan['name'].')');
         foreach($points as $i=>$p) {
             $sum=0.0;$weights=0.0;
             $left=$i;while($left>0 && $chain[$i]-$chain[$left-1]<40)$left--;
@@ -85,7 +86,11 @@ final class BeamMap
             if($i>0 && abs($z-($road[$i-1][2]+$origin-self::ROAD_ELEVATION_OFFSET_M))/max(0.01,hypot($p[0]-$points[$i-1][0],$p[1]-$points[$i-1][1]))>0.35)throw new \RuntimeException('The sampled elevation creates an unsupported road grade. Higher-quality road elevation is required for this stretch.');
             $road[]=[$p[0],$p[1],$z-$origin+self::ROAD_ELEVATION_OFFSET_M];if($profiles[$i]['estimated_lanes'])$estimated++;
         }
-        $carriageways=[];foreach($plan['carriageways']??[] as $input)$carriageways[]=BeamTrack::prepare($input,$plan,$raster,$origin,$progress);
+        $carriageways=[];foreach($plan['carriageways']??[] as $input)$carriageways[]=BeamCarriageways::conformMerges(BeamTrack::prepare($input,$plan,$raster,$origin,$progress),$road,$profiles,$plan['bounds']);
+        foreach($carriageways as &$track)if(!empty($track['merge_nodes'])){
+            $track['context']=BeamIntersections::prepare($track['intersection_data']??['branches'=>[]],$track['road'],$track['profiles'],$raster,$plan['bounds'],$origin,array_merge($track['bridges'],$track['tunnels']),$progress);
+            $track['context']=BeamTraffic::turnarounds($track['context'],$track['road'],$track['profiles'],$raster,$origin,$progress,$plan['building_data']['footprints']??[]);
+        }unset($track);
         if(count($road)+array_sum(array_map(static fn($t)=>count($t['road']),$carriageways))>20000)throw new \RuntimeException('Combined carriageway geometry exceeds 20,000 samples. Select a shorter stretch.');
         $intersectionData=$plan['intersection_data']??['branches'=>[]];
         $preparedIntersections=BeamIntersections::prepare($intersectionData,$road,$profiles,$raster,$plan['bounds'],$origin,$coveredSpans,$progress);
@@ -122,6 +127,7 @@ final class BeamMap
             $approachShaping=BeamRoadSurface::blendTerrain($road,$profiles,$raster,$origin,$approachMask,$progress,$bridges);
             $bridgeApproachCorrection=BeamRoadSurface::clearTerrain($road,$profiles,$raster,$origin,$progress,$approachMask,true);
             $bridgeApproachCorrection['shaping']=$approachShaping;
+            $bridgeApproachCorrection['exact_pavement']=BeamTerrainContact::clear($road,$profiles,$raster,$origin,$approachMask,$progress);
             unset($approachMask);
         }
 
@@ -136,6 +142,7 @@ final class BeamMap
                 foreach($carriageways as $j=>$other)if($j!==$index)$approach=BeamRoadSurface::primaryContactMask($other['road'],$other['profiles'],$raster,$approach|$other['structure_mask']);
                 BeamRoadSurface::blendTerrain($track['road'],$track['profiles'],$raster,$origin,$approach,$progress,$track['bridges']);
                 BeamRoadSurface::clearTerrain($track['road'],$track['profiles'],$raster,$origin,$progress,$approach,true);
+                BeamTerrainContact::clear($track['road'],$track['profiles'],$raster,$origin,$approach,$progress);
             }
             $track['context']['aprons']=[];
             foreach($track['context']['roads'] as $branch){$contact=BeamPavement::contact($branch,$track['road'],$track['profiles']);if($contact){$contact['owner']=$branch['name'];$track['context']['aprons'][]=$contact;}}
@@ -147,6 +154,10 @@ final class BeamMap
         foreach($preparedIntersections['roads'] as $branch){$contact=BeamPavement::contact($branch,$road,$profiles);if($contact!==null){$contact['owner']=$branch['name'];$preparedIntersections['aprons'][]=$contact;}}
         $intersectionShaping=$preparedIntersections['roads']?BeamIntersections::shape($preparedIntersections,$road,$profiles,$raster,$origin,$bridgeMask,$progress):[];
         $preparedIntersections=BeamIntersections::conform($preparedIntersections,$raster,$origin,$progress,$road,$profiles,$bridgeMask);
+        // Final exact check follows every corridor-shaping pass.
+        $terrainCorrection['exact_pavement']=BeamTerrainContact::clear($road,$profiles,$raster,$origin,$mainStructureMask|$companionMask,$progress,BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']);
+        foreach($carriageways as &$track)$track['terrain_correction']['exact_pavement']=BeamTerrainContact::clear($track['road'],$track['profiles'],$raster,$origin,$mainStructureMask|$companionMask,$progress,BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']);
+        unset($track);
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
         $put=static function($file,$bytes)use($zip,$base){if(!$zip->addFromString($base.$file,$bytes))throw new \RuntimeException('Could not write BeamNG archive.');};
         try {
@@ -238,12 +249,12 @@ final class BeamMap
                 $put('art/roads/primary-edge.dae',$primary['fascia_xml']);
                 $objects[]=['class'=>'TSStatic','name'=>'road_visual_edge','__parent'=>'MissionGroup','shapeName'=>$path.'art/roads/primary-edge.dae','position'=>$primary['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'None','decalType'=>'None'];
 
-                $objects[]=['class'=>'TSStatic','name'=>'road_surface','__parent'=>'MissionGroup','shapeName'=>$path.'art/roads/primary.dae','position'=>$primary['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
+                $objects[]=['class'=>'TSStatic','name'=>'road_surface','__parent'=>'MissionGroup','shapeName'=>$path.'art/roads/primary.dae','position'=>$primary['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'Visible Mesh Final'];
             }
             $pavementReports=[];
             foreach($preparedIntersections['roads'] as $i=>$branch){
                 $pavement=BeamPavement::build($branch,$road,$profiles,$prefix,null,array_map(static fn($t)=>['road'=>$t['road'],'profiles'=>$t['profiles']],$carriageways));$file='art/roads/side-'.$i.'.dae';$put($file,$pavement['xml']);
-                $objects[]=['class'=>'TSStatic','name'=>$branch['name'].'_surface','__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>$pavement['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
+                $objects[]=['class'=>'TSStatic','name'=>$branch['name'].'_surface','__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>$pavement['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'Visible Mesh Final'];
                 $edgeFile='art/roads/side-'.$i.'-edge.dae';$put($edgeFile,$pavement['fascia_xml']);
                 $objects[]=['class'=>'TSStatic','name'=>$branch['name'].'_visual_edge','__parent'=>'MissionGroup','shapeName'=>$path.$edgeFile,'position'=>$pavement['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'None','decalType'=>'None'];
                 unset($pavement['xml'],$pavement['fascia_xml']);$pavement['name']=$branch['name'];$pavement['connector_expected']=isset($branch['join']);$pavementReports[]=$pavement;

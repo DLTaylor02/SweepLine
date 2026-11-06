@@ -691,3 +691,17 @@ sudo ./setup.sh
 ```
 
 Use the deployment's configured database/service names if customized. Cancelling this statement rolls back that in-progress cleanup; queued jobs and active coverage remain. The installer then applies the indexes and starts the updated worker. No PostgreSQL restart or unrelated service changes are required.
+
+
+### Pavement clearance, merges and tire marks
+
+BeamNG exports finish ordinary-road terrain shaping by intersecting the actual rendered pavement triangles with both possible native-terrain diagonals. The check includes the full pavement edges and only lowers intersecting terrain; distant terrain and protected bridge/tunnel cells are preserved. Landward bridge approaches receive the same check within their existing protection mask. Elevation sampling and the graded native-terrain shoulder method are unchanged.
+
+Opposite carriageways retain mapped approaches up to 300 metres back to a shared node on the selected road. Nearby roads without a shared node are not connected. These short merge approaches blend to the selected pavement elevation, preserve the selected road geometry and protect mapped structure profiles. Existing pavement clipping removes overlapping driving surfaces and shares their seam heights. This still requires in-game validation on fresh exports.
+
+Driving-surface meshes accept tire-mark decals; decorative fascia meshes remain excluded. Discovery Start/Finish and custom-selection markers anchor their pointed lower-left corner at the map coordinate.
+
+Bridge decks and generic structures are estimated from approach elevations. Tunnel profiles, clearance and portals are estimated from approach elevations, not surveyed. These general limitations remain in this documentation and the generated export report, rather than repeating in export progress; actionable missing-data and processing warnings remain visible. Regenerate older exports to apply these changes.
+
+
+Bridge estimation failures now identify the selected/opposite carriageway, bridge ordinal and length, the peak elevation/profile mismatch and chainage measured from that carriageway's selected geometry start. They also report the original elevation-grid spacing and the bridge's 20/50-metre approach-sampling distance. The existing 0.15-metre (0.49-foot) conflict threshold remains unchanged. A refusal establishes a conflict between raster elevations and the straight approach-derived profile, not that the real bridge is obstructed. Coarse raster sampling, approach contamination or a curved vertical profile are possible explanations; the exact cause requires inspecting the failed stretch's data. Normal grade/clearance protections remain enforced.

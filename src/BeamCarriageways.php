@@ -28,7 +28,7 @@ final class BeamCarriageways
             $sample=BeamPlan::sample($raw,20,0.001);$run=[];$distances=[];$along=[];
             $flush=static function()use(&$run,&$distances,&$along,&$matches,$candidate){
                 $length=0.;for($i=1;$i<count($run);$i++)$length+=hypot($run[$i][0]-$run[$i-1][0],$run[$i][1]-$run[$i-1][1]);
-                if($length>=self::MIN_LENGTH_M)$matches[]=['points'=>$run,'candidate_id'=>(int)$candidate['id'],'road_name'=>$candidate['name'],'road_ref'=>$candidate['ref'],'highway'=>$candidate['highway'],'mean_separation_m'=>array_sum($distances)/count($distances),'main_range'=>[min($along),max($along)],'length_m'=>$length];
+                if($length>=self::MIN_LENGTH_M)$matches[]=['points'=>$run,'candidate_id'=>(int)$candidate['id'],'road_name'=>$candidate['name'],'road_ref'=>$candidate['ref'],'highway'=>$candidate['highway'],'mean_separation_m'=>array_sum($distances)/count($distances),'main_range'=>[min($along),max($along)],'length_m'=>$length,'candidate_points'=>$candidate['direction']<0?array_reverse($candidate['points']):$candidate['points']];
                 $run=[];$distances=[];$along=[];
             };
             foreach($sample as $i=>$p){
@@ -89,7 +89,7 @@ final class BeamCarriageways
             foreach($runs as $points){
                 $length=0.;for($j=1;$j<count($points);$j++)$length+=hypot($points[$j][0]-$points[$j-1][0],$points[$j][1]-$points[$j-1][1]);
                 if($length<self::MIN_LENGTH_M||count($resolved)>=self::MAX_TRACKS)continue;
-                $copy=$track;$copy['points']=$points;$copy['length_m']=$length;$copy['name']='carriageway_'.count($resolved);$resolved[]=$copy;
+                $copy=$track;$points=self::mergeApproaches($plan,$track,$points);$copy['points']=$points;unset($copy['candidate_points']);$copy['merge_nodes']=[];foreach([$points[0],end($points)] as $endpoint)foreach($plan['points'] as $node)if(hypot($endpoint[0]-$node[0],$endpoint[1]-$node[1])<0.05){$copy['merge_nodes'][]=$node;break;}$copy['length_m']=0.;for($k=1;$k<count($points);$k++)$copy['length_m']+=hypot($points[$k][0]-$points[$k-1][0],$points[$k][1]-$points[$k-1][1]);$copy['name']='carriageway_'.count($resolved);$resolved[]=$copy;
             }
         }unset($track);$data['tracks']=$resolved;
         $warnings=[];if($data['ambiguous_matches'])$warnings[]='Ambiguous opposite-carriageway matches were omitted rather than guessed.';
@@ -114,6 +114,54 @@ final class BeamCarriageways
         }
         if(count($run)>1)$runs[]=$run;return $runs;
     }
+    /** Retain mapped approaches to an actual shared node; never synthesize a median crossing. */
+    public static function mergeApproaches(array $plan,array $track,array $run): array
+    {
+        $raw=BeamPlan::sample($track['candidate_points']??$track['points'],20,0.001);
+        $shared=[];foreach($plan['points'] as $p)$shared[sprintf('%.2F:%.2F',$p[0],$p[1])]=true;
+        $own=new BeamRoadIndex(array_values(array_filter($track['sources'],static fn($s)=>(int)$s['direction']!==0)));$main=new BeamRoadIndex([['points'=>$plan['points']]]);
+        foreach([false,true] as $end){
+            $p=$end?end($run):$run[0];$best=INF;$at=0;
+            foreach($raw as $i=>$v){$d=hypot($v[0]-$p[0],$v[1]-$p[1]);if($d<$best){$best=$d;$at=$i;}}
+            if($best>0.1)continue;$direction=$end?1:-1;$distance=0.;$extension=[];$joined=false;
+            for($i=$at+$direction;isset($raw[$i]);$i+=$direction){
+                $v=$raw[$i];$last=$raw[$i-$direction];$distance+=hypot($v[0]-$last[0],$v[1]-$last[1]);if($distance>300)break;
+                $s=$own->nearest($v,2);if(!$s||(int)$s['line']['direction']===0)break;
+                $extension[]=$v;
+                if(isset($shared[sprintf('%.2F:%.2F',$v[0],$v[1])])&&($main->nearest($v,0.05)['distance']??INF)<0.05){$joined=true;break;}
+            }
+            if($joined)$run=$end?array_merge($run,$extension):array_merge(array_reverse($extension),$run);
+        }
+        return $run;
+    }
+    /** Match merge elevations to the selected road without moving its geometry. */
+    public static function conformMerges(array $track,array $main,array $profiles,array $bounds): array
+    {
+        $index=new BeamRoadIndex([['points'=>$main]]);$sections=BeamJunctionBoundary::sections($main,$profiles);
+        $chain=$track['chain'];$total=end($chain);$mergeEndpoints=[];
+        foreach([0,count($track['road'])-1] as $endpoint){
+            $p=$track['road'][$endpoint];$world=[$p[0]+$bounds[0],$p[1]+$bounds[1]];
+            $mapped=false;foreach($track['merge_nodes']??[] as $node)if(hypot($world[0]-$node[0],$world[1]-$node[1])<0.1)$mapped=true;
+            if(!$mapped)continue;$mergeEndpoints[]=$endpoint;
+            foreach($track['road'] as $i=>&$v){
+                $distance=$endpoint===0?$chain[$i]:$total-$chain[$i];if($distance>100)continue;
+                foreach(array_merge($track['bridges']??[],$track['tunnels']??[]) as $span)if($chain[$i]>=$span['start_m']-10&&$chain[$i]<=$span['end_m']+10)continue 2;
+                $near=$index->nearest($v,80);if(!$near)continue;$j=$near['segment'];$t=$near['fraction'];
+                $target=$main[$j-1][2]*(1-$t)+$main[$j][2]*$t;
+                $half=($profiles[$j-1]['width_m']*(1-$t)+$profiles[$j]['width_m']*$t+$track['profiles'][$i]['width_m'])/2;
+                $fade=max(0,min(1,($near['distance']-$half)/20));$fade=$fade*$fade*(3-2*$fade);
+                $fraction=$distance/100;$weight=(1-$fade)*(1-3*$fraction**2+2*$fraction**3);
+                [$a,$b]=$sections[$j-1];[$d,$c]=$sections[$j];
+                foreach([[$a,$b,$c],[$a,$c,$d]] as $triangle){
+                    $w=BeamTerrainContact::weights($v,$triangle);
+                    if($w&&min($w)>=-0.000001){$target=0.;foreach($w as $k=>$f)$target+=$f*$triangle[$k][2];break;}
+                }
+                $v[2]+=$weight*($target-$v[2]);
+            }unset($v);
+        }
+        $track['merge_junctions']=[];foreach($mergeEndpoints as $i){$p=$track['road'][$i];$track['merge_junctions'][]=['x'=>$p[0],'y'=>$p[1],'z'=>$p[2]];}
+        return $track;
+    }
     /** Link networks only at mapped, prepared at-grade junctions, never by median proximity. */
     public static function connectNavigation(array $objects,array $tracks,array &$segments): int
     {
@@ -123,7 +171,7 @@ final class BeamCarriageways
             $id=count($nodes);$nodes[]=$o;$p=$o['position'];$grid[(int)floor($p[0]/4).':'.(int)floor($p[1]/4)][]=$id;
         }
         $count=0;$seen=[];
-        foreach($tracks as $track)foreach($track['context']['junctions'] as $join){
+        foreach($tracks as $track)foreach(array_merge($track['context']['junctions'],$track['merge_junctions']??[]) as $join){
             $cx=(int)floor($join['x']/4);$cy=(int)floor($join['y']/4);$own=null;$other=null;$dOwn=INF;$dOther=INF;
             for($x=$cx-1;$x<=$cx+1;$x++)for($y=$cy-1;$y<=$cy+1;$y++)foreach($grid[$x.':'.$y]??[] as $id){
                 $o=$nodes[$id];$p=$o['position'];$d=hypot($p[0]-$join['x'],$p[1]-$join['y']);

@@ -341,6 +341,7 @@ async function testFrontend(sources) {
   const pdfMap=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams','maplibregl',sources['app.js']+'\nreturn {setMap:value=>map=value,markPdfPreview,drawRoadEndpoints,clearRoadEndpoints};')(pdfWindow,pdfDocument,fetch,function(){},setTimer,clearTimer,SearchParams,lib);
   pdfMap.setMap({});const pinRoad={geometry:{coordinates:[[-119,39],[-118,40]]},travel_direction:0};
   pdfMap.drawRoadEndpoints(pinRoad,'forward');
+  check(pinInstances[0].options.anchor==='bottom-left'&&pinInstances[1].options.anchor==='bottom-left','Endpoint pins anchor their pointed corner to the coordinate');
   check(pinInstances[0].position[0]===-119&&pinInstances[1].position[0]===-118,'Map shows Start and Finish at selected road endpoints');
   pdfMap.drawRoadEndpoints(pinRoad,'reverse');
   check(pinInstances[2].position[0]===-118&&pinInstances[3].position[0]===-119&&pinInstances[0].removed,'Swapping exchanges endpoint pins without leaving old markers');

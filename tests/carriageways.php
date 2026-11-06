@@ -42,6 +42,7 @@ try{
  check(count(array_filter($cwNav['segments'],static fn($s)=>str_starts_with($s['nodes'][0],'carriageway_0_')!==str_starts_with($s['nodes'][1],'carriageway_0_')))===0,'Independent parallel tracks do not receive invented median connections');
  check(count(array_filter($cwObjects,static fn($o)=>$o['class']==='SpawnSphere'))===2,'Selected road retains its two original spawn points');
  check(count($cwReport['carriageways']['tracks'])===1&&$cwReport['carriageways']['tracks'][0]['length_m']>900,'Export reports companion-road coverage separately');
+ check(count(array_filter($cwObjects,static fn($o)=>($o['name']??'')==='road_surface'||str_starts_with($o['name']??'','carriageway_0_surface_')))>=2&&count(array_filter($cwObjects,static fn($o)=>(($o['name']??'')==='road_surface'||str_starts_with($o['name']??'','carriageway_0_surface_'))&&($o['decalType']??'')!=='Visible Mesh Final'))===0,'Selected and opposite pavement accept tire decals');
  check($cwReport['scenery_placement']['shared_object_budget']===24000,'All carriageways share a bounded scenery budget');
  $cwZip->close();
 }finally{@unlink($cwFile);}

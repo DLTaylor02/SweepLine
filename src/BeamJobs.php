@@ -48,7 +48,7 @@ final class BeamJobs
         $road=RoadNames::prefer($road,$input['preferred_name']??null);
         $plan=BeamPlan::project($this->db,$road,$options);$payload=json_encode($plan,JSON_THROW_ON_ERROR);
         if(strlen($payload)>2097152)throw new \InvalidArgumentException('This road contains too much geometry for BeamNG export. Choose a shorter stretch.');
-        $fingerprint=hash('sha256','beamng-v0.40-63'.$payload);
+        $fingerprint=hash('sha256','beamng-v0.40-64'.$payload);
         $this->db->beginTransaction();
         try {
             $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
@@ -71,8 +71,6 @@ final class BeamJobs
         $q->execute([$id,$user]);$row=$q->fetch(PDO::FETCH_ASSOC)?:throw new \OutOfBoundsException('Export not found.');
         if($row['status']==='complete' && strtotime($row['expires_at'])<=time()){$row['status']='expired';$row['progress']='Download expired. Generate a new export.';}
         $row['report']=$row['report']?json_decode($row['report'],true,512,JSON_THROW_ON_ERROR):null;
-        if((int)$row['bridge_count']>0 || !empty($row['report']['bridges'])||array_filter($row['report']['carriageways']['tracks']??[],static fn($t)=>!empty($t['bridges'])))$row['warning']='Bridge decks and generic structures will be estimated from approach elevations.';
-        if((int)($row['tunnel_count']??0)>0||!empty($row['report']['tunnels'])||!empty($row['report']['tunnel_data']['spans']))$row['warning']=trim(($row['warning']??'').' Tunnel profile, clearance and portals are estimated from approach elevations, not surveyed.');
         foreach($row['report']['carriageways']['tracks']??[] as $track)if(!empty($track['intersection_context']['warning']))$row['warning']=trim(($row['warning']??'').' '.$track['intersection_context']['warning']);
         if(!empty($row['report']['carriageways']['matching']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['carriageways']['matching']['warning']);
         if(!empty($row['report']['building_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['building_data']['warning']);

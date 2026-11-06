@@ -31,3 +31,21 @@ try{
  check(abs($largeMiddle[2]+$largeReport['elevation_origin_m']-100.25)<0.1,'Long deck follows approach elevations instead of valley floor');
  $largeZip->close();
 }finally{@unlink($largeFile);}
+
+// A small DEM/linear-profile discrepancy must identify the estimate, not assert a real obstruction.
+$conflictN=64;$conflictSide=640.;$conflictBand='';
+for($y=$conflictN-1;$y>=0;$y--)for($x=0;$x<$conflictN;$x++)$conflictBand.=pack('g',$x===30?100.25:100);
+$conflictRaster=new BeamRaster($conflictN,$conflictSide,$conflictBand,str_repeat(chr(100),$conflictN*$conflictN*3));
+$conflictPoints=[[100,300],[200,300],[300,300],[400,300],[500,300]];$conflictChain=[0,100,200,300,400];
+$conflictSpan=[['start_m'=>100,'end_m'=>300,'large'=>false]];
+foreach(['Selected road (Test Highway)','Opposite carriageway (TEST 1)'] as $context){
+    $message='';
+    try{BeamStructures::deckSamples($conflictPoints,$conflictChain,[100,100,100.25,100,100],$conflictSpan,$conflictRaster,$context);}
+    catch(RuntimeException $e){$message=$e->getMessage();}
+    check(str_starts_with($message,$context.': bridge 1 of 1'),'Bridge elevation rejection identifies the failing carriageway');
+    check(str_contains($message,'0.82 ft above')&&str_contains($message,'656 ft long')&&str_contains($message,'0.12 mi'),'Bridge conflict reports measured discrepancy, span length and location');
+    check(str_contains($message,'32.8 ft')&&str_contains($message,'66 ft outside'),'Bridge conflict reports original elevation sampling and approach distance');
+    check(str_contains($message,'not confirmation that the real bridge is obstructed'),'Bridge conflict distinguishes estimated geometry from real-world conditions');
+}
+$acceptableBand=str_repeat(pack('g',100),$conflictN*$conflictN);$acceptableRaster=new BeamRaster($conflictN,$conflictSide,$acceptableBand,str_repeat(chr(100),$conflictN*$conflictN*3));
+check(BeamStructures::deckSamples($conflictPoints,$conflictChain,[100,100,60,100,100],$conflictSpan,$acceptableRaster)===[100,100.,100.,100.,100],'Compatible bridge samples retain the existing approach-based deck calculation');

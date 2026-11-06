@@ -58,17 +58,29 @@ final class BeamStructures
         return [$start,$end];
     }
     /** Replace valley-floor samples only around bridge spans; ordinary road analysis is unchanged. */
-    public static function deckSamples(array $points,array $chain,array $heights,array $spans,BeamRaster $raster): array
+    public static function deckSamples(array $points,array $chain,array $heights,array $spans,BeamRaster $raster,string $context='Selected road'): array
     {
-        foreach($spans as $span){$anchor=!empty($span["large"])?50:20;$lo=max(0,$span["start_m"]-$anchor);$hi=min($chain[count($chain)-1],$span["end_m"]+$anchor);
+        $context=substr(str_replace(["\r","\n"],' ',$context),0,160);
+        foreach($spans as $number=>$span){
+            $anchor=!empty($span["large"])?50:20;
+            $lo=max(0,$span["start_m"]-$anchor);$hi=min($chain[count($chain)-1],$span["end_m"]+$anchor);
             $a=self::at($points,$lo);$b=self::at($points,$hi);$za=$raster->roadHeight(...$a);$zb=$raster->roadHeight(...$b);
-            if(abs($zb-$za)/max(1,$hi-$lo)>0.12)throw new \RuntimeException("Bridge approach elevations imply a grade above 12%; a reliable deck cannot be estimated.");
-            foreach($chain as $i=>$distance)if($distance>=$lo&&$distance<=$hi){$z=$za+($zb-$za)*(($distance-$lo)/($hi-$lo));
-                if($distance>=$span["start_m"]&&$distance<=$span["end_m"]&&$raster->roadHeight(...$points[$i])>$z+0.15)throw new \RuntimeException("Terrain rises above the estimated bridge deck. Accurate structure elevations are required for this bridge.");
-                if($distance>=$span["start_m"]&&$distance<=$span["end_m"]&&$z-$raster->roadHeight(...$points[$i])>150)throw new \RuntimeException("Estimated bridge clearance exceeds 150 meters; surveyed structure elevations are required.");
-                $heights[$i]=$z;
+            $label=sprintf('%s: bridge %d of %d (%.0f ft long)', $context,$number+1,count($spans),($span["end_m"]-$span["start_m"])/0.3048);
+            if(abs($zb-$za)/max(1,$hi-$lo)>0.12)throw new \RuntimeException($label.": approach samples imply a grade above 12%; the deck estimate could not be validated.");
+            $peak=-INF;$peakAt=0.;$clearance=-INF;$clearanceAt=0.;
+            foreach($chain as $i=>$distance)if($distance>=$span["start_m"]&&$distance<=$span["end_m"]){
+                $z=$za+($zb-$za)*(($distance-$lo)/($hi-$lo));$ground=$raster->roadHeight(...$points[$i]);
+                if($ground-$z>$peak){$peak=$ground-$z;$peakAt=$distance;}
+                if($z-$ground>$clearance){$clearance=$z-$ground;$clearanceAt=$distance;}
             }
+            if($peak>0.15)throw new \RuntimeException(sprintf(
+                '%s: downloaded elevation is %.2f ft above the approach-based deck profile at %.2f mi from this carriageway\'s selected start. The rejection threshold is 0.49 ft; elevation grid spacing is %.1f ft and approach samples are %.0f ft outside the mapped span. This is an elevation-data/estimate conflict, not confirmation that the real bridge is obstructed.',
+                $label,$peak/0.3048,$peakAt/1609.344,($raster->side/$raster->elevationResolution())/0.3048,$anchor/0.3048
+            ));
+            if($clearance>150)throw new \RuntimeException(sprintf('%s: estimated clearance exceeds 492 ft at %.2f mi from this carriageway\'s selected start; the deck estimate could not be validated.',$label,$clearanceAt/1609.344));
+            foreach($chain as $i=>$distance)if($distance>=$lo&&$distance<=$hi)$heights[$i]=$za+($zb-$za)*(($distance-$lo)/($hi-$lo));
         }
         return $heights;
     }
+
 }

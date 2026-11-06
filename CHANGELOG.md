@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Clarify bridge-estimation failures: identify the failing carriageway/bridge and report the elevation mismatch, location, grid spacing and approach samples. Preserve rejection thresholds; distinguish estimated-profile conflicts from real bridge obstructions.
+
+- Check finished BeamNG pavement triangles against native terrain, including curved edges, after corridor shaping; retain structure protections and the existing elevation/shoulder method.
+- Preserve mapped opposite-carriageway merge approaches and align their heights to the selected road. Restore tire-mark decals on driving meshes.
+- Anchor discovery endpoint pins at their pointed corners. Keep generic bridge/tunnel estimation disclaimers in documentation and export reports, while retaining actionable export warnings.
+
 - Fix queued exports waiting behind obsolete-import startup deletion. Add migration 018 with missing foreign-key/cleanup indexes, and prune inactive import payloads in resumable, timeout-bounded idle batches after queued work.
 - Keep large cancelled-import deletion out of web requests while immediately freeing cancelled queue entries. Preserve active coverage, manual imports and the seven-day automatic retention period; defer locked/busy cleanup safely.
 - Show current worker activity on Manage and log cleanup stages/deferred attempts to the worker journal. Add batching/rollback unit tests and disposable-PostGIS retention/cascade integration coverage.

@@ -278,7 +278,7 @@ async function pickCustomRoadAt(event){
   customPoints.push({lon:event.lngLat.lng,lat:event.lngLat.lat});
   if(window.maplibregl?.Marker){
     const pin=text('div',customPoints.length===1?'Start?':'Finish?','road-endpoint road-endpoint-'+(customPoints.length===1?'start':'finish'));
-    customMarkers.push(new window.maplibregl.Marker({element:pin,anchor:'bottom'}).setLngLat([event.lngLat.lng,event.lngLat.lat]).addTo(map));
+    customMarkers.push(new window.maplibregl.Marker({element:pin,anchor:'bottom-left'}).setLngLat([event.lngLat.lng,event.lngLat.lat]).addTo(map));
   }
   if(customPoints.length===1){$('custom-road-status').textContent='Now click the finish point on the same road.';return;}
   const sequence=customSequence,payload={start:customPoints[0],finish:customPoints[1],profile:$('search').profile.value};
@@ -326,7 +326,7 @@ function drawRoadEndpoints(road,orientation){
   const first=points[reversed?points.length-1:0],last=points[reversed?0:points.length-1];
   for(const [label,coordinate,kind] of [['Start',first,'start'],['Finish',last,'finish']]){
     const pin=text('div',label,'road-endpoint road-endpoint-'+kind);pin.setAttribute('aria-label',label+' of selected road');
-    roadEndpointMarkers.push(new window.maplibregl.Marker({element:pin,anchor:'bottom'}).setLngLat(coordinate).addTo(map));
+    roadEndpointMarkers.push(new window.maplibregl.Marker({element:pin,anchor:'bottom-left'}).setLngLat(coordinate).addTo(map));
   }
 }
 
