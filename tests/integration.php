@@ -188,6 +188,9 @@ check($customSaved['geometry']===$custom['geometry'],'Custom favorite preserves 
 $db->prepare("UPDATE custom_roads SET created_at=now()-interval '8 days' WHERE id=?")->execute([$custom['custom_id']]);
 try{$customService->detail($customUser,$custom['custom_id']);check(false,'Custom selection expiry');}catch(OutOfBoundsException $e){check(true,'Custom selection expiry');}
 check((new SweepLine\Favorites($db))->detail($customUser,$customFavorite['id'])['road']['geometry']===$custom['geometry'],'Custom favorite survives selection expiry independently');
+$customRecent=(new SweepLine\Favorites($db))->recent($customUser);
+$listedCustom=array_values(array_filter($customRecent,static fn($favorite)=>(int)$favorite['id']===(int)$customFavorite['id']));
+check(count($listedCustom)===1&&($listedCustom[0]['road']['geometry']['type']??null)==='LineString'&&count($listedCustom[0]['road']['geometry']['coordinates']??[])>=2,'Custom favorite list includes simplified thumbnail geometry');
 
  // A worker batch can hold its import row while cancellation updates the independent task.
 $cancelQueue=new SweepLine\DataQueue($db);

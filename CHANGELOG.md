@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix the HTTP favorite-thumbnail assertion to select the saved favorite by ID instead of assuming an empty account after integration fixtures. Validate listed geometry explicitly and cover custom-favorite list geometry in PostGIS integration tests.
+
 - Fix HTTP CI fixture ordering: authenticate before configuring password policy, verify anonymous rejection, and check the persistent cookie after login. Wait explicitly for the test server and print its log on failure.
 
 - Prevent artificial bumps on opposite carriageways: retain their own elevation when clipping estimated pavement overlaps, including paint and terrain-contact checks. Preserve height welding at real side-road junctions and add sloped-median export regressions.

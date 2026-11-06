@@ -116,7 +116,10 @@ expect(callApi($admin,'POST','/api/favorites/'.$saved['id'].'/preferences',['pre
 $savedAgain=expect(callApi($admin,'POST','/api/favorites',$favoriteBody,$csrf),200,'Saving favorite is idempotent');
 if($saved['id']!==$savedAgain['id']) {throw new RuntimeException('Duplicate favorite created');}
 $favorites=expect(callApi($admin,'GET','/api/favorites'),200,'List favorite roads');
-if(count($favorites)!==1 || !isset($favorites[0]['road']['geometry']['coordinates'])) {throw new RuntimeException('Favorite thumbnail geometry missing');}
+$matchingFavorites=array_values(array_filter($favorites,static fn($favorite)=>(int)$favorite['id']===(int)$saved['id']));
+if(count($matchingFavorites)!==1) {throw new RuntimeException('Saved favorite missing or duplicated in list');}
+$thumbnailGeometry=$matchingFavorites[0]['road']['geometry']??null;
+if(($thumbnailGeometry['type']??null)!=='LineString' || count($thumbnailGeometry['coordinates']??[])<2) {throw new RuntimeException('Saved favorite thumbnail geometry missing');}
 expect(callApi($member,'GET','/api/favorites/'.$saved['id'].'/thumbnail'),404,'Other account cannot read thumbnail');
 expect(callApi($member,'GET','/api/favorites/'.$saved['id']),404,'Other account cannot read favorite');
 expect(callApi($member,'DELETE','/api/favorites/'.$saved['id'],null,$memberSession['csrf']),404,'Other account cannot delete favorite');
