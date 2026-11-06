@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep verified opposite carriageways through narrow medians when inferred widths overlap; record the conflict and retain primary-priority pavement clipping instead of creating gaps.
+- Correct final terrain contact around bridge landings with precise structure-core protection and editable mixed cells. Skip actual tunnel holes, refresh tunnel terrain seams after height changes, and prevent hidden clipped pavement from cutting selected-road support.
+- Add generated narrow-median collision, bridge landing, valley/roof protection, mixed-cell and hidden-overlap regressions; replay supplied geometry read-only.
+
 - Fix the density-diagnosis integration assertion to inspect the selected candidate's decoded reason instead of searching slash-escaped JSON. Cover legacy and normalized density thresholds with offline diagnostic regressions.
 
 - Clean every building-provider fixture download before removing its test directory. Validate missing/unreadable OSM sources before hashing or parsing, record a clear failed-import error, and verify active coverage remains intact without PHP warnings.

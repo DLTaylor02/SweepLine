@@ -59,3 +59,11 @@ check($fetchedNetwork['tracks'][0]['candidate_id']===null&&count($fetchedNetwork
 check($fetchedNetwork['coverage']['matched_selected_span_m']>17990&&!isset($fetchedNetwork['warning']),'Complete local geometry reports full counterpart coverage');
 $missingNetwork=BeamCarriageways::fetch(new CarriagewayNetworkDatabase([]),$databasePlan,static function($m){});
 check($missingNetwork['tracks']===[]&&str_contains($missingNetwork['warning'],'coverage is partial')&&$missingNetwork['coverage']['unmatched_selected_span_m']===18000.,'Missing opposite geometry is explicitly reported as partial coverage');
+
+
+$medianRows=$databaseRows;
+foreach($medianRows as &$row){$g=json_decode($row['geometry'],true);foreach($g['coordinates'] as &$p)$p[1]=12;unset($p);$row['geometry']=json_encode($g);$tags=json_decode($row['tags'],true);$tags['lanes']='4';$row['tags']=json_encode($tags);}unset($row);
+$medianPlan=$databasePlan;$medianPlan['sources'][0]['tags']['lanes']='4';
+$medianPair=BeamCarriageways::fetch(new CarriagewayNetworkDatabase(array_values($medianRows)),$medianPlan,static function($m){});
+check(count($medianPair['tracks'])===1&&$medianPair['tracks'][0]['length_m']>17990,'Narrow medians do not punch missing sections into a mapped continuous opposite road');
+check($medianPair['inferred_width_overlap_samples']>0&&str_contains($medianPair['warning'],'widths overlap'),'Overlapping inferred pavement widths are disclosed for primary-priority clipping');

@@ -107,14 +107,14 @@ final class BeamCarriageways
         $paths=self::networkCandidates($roads,$progress);$data=self::match($plan,$paths,$progress);
         $data['source']='Deduplicated active OSM ways joined through shared nodes, identity, class and legal direction; planar continuity';
         $data['candidate_id_namespace']='Export-local continuity path identifiers, not road_candidates database IDs';
-        $data['source_ways']=count($roads);$data['network_paths']=count($paths);$resolved=[];$sourcePointCount=0;
+        $data['source_ways']=count($roads);$data['network_paths']=count($paths);$resolved=[];$sourcePointCount=0;$widthOverlaps=0;
         $main=new BeamRoadIndex([['points'=>$plan['points']]]);
         foreach($data['tracks'] as $track){
             $pathId=$track['candidate_id'];$track['sources']=$paths[$pathId-1]['sources'];
             foreach($track['sources'] as $source)$sourcePointCount+=count($source['points']);
             if($sourcePointCount>120000)throw new \RuntimeException('Opposite-carriageway source geometry exceeds the export budget. Select a shorter road.');
-            $runs=self::verifiedRuns($plan,$track);
-            if(!$runs)$data['rejected_candidates'][]=['candidate_id'=>$pathId,'reason'=>'Source verification failed: one-way coverage, legal heading or pavement separation'];
+            $runs=self::verifiedRuns($plan,$track,$verification);$track['pavement_overlap']=$verification;$widthOverlaps+=$verification['inferred_width_overlap_samples'];
+            if(!$runs)$data['rejected_candidates'][]=['candidate_id'=>$pathId,'reason'=>'Source verification failed: one-way coverage or legal heading'];
             foreach($runs as $points){
                 $length=0.;for($j=1;$j<count($points);$j++)$length+=hypot($points[$j][0]-$points[$j-1][0],$points[$j][1]-$points[$j-1][1]);
                 if($length<self::MIN_LENGTH_M)continue;
@@ -132,7 +132,8 @@ final class BeamCarriageways
         foreach($intervals as [$lo,$hi]){$covered+=max(0,$hi-max($lo,$end));$end=max($end,$hi);}
         $total=0.;for($i=1;$i<count($plan['points']);$i++)$total+=hypot($plan['points'][$i][0]-$plan['points'][$i-1][0],$plan['points'][$i][1]-$plan['points'][$i-1][1]);
         $data['coverage']=['selected_length_m'=>$total,'matched_selected_span_m'=>$covered,'unmatched_selected_span_m'=>max(0,$total-$covered)];
-        $warnings=[];
+        $data['inferred_width_overlap_samples']=$widthOverlaps;$warnings=[];
+        if($widthOverlaps)$warnings[]='Inferred carriageway widths overlap in places; shared pavement is clipped with the selected road taking priority.';
         if($data['ambiguous_matches'])$warnings[]='Ambiguous opposite-carriageway matches were omitted rather than guessed.';
         if($data['matching_cap_reached'])$warnings[]='Opposite-carriageway matching reached the four-stretch export cap.';
         if($total>0&&$covered/$total<0.9&&!array_filter($plan['sources'],static fn($s)=>(int)($s['direction']??0)===0))
@@ -140,9 +141,9 @@ final class BeamCarriageways
         if($warnings)$data['warning']=implode(' ',$warnings);
         return $data;
     }
-    public static function verifiedRuns(array $plan,array $track): array
+    public static function verifiedRuns(array $plan,array $track,?array &$analysis=null): array
     {
-        $own=new BeamRoadIndex($track['sources']);$main=new BeamRoadIndex([['points'=>$plan['points']]]);$attributes=new BeamRoadIndex($plan['sources']);$runs=[];$run=[];
+        $own=new BeamRoadIndex($track['sources']);$main=new BeamRoadIndex([['points'=>$plan['points']]]);$attributes=new BeamRoadIndex($plan['sources']);$runs=[];$run=[];$analysis=['inferred_width_overlap_samples'=>0,'maximum_inferred_overlap_m'=>0.];
         foreach($track['points'] as $i=>$p){
             $source=$own->nearest($p,2);$near=$main->nearest($p,self::RANGE_M);$ok=$source&&$near&&(int)$source['line']['direction']!==0;
             if($ok){
@@ -151,7 +152,8 @@ final class BeamCarriageways
                 $dot=(($y[0]-$x[0])/$length*$source['dx']+($y[1]-$x[1])/$length*$source['dy'])*(int)$source['line']['direction'];
                 $ok=$s&&(int)$s['line']['direction']!==0&&$dot>0.8;
                 if($ok){$a=$s['line'];$b=$source['line'];$w1=BeamLanes::infer($a['tags'],$a['highway'],(int)$a['direction'])['width_m'];$w2=BeamLanes::infer($b['tags'],$b['highway'],(int)$b['direction'])['width_m'];
-                    $ok=$near['distance']>=($w1+$w2)/2+2*BeamRoadSurface::PAVED_SHOULDER_M+0.25;}
+                    $overlap=($w1+$w2)/2+2*BeamRoadSurface::PAVED_SHOULDER_M-$near['distance'];
+                    if($overlap>0){$analysis['inferred_width_overlap_samples']++;$analysis['maximum_inferred_overlap_m']=max($analysis['maximum_inferred_overlap_m'],$overlap);}}
             }
             if($ok){$run[]=$p;continue;}if(count($run)>1)$runs[]=$run;$run=[];
         }

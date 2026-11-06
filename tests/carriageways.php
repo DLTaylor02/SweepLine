@@ -58,7 +58,7 @@ check(count(BeamCarriageways::verifiedRuns($cwPlan,$verifiedTrack))===1,'Confirm
 $verifiedTrack['sources'][0]['direction']=0;
 check(BeamCarriageways::verifiedRuns($cwPlan,$verifiedTrack)===[],'A two-way parallel road is not exported as an opposite carriageway');
 $verifiedTrack['sources'][0]['direction']=1;$verifiedTrack['points']=[[1100,606],[100,606]];$verifiedTrack['sources'][0]['points']=$verifiedTrack['points'];
-check(BeamCarriageways::verifiedRuns($cwPlan,$verifiedTrack)===[],'Overlapping lane widths are rejected rather than narrowing the opposite pavement');
+check(count(BeamCarriageways::verifiedRuns($cwPlan,$verifiedTrack,$closeWidthAnalysis))===1&&$closeWidthAnalysis['inferred_width_overlap_samples']>0,'Close mapped carriageways stay exportable with inferred-width overlap recorded for priority clipping');
 $legalProfiles=SweepLine\BeamLanes::profiles(array_reverse($cwPlan['points']),$cwPlan['sources'],[0,0,1200,1200]);
 $legalRoad=[[1100,600,10],[100,600,10]];
 $legalNav=SweepLine\BeamTraffic::graph($legalRoad,$legalProfiles,['roads'=>[],'junctions'=>[]]);

@@ -49,3 +49,44 @@ $mergeGraphObjects=[
 ];
 $aligned['name']='carriageway_0';$aligned['context']=['junctions'=>[]];$mergeEdges=[];
 check(SweepLine\BeamCarriageways::connectNavigation($mergeGraphObjects,[$aligned],$mergeEdges)===1,'Traffic connects at a confirmed shared merge node without a median crossing');
+
+
+// Broad bridge buffers must not hide ordinary-road or bridge-landing penetration.
+$landingN=32;$landingSide=320.;$landingHeights='';
+for($y=$landingN-1;$y>=0;$y--)for($x=0;$x<$landingN;$x++)$landingHeights.=pack('g',$x*10>=70&&$x*10<150?90:100.4);
+$landingRaster=new SweepLine\BeamRaster($landingN,$landingSide,$landingHeights,str_repeat(chr(100),$landingN*$landingN*3));
+$landingRoad=[];for($x=20;$x<=200;$x+=5)$landingRoad[]=[$x,80,100.];
+$landingProfiles=array_fill(0,count($landingRoad),['width_m'=>8]);$landingChain=[];foreach($landingRoad as $p)$landingChain[]=$p[0]-20;
+$landingSpan=['start_m'=>50.,'end_m'=>130.];$landingTrack=['road'=>$landingRoad,'profiles'=>$landingProfiles,'chain'=>$landingChain,'bridges'=>[$landingSpan],'tunnels'=>[]];
+$oldLanding=clone $landingRaster;$broadMask=SweepLine\BeamTrack::mask($landingTrack,$oldLanding,str_repeat("\0",$landingN*$landingN),static function($m){});
+BeamTerrainContact::clear($landingRoad,$landingProfiles,$oldLanding,0,$broadMask,static function($m){});
+check($oldLanding->cell(16,8)>100,'Generated fixture reproduces broad-mask terrain penetration after a bridge');
+$landingStats=BeamTerrainContact::repairCorridors([['name'=>'primary','road'=>$landingRoad,'profiles'=>$landingProfiles,'spans'=>[$landingSpan]]],$landingRaster,0,static function($m){});
+check($landingRaster->cell(16,8)<100&&$landingRaster->cell(15,8)<100,'Final contact repair clears both the landward approach and mapped deck endpoint');
+check($landingRaster->cell(10,8)===90.&&$landingRaster->cell(30,30)>100,'Bridge valley interior and distant terrain remain unchanged');
+check($landingStats['roads']['primary']['protected_contacts_unresolved']===0,'Generated bridge-landing correction resolves all editable contact constraints');
+
+// Native tunnel holes have no terrain collision surface; preserve their overburden.
+$holeRaster=new SweepLine\BeamRaster(8,80,str_repeat(pack('g',120),64),str_repeat(chr(100),192));$beforeHole=$holeRaster->heights;
+$holeRoad=[[10,20,100],[60,20,100]];$holeProfiles=array_fill(0,2,['width_m'=>8]);
+$holeStats=BeamTerrainContact::repairCorridors([['name'=>'primary','road'=>$holeRoad,'profiles'=>$holeProfiles,'spans'=>[]]],$holeRaster,0,static function($m){},str_repeat("\xff",64));
+check($holeRaster->heights===$beforeHole&&$holeStats['roads']['primary']['tunnel_hole_cells_skipped']>0,'Final repair does not excavate preserved terrain in native tunnel holes');
+
+// Frozen core vertices remain unchanged while other corners are corrected.
+$mixedRaster=new SweepLine\BeamRaster(8,80,str_repeat(pack('g',101),64),str_repeat(chr(100),192));$mixedRaster->put(2,2,99);
+$mixedMask=str_repeat("\0",64);$mixedMask[2*8+2]="\1";$mixedTriangles=[[[15,15,100],[35,15,100],[15,35,100]]];
+$mixedStats=BeamTerrainContact::triangles($mixedTriangles,$mixedRaster,0,$mixedMask,static function($m){},true);
+check($mixedRaster->cell(2,2)===99.&&$mixedStats['lowered_vertices']>0,'Mixed-cell correction preserves frozen structure vertices while lowering editable corners');
+$clippedOrdinary=BeamTerrainContact::ordinaryTriangles([[0,0,10],[10,0,12]],array_fill(0,2,['width_m'=>6]),[['start_m'=>4,'end_m'=>6]]);
+$clippedArea=0.;$badStructureTriangle=false;
+foreach($clippedOrdinary as $triangle){$clippedArea+=abs(SweepLine\BeamPolygon::cross(...$triangle))/2;foreach($triangle as $v)if($v[0]>4.000001&&$v[0]<5.999999)$badStructureTriangle=true;}
+check(abs($clippedArea-48)<1e-6&&!$badStructureTriangle,'Exact chainage clipping excludes structure interiors without dropping whole pavement segments');
+
+
+$priorityRaster=new SweepLine\BeamRaster(64,128,str_repeat(pack('g',99),4096),str_repeat(chr(100),12288));
+$priorityRoad=[[10,40,100],[110,40,100]];$lowRoad=[[110,48,95],[10,48,95]];$priorityProfiles=array_fill(0,2,['width_m'=>20]);
+BeamTerrainContact::repairCorridors([
+ ['name'=>'primary','road'=>$priorityRoad,'profiles'=>$priorityProfiles,'spans'=>[]],
+ ['name'=>'opposite','road'=>$lowRoad,'profiles'=>$priorityProfiles,'spans'=>[],'obstacles'=>[['road'=>$priorityRoad,'profiles'=>$priorityProfiles]]]
+],$priorityRaster,0,static function($m){});
+check($priorityRaster->cell(25,22)===99.&&$priorityRaster->cell(25,28)<99,'Hidden clipped counterpart pavement cannot dig a ledge beneath the selected road');
