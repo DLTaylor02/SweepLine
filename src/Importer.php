@@ -32,8 +32,11 @@ final class Importer
     {
         $id=(int)$job['id']; $this->jobId=$id; $this->allowEmpty=(bool)($job['allow_empty']??false);
         try {
+            if(!is_file($job['source_path'])||!is_readable($job['source_path']))throw new \RuntimeException('OSM source file is missing or not readable.');
+            $sourceHash=hash_file('sha256',$job['source_path']);
+            if($sourceHash===false)throw new \RuntimeException('Cannot read OSM source file.');
             $this->db->exec("SET statement_timeout = '0'");
-            $this->db->prepare('UPDATE import_jobs SET source_sha256=? WHERE id=?')->execute([hash_file('sha256',$job['source_path']),$id]);
+            $this->db->prepare('UPDATE import_jobs SET source_sha256=? WHERE id=?')->execute([$sourceHash,$id]);
             $this->progress($id,'Reading OSM nodes');
             $this->nodes($id,$job['source_path']);
             $this->progress($id,'Normalizing public motor roads');

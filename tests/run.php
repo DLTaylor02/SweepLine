@@ -197,6 +197,10 @@ $eligibleRoad=['length_m'=>12000,'mandatory_stops'=>0,'uncertain_controls'=>1,'s
 check(SweepLine\RoadDiagnostics::reasons($eligibleRoad,$diagnosticParameters)===[],'Qualifying candidate has no false rejection reasons');
 $unknownMetric=$eligibleRoad;unset($unknownMetric['metrics']['curvature']);
 check(count(SweepLine\RoadDiagnostics::reasons($unknownMetric,$diagnosticParameters))===1,'Missing geometry metric is reported explicitly');
+$densityDiagnosticRoad=$eligibleRoad;$densityDiagnosticRoad['metrics']['curve_density']=7.5;
+check(SweepLine\RoadDiagnostics::reasons($densityDiagnosticRoad,Validation::search(['zip'=>'12345','min_curve_density'=>8]))===['Curve density: 2.26/10 (requires at least 2.34/10).'],'Diagnostic reason reports the selected legacy density threshold on the normalized scale');
+check(SweepLine\RoadDiagnostics::reasons($densityDiagnosticRoad,Validation::search(['zip'=>'12345','min_curve_density_score'=>3.5]))===['Curve density: 2.26/10 (requires at least 3.5/10).'],'Diagnostic reason reports a user-selected normalized density threshold');
+check(SweepLine\RoadDiagnostics::reasons($densityDiagnosticRoad,Validation::search(['zip'=>'12345']))===[],'Default density does not falsely reject the same qualifying geometry');
 
 check(Validation::search(['zip'=>'12345'])['min_curve_density_score']===2.2,'Curve density defaults to normalized 2.2');
 foreach ([0,7.5,Scorer::MAX_CURVE_DENSITY] as $density) {
@@ -422,6 +426,7 @@ require __DIR__.'/bridge-deck.php';
 require __DIR__.'/carriageways.php';
 require __DIR__.'/carriageway-network.php';
 require __DIR__.'/import-cleanup.php';
+require __DIR__.'/import-input.php';
 require __DIR__.'/terrain-contact.php';
 require __DIR__.'/export-diagnostics.php';
 if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }

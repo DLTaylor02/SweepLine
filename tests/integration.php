@@ -30,7 +30,8 @@ try{
     check(count($buildingResult['footprints'])===1 && !isset($buildingResult['warning']),'Building corridor query and footprint projection work with native PDO/PostGIS');
     $buildingFailure=SweepLine\BeamBuildings::fetch($db,$beamPlan,$buildingTestDir,fn($m)=>null,static function(){throw new RuntimeException('Synthetic provider failure');});
     check($buildingFailure['footprints']===[] && isset($buildingFailure['warning']),'Unavailable building provider is reported without fabricated buildings');
-}finally{if(is_file($buildingTestDir.'/buildings.json'))unlink($buildingTestDir.'/buildings.json');rmdir($buildingTestDir);}
+}finally{foreach(glob($buildingTestDir.'/*') as $inputFile)if(is_file($inputFile))unlink($inputFile);rmdir($buildingTestDir);}
+check(!is_dir($buildingTestDir),'Building test removes all downloaded fixture files and its temporary directory');
 
 
 $clone=$db->prepare("INSERT INTO road_candidates(job_id,name,ref,highway,surface_known_paved,length_m,mandatory_stops,uncertain_controls,speed_mph,metrics,geom,geometry_key,surface_status,alternate_names)
@@ -53,7 +54,14 @@ try {
 
 foreach ($api->search(['profile'=>'open','zip'=>'12345','max_stops'=>1])['results'] as $road) { check($road['mandatory_stops']+$road['uncertain_controls']<=1,'Stop limit includes uncertain controls'); }
 $q->execute([$region,__DIR__.'/fixture.osm']); $badJob=$q->fetch(PDO::FETCH_ASSOC); $badJob['source_path']=__DIR__.'/missing.osm';
-try { (new SweepLine\Importer($db))->run($badJob); } catch (Throwable $e) { /* expected */ }
+$missingSourceRejected=false;
+set_error_handler(static function($severity,$message,$file,$line){throw new ErrorException($message,0,$severity,$file,$line);});
+try { (new SweepLine\Importer($db))->run($badJob); }
+catch (RuntimeException $e) {$missingSourceRejected=$e->getMessage()==='OSM source file is missing or not readable.';}
+finally {restore_error_handler();}
+check($missingSourceRejected,'Missing import source fails explicitly without PHP file/XML warnings');
+$failedSource=$db->prepare('SELECT status,error FROM import_jobs WHERE id=?');$failedSource->execute([$badJob['id']]);$failedSourceState=$failedSource->fetch(PDO::FETCH_ASSOC);
+check($failedSourceState['status']==='failed'&&$failedSourceState['error']==='OSM source file is missing or not readable.','Missing source is recorded as a failed import with a clear error');
 check((int)$db->query('SELECT active_job_id FROM regions')->fetchColumn()===(int)$job['id'],'Failed replacement preserves active data');
 $outside=$db->query("SELECT ST_DWithin(ST_GeogFromText('POINT(-119.80 39.52)'),ST_GeogFromText('POINT(-119.80 40.52)'),1609.344)")->fetchColumn();
 check(!$outside,'PostGIS radius excludes distant coordinates');
@@ -87,7 +95,8 @@ try {
     check(count($api->search(['zip'=>'12345','profile'=>'twisty','max_stops'=>5])['results'])===1,'Default density seven admits qualifying 7.5 sample density');
     check($api->search(['zip'=>'12345','profile'=>'twisty','max_stops'=>5,'min_curve_density'=>8])['results']===[],'User-selected stricter density is applied in SQL');
     $densityDiagnosis=(new SweepLine\RoadDiagnostics($db))->run(['zip'=>'12345','max_stops'=>5,'road'=>'Synthetic','min_curve_density'=>8]);
-    check(str_contains(json_encode($densityDiagnosis['candidates']),'requires at least 2.34/10'),'Diagnosis uses the selected density threshold');
+    $mainDensityDiagnosis=array_values(array_filter($densityDiagnosis['candidates'],static fn($candidate)=>(int)$candidate['id']===$mainId));
+    check(count($mainDensityDiagnosis)===1&&in_array('Curve density: 2.26/10 (requires at least 2.34/10).',$mainDensityDiagnosis[0]['reasons'],true),'Diagnosis uses the selected density threshold');
     check(count($api->search(['zip'=>'12345','profile'=>'open','max_stops'=>5])['results'])===2,'Twisty qualification does not restrict Open Highway results');
 } finally {
     $restore=$db->prepare('UPDATE road_candidates SET metrics=?::jsonb,highway=? WHERE id=?');

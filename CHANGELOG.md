@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix the density-diagnosis integration assertion to inspect the selected candidate's decoded reason instead of searching slash-escaped JSON. Cover legacy and normalized density thresholds with offline diagnostic regressions.
+
+- Clean every building-provider fixture download before removing its test directory. Validate missing/unreadable OSM sources before hashing or parsing, record a clear failed-import error, and verify active coverage remains intact without PHP warnings.
+
 - Match opposite carriageways across active imported OSM ways, deduplicating regional copies and joining shared-node continuity in projected metres instead of discarding overlapping discovery candidates. Add source/path provenance and explicit partial-coverage warnings.
 - Correct lane additions/removals to open or close the outermost right lane at the paved edge, preserving the middle lane. Add generated cross-region, gap/fork, direction and outer-lane regressions plus disposable-PostGIS coverage.
 
