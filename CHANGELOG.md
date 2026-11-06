@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix HTTP CI fixture ordering: authenticate before configuring password policy, verify anonymous rejection, and check the persistent cookie after login. Wait explicitly for the test server and print its log on failure.
+
+- Prevent artificial bumps on opposite carriageways: retain their own elevation when clipping estimated pavement overlaps, including paint and terrain-contact checks. Preserve height welding at real side-road junctions and add sloped-median export regressions.
+
 - Keep verified opposite carriageways through narrow medians when inferred widths overlap; record the conflict and retain primary-priority pavement clipping instead of creating gaps.
 - Correct final terrain contact around bridge landings with precise structure-core protection and editable mixed cells. Skip actual tunnel holes, refresh tunnel terrain seams after height changes, and prevent hidden clipped pavement from cutting selected-road support.
 - Add generated narrow-median collision, bridge landing, valley/roof protection, mixed-cell and hidden-overlap regressions; replay supplied geometry read-only.

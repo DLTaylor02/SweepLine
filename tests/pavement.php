@@ -141,3 +141,12 @@ $reversePair=clone $basePair;BeamIntersections::shape(['roads'=>[$bRoad,$aRoad],
 check(abs($reversePair->height(100,100+$half)-$pairRaster->height(100,100+$half))<0.001&&abs($reversePair->height(100,114-$half)-$pairRaster->height(100,114-$half))<0.001,'Side-road ordering cannot overwrite another road shoulder');
 check($pairRaster->height(100,90)>0&&$pairRaster->height(100,90)<9.95&&$pairRaster->height(100,80)===0.0&&$pairRaster->height(100,20)===0.0,'Side shoulders blend gradually to original ground while leaving distant terrain and primary support unchanged');
 check($pairReport[0]['shoulders']['surface_count']===2,'Terrain report identifies the shared side-road corridor blend');
+
+
+$heightMain=[[0,100,50],[100,100,50]];$heightProfiles=array_fill(0,2,['width_m'=>10]);
+$heightVertices=[[20,102,52],[80,102,52],[80,112,52],[20,112,52]];
+$heightFaces=[['v'=>[0,1,2],'uv'=>[[0,0],[1,0],[1,1]],'material'=>'test'],['v'=>[0,2,3],'uv'=>[[0,0],[1,1],[0,1]],'material'=>'test']];
+[$unweldedVertices,$unweldedFaces]=SweepLine\BeamJunctionBoundary::trim($heightVertices,$heightFaces,$heightMain,$heightProfiles,null,false);
+check(count($unweldedFaces)>0&&max(array_map(static fn($p)=>abs($p[2]-52),$unweldedVertices))<1e-8,'Independent overlapping pavement preserves its original height at every new clip vertex');
+[$weldedVertices,$weldedFaces]=SweepLine\BeamJunctionBoundary::trim($heightVertices,$heightFaces,$heightMain,$heightProfiles);
+check(abs(min(array_column($weldedVertices,2))-50)<1e-8&&abs(max(array_column($weldedVertices,2))-52)<1e-8,'True-junction clipping retains its default primary-edge height welding');

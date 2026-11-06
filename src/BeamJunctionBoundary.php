@@ -78,12 +78,12 @@ final class BeamJunctionBoundary
         return $out;
     }
 
-    public static function trim(array $vertices,array $triangles,array $road,array $profiles,?array $surfaceSections=null): array
+    public static function trim(array $vertices,array $triangles,array $road,array $profiles,?array $surfaceSections=null,bool $weldBoundary=true): array
     {
         $cutters=self::cutters($road,$profiles,$vertices,$surfaceSections);$s=$surfaceSections??self::sections($road,$profiles);$result=[];$out=[];$lookup=[];$edges=[];
         $xs=array_column($vertices,0);$ys=array_column($vertices,1);if(!$xs)return [$vertices,$triangles];
         $bounds=[min($xs)-0.01,min($ys)-0.01,max($xs)+0.01,max($ys)+0.01];
-        for($i=1;$i<count($s);$i++)foreach([0,1] as $side){
+        if($weldBoundary)for($i=1;$i<count($s);$i++)foreach([0,1] as $side){
             $a=$s[$i-1][$side];$b=$s[$i][$side];
             if(max($a[0],$b[0])<$bounds[0]||min($a[0],$b[0])>$bounds[2]||max($a[1],$b[1])<$bounds[1]||min($a[1],$b[1])>$bounds[3])continue;
             $edges[]=[$a,$b];

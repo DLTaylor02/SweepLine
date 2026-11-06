@@ -6,7 +6,8 @@ $medianTags=['ref'=>'TEST 12','lanes'=>'4','oneway'=>'yes'];
 $medianSource=static fn($p)=>['points'=>$p,'direction'=>1,'highway'=>'motorway','tags'=>$medianTags];
 $medianMapPlan=['name'=>'Generated Narrow Median','alternate_names'=>[],'points'=>$medianMapPoints,'sources'=>[$medianSource($medianMapPoints)],'bounds'=>[0,0,1200,1200],'resolution'=>64,'padding_miles'=>0.5,'epsg'=>32611,'center'=>[-90,40],'oneway'=>true,'terrain_style'=>'aerial',
  'carriageways'=>[['name'=>'carriageway_0','points'=>$medianOpposite,'sources'=>[$medianSource($medianOpposite)],'intersection_data'=>['branches'=>[]]]]];
-$medianMapRaster=new BeamRaster(64,1200,str_repeat(pack('g',100),4096),str_repeat(chr(100),12288));$medianMapFile=tempnam(sys_get_temp_dir(),'sl-median-pavement-');
+$medianHeights='';for($row=63;$row>=0;$row--)for($column=0;$column<64;$column++)$medianHeights.=pack('g',100+($row*1200/64-600)*0.1);
+$medianMapRaster=new BeamRaster(64,1200,$medianHeights,str_repeat(chr(100),12288));$medianMapFile=tempnam(sys_get_temp_dir(),'sl-median-pavement-');
 try{
  $medianMapReport=BeamMap::build($medianMapPlan,$medianMapRaster,str_repeat('a',32),$medianMapFile,static function($m){});
  $medianZip=new ZipArchive();$medianZip->open($medianMapFile);$medianBase='levels/sweepline_aaaaaaaaaaaaaaaa/';
@@ -23,5 +24,10 @@ try{
   check($surfaces===1,'Narrow median has exactly one driving collision surface at y='.$y);
  }
  check($medianMapReport['carriageways']['tracks'][0]['length_m']>990,'Narrow-median counterpart retains its full length in the generated ZIP');
+ $returnZ=101.45-$medianMapReport['elevation_origin_m'];$mainZ=100.25-$medianMapReport['elevation_origin_m'];$returnError=0.;$mainError=0.;
+ foreach($medianTriangles as $name=>$mesh)foreach($mesh as $triangle)foreach($triangle as $vertex){if($name==='carriageway_0_surface_0')$returnError=max($returnError,abs($vertex[2]-$returnZ));elseif($name==='road_surface')$mainError=max($mainError,abs($vertex[2]-$mainZ));}
+ check($returnError<1e-6,'Clipped returning pavement stays at its own elevation instead of forming ramps to the other carriageway');
+ check($mainError<1e-6,'Independent counterpart clipping leaves selected-road elevations unchanged');
+ check($medianMapReport['carriageways']['tracks'][0]['surfaces'][0]['boundary_height_welding']===false,'ZIP report records independent carriageway height clipping');
  $medianZip->close();
 }finally{@unlink($medianMapFile);}

@@ -34,5 +34,20 @@ jobs:
       - run: php bin/bootstrap-app.php
       - run: |
           php -S 127.0.0.1:8099 -t public public/index.php > /tmp/sweepline-http.log 2>&1 &
-          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8099/api/health && break; sleep 1; done
-          bash tests/http.sh http://127.0.0.1:8099
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8099/api/health > /tmp/sweepline-health.json 2>/dev/null; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then cat /tmp/sweepline-http.log; exit 1; fi
+          cat /tmp/sweepline-health.json
+          if ! bash tests/http.sh http://127.0.0.1:8099; then
+            cat /tmp/sweepline-http.log
+            exit 1
+          fi

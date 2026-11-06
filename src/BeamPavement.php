@@ -37,9 +37,10 @@ final class BeamPavement
             $quad($a,$b,$c,$d,$prefix.'_road_'.self::key($profiles[0]),[[0,$v0],[1,$v0],[1,$v1],[0,$v1]]);
         }
         if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles);
-        foreach($obstacles as $obstacle)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null);
+        foreach($obstacles as $obstacle)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true);
+        $independentHeight=(bool)array_filter($obstacles,static fn($obstacle)=>($obstacle['weld_boundary']??true)===false);
         return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge'),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
-            'connector_end_seam_m'=>($connector?0.0:null),'method'=>'Exact ribbon boundary; overlapping side pavement removed; contact heights shared with primary surface.'];
+            'connector_end_seam_m'=>($connector?0.0:null),'boundary_height_welding'=>!$independentHeight,'method'=>$independentHeight?'Exact XY overlap clipping; independent carriageway elevations preserved.':'Exact ribbon boundary; overlapping side pavement removed; contact heights shared with primary surface.'];
     }
 
     /** Visible thickness only. Never add collision sidewalls at pavement seams. */

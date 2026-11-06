@@ -85,7 +85,7 @@ final class BeamLanePaint
         }
         if(!$triangles)return null;
         if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles);
-        foreach($obstacles as $other)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$other['road'],$other['profiles'],$other['sections']??null);
+        foreach($obstacles as $other)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true);
         if(!$triangles)return null;
         foreach($vertices as &$v)$v[2]+=0.006;unset($v);
         return ['xml'=>BeamPavement::collada($vertices,$triangles,$points[0]),'position'=>$points[0],'triangles'=>count($triangles),'collision'=>'None','method'=>'The outermost right-hand driving lane opens/closes against the paved outer edge; surviving lane boundaries remain continuous.'];

@@ -52,7 +52,7 @@ final class BeamTrack
                 $file='art/roads/'.$m.'.color.png';$materials[$m]=['class'=>'Material','name'=>$prefix.'_road_'.$m,'mapTo'=>$prefix.'_road_'.$m,'version'=>1,'groundType'=>'ASPHALT','Stages'=>[['diffuseMap'=>$path.$file,'diffuseColor'=>[1,1,1,1],'specularPower'=>8,'useAnisotropic'=>true]]];$put($file,BeamPng::road($p));
             }
             $sections=$i===0?BeamJunctionBoundary::renderSections($road,$profiles,$surface['points']):null;
-            $obstacles=[['road'=>$main,'profiles'=>$mainProfiles]];if($i)foreach($otherContext as $other){
+            $obstacles=[['road'=>$main,'profiles'=>$mainProfiles,'weld_boundary'=>$i!==0]];if($i)foreach($otherContext as $other){
                 $obstacles[]=['road'=>$other['points'],'profiles'=>$other['profiles']];
                 $rings=BeamPavement::connectorRings($other,$main,$mainProfiles);
                 if(count($rings)>1){$contact=BeamPavement::contact($other,$main,$mainProfiles);$obstacles[]=['road'=>$contact['surface'],'profiles'=>$contact['profiles'],'sections'=>$rings];}
@@ -61,7 +61,7 @@ final class BeamTrack
             $edge='art/roads/'.$key.'-'.$i.'-edge.dae';$put($edge,$mesh['fascia_xml']);$objects[]=$static($key.'_edge_'.$i,$edge,$mesh['position'],'None');
             $paint=BeamLanePaint::build($surface,$sections??BeamJunctionBoundary::sections($surface['points'],$surface['profiles']),$road,$profiles,$prefix,$obstacles);
             if($paint){$file='art/roads/'.$key.'-'.$i.'-paint.dae';$put($file,$paint['xml']);$o=$static($key.'_paint_'.$i,$file,$paint['position'],'None');$o['castShadows']=false;$objects[]=$o;unset($paint['xml']);$mesh['lane_transition_paint']=$paint;}
-            unset($mesh['xml'],$mesh['fascia_xml']);$report[]=$mesh;
+            unset($mesh['xml'],$mesh['fascia_xml']);$mesh['boundary_height_mode']=$i===0?'Independent carriageway elevation; XY overlap clipping only':'Mapped junction boundary welding';$report[]=$mesh;
         }
         if($track['bridges']){
             $put('art/shapes/bridge-pier.dae',BeamAssets::shape($bridgeMaterial,'bridge-pier'));

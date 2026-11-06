@@ -148,7 +148,7 @@ final class BeamTerrainContact
                 $center=[($triangle[0][0]+$triangle[1][0]+$triangle[2][0])/3,($triangle[0][1]+$triangle[1][1]+$triangle[2][1])/3];
                 $radius=0.;foreach($triangle as $p)$radius=max($radius,hypot($p[0]-$center[0],$p[1]-$center[1]));
                 if(!$index->nearest($center,$half+$radius+0.01)){$out[]=$triangle;continue;}
-                [$vertices,$faces]=BeamJunctionBoundary::trim($triangle,[['v'=>[0,1,2],'uv'=>[[0,0],[1,0],[0,1]],'material'=>'contact']],$main,$profiles);
+                [$vertices,$faces]=BeamJunctionBoundary::trim($triangle,[['v'=>[0,1,2],'uv'=>[[0,0],[1,0],[0,1]],'material'=>'contact']],$main,$profiles,null,$obstacle['weld_boundary']??true);
                 foreach($faces as $face)$out[]=array_map(static fn($id)=>$vertices[$id],$face['v']);
             }
             $triangles=$out;

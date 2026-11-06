@@ -160,7 +160,7 @@ final class BeamMap
         foreach($carriageways as &$track)$track['terrain_correction']['exact_pavement']=BeamTerrainContact::clear($track['road'],$track['profiles'],$raster,$origin,$mainStructureMask|$companionMask,$progress,BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']);
         unset($track);
         $repairSurfaces=[['name'=>'primary','road'=>$road,'profiles'=>$profiles,'spans'=>$coveredSpans,'render'=>BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']]];
-        foreach($carriageways as $track)$repairSurfaces[]=['name'=>$track['name'],'road'=>$track['road'],'profiles'=>$track['profiles'],'obstacles'=>[['road'=>$road,'profiles'=>$profiles]],'spans'=>array_merge($track['bridges'],$track['tunnels']),'render'=>BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']];
+        foreach($carriageways as $track)$repairSurfaces[]=['name'=>$track['name'],'road'=>$track['road'],'profiles'=>$track['profiles'],'obstacles'=>[['road'=>$road,'profiles'=>$profiles,'weld_boundary'=>false]],'spans'=>array_merge($track['bridges'],$track['tunnels']),'render'=>BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']];
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
         $put=static function($file,$bytes)use($zip,$base){if(!$zip->addFromString($base.$file,$bytes))throw new \RuntimeException('Could not write BeamNG archive.');};
         try {

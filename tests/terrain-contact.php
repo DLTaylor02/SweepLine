@@ -87,6 +87,6 @@ $priorityRaster=new SweepLine\BeamRaster(64,128,str_repeat(pack('g',99),4096),st
 $priorityRoad=[[10,40,100],[110,40,100]];$lowRoad=[[110,48,95],[10,48,95]];$priorityProfiles=array_fill(0,2,['width_m'=>20]);
 BeamTerrainContact::repairCorridors([
  ['name'=>'primary','road'=>$priorityRoad,'profiles'=>$priorityProfiles,'spans'=>[]],
- ['name'=>'opposite','road'=>$lowRoad,'profiles'=>$priorityProfiles,'spans'=>[],'obstacles'=>[['road'=>$priorityRoad,'profiles'=>$priorityProfiles]]]
+ ['name'=>'opposite','road'=>$lowRoad,'profiles'=>$priorityProfiles,'spans'=>[],'obstacles'=>[['road'=>$priorityRoad,'profiles'=>$priorityProfiles,'weld_boundary'=>false]]]
 ],$priorityRaster,0,static function($m){});
 check($priorityRaster->cell(25,22)===99.&&$priorityRaster->cell(25,28)<99,'Hidden clipped counterpart pavement cannot dig a ledge beneath the selected road');

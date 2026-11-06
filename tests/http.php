@@ -30,6 +30,13 @@ expect(callApi($anonymous,'POST','/api/custom-roads',[]),403,'Custom road select
 $session=expect(callApi($admin,'GET','/api/session'),200,'Get session and CSRF');
 if (!$session['admin_ready']) { throw new RuntimeException('HTTP tests require terminal-provisioned SuperAdmin fixture'); }
 $csrf=$session['csrf'];
+expect(callApi($admin,'POST','/api/admin/password-policy',['minimum_length'=>12,'strength'=>'basic','screen_compromised'=>false],$csrf),401,'Anonymous session cannot configure password policy');
+expect(callApi($admin,'POST','/api/setup',[],$csrf),404,'Browser account claiming removed');
+expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'test-password-123']),403,'Login requires CSRF');
+expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'wrong-password'],$csrf),401,'Wrong password rejected');
+$session=expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'test-password-123'],$csrf),200,'Installer-created SuperAdmin login without email');
+$csrf=$session['csrf'];
+if ($session['user']['role']!=='superadmin' || $session['user']['email']!==null) { throw new RuntimeException('SuperAdmin role or optional email incorrect'); }
 $sessionCookieExpiry=0;
 foreach(curl_getinfo($admin,CURLINFO_COOKIELIST) as $cookieLine) {
     $fields=explode("\t",$cookieLine);
@@ -40,12 +47,6 @@ if($sessionCookieExpiry<time()+6*86400 || $sessionCookieExpiry>time()+7*86400+60
 }
 
 expect(callApi($admin,'POST','/api/admin/password-policy',['minimum_length'=>12,'strength'=>'basic','screen_compromised'=>false],$csrf),200,'Configure offline test password policy');
-expect(callApi($admin,'POST','/api/setup',[],$csrf),404,'Browser account claiming removed');
-expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'test-password-123']),403,'Login requires CSRF');
-expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'wrong-password'],$csrf),401,'Wrong password rejected');
-$session=expect(callApi($admin,'POST','/api/login',['username'=>'superadmin','password'=>'test-password-123'],$csrf),200,'Installer-created SuperAdmin login without email');
-$csrf=$session['csrf'];
-if ($session['user']['role']!=='superadmin' || $session['user']['email']!==null) { throw new RuntimeException('SuperAdmin role or optional email incorrect'); }
 $picked=expect(callApi($admin,'GET','/api/zips/nearest?lon=-119.8&lat=39.52'),200,'Map ZIP lookup');
 if($picked['zip']!=='12345') {throw new RuntimeException('Nearest ZIP incorrect');}
 expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=91'),422,'Map ZIP coordinate validation');
