@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix the frontend custom-road map mock to support session-triggered resizing. Assert that path, explicitly reject unhandled promises in CI, and let queued async failures surface before printing test success.
+
+- Update GitHub Actions checkout to v6 (Node.js 24) and explicitly install the GD PHP extension required by Composer and export tests.
+
 - Include a detailed root build.log in BeamNG ZIPs: selection/source geometry, input hashes and raster requests, timed stages, generated geometry, rejected/limited decisions, structures, spawns and archive inventory. Retain original clicks for newly selected custom roads; exclude environment and account secrets.
 - Give short/native bridges closed visible undersides too. Replace floating bridge rails with closed collision walls sharing deck edges and exact mapped span ends on both carriageways.
 - Draw continuous non-colliding taper paint, merging the outermost right-hand driving lane boundary toward the next; preserve opposing dividers, legal direction and intersection openings.

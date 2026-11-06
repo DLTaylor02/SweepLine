@@ -404,7 +404,8 @@ async function testFrontend(sources) {
     throw Error('Unexpected custom-road request '+path);
   }};
   const customUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {setMap:value=>{map=value;ready=Promise.resolve();},pickCustomRoadAt};')(customWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
-  const customSource={setData(value){this.data=value;}};customUI.setMap({getCanvas:()=>({style:{}}),getSource:()=>customSource,getLayer:()=>true,setFilter(){}});
+  let customMapResizes=0;
+  const customSource={setData(value){this.data=value;}};customUI.setMap({resize(){customMapResizes++;},getCanvas:()=>({style:{}}),getSource:()=>customSource,getLayer:()=>true,setFilter(){}});
   get('pick-custom-road').onclick();await customUI.pickCustomRoadAt({lngLat:{lng:-119.8,lat:39.503}});
   check(get('custom-road-status').textContent.includes('finish'),'First custom click requests the second point');
   await customUI.pickCustomRoadAt({lngLat:{lng:-119.8,lat:39.509}});
@@ -468,10 +469,15 @@ async function testFrontend(sources) {
   await change.onsubmit({preventDefault(){},target:change});await flush();
   check(requests.some(r=>r.path==='/api/password/change'&&r.method==='POST'&&!!r.headers['X-CSRF-Token']),'Password change uses CSRF POST');
   check(redirectTarget==='/','Password success returns to authenticated discovery');
+  check(customMapResizes>0,'Custom-road map mock supports resize when later account sessions change');
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){
   const fs=require('node:fs'),path=require('node:path'),sources={};
   for(const file of ['account.js','app.js'])sources[file]=fs.readFileSync(path.join(__dirname,'../public/assets',file),'utf8');
-  testFrontend(sources).then(count=>console.log(count+' frontend checks passed')).catch(e=>{console.error(e);process.exitCode=1;});
+  testFrontend(sources).then(async count=>{
+    // Let Node surface unhandled async event failures before reporting success.
+    await new Promise(resolve=>setImmediate(resolve));
+    console.log(count+' frontend checks passed');
+  }).catch(e=>{console.error(e);process.exitCode=1;});
 }
