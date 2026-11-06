@@ -48,7 +48,7 @@ final class BeamJobs
         $road=RoadNames::prefer($road,$input['preferred_name']??null);
         $plan=BeamPlan::project($this->db,$road,$options);$payload=json_encode($plan,JSON_THROW_ON_ERROR);
         if(strlen($payload)>2097152)throw new \InvalidArgumentException('This road contains too much geometry for BeamNG export. Choose a shorter stretch.');
-        $fingerprint=hash('sha256','beamng-v0.40-64'.$payload);
+        $fingerprint=hash('sha256','beamng-v0.40-65'.$payload);
         $this->db->beginTransaction();
         try {
             $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
@@ -124,8 +124,9 @@ final class BeamJobs
         $job=$this->db->query("SELECT * FROM beamng_exports WHERE status='queued' AND cancel_requested=false ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1")->fetch(PDO::FETCH_ASSOC);
         if($job)$this->db->prepare("UPDATE beamng_exports SET status='running',progress='Preparing map',updated_at=now() WHERE id=?")->execute([$job['id']]);
         $this->db->commit();if(!$job)return false;
-        $id=$job['id'];$dir=$this->directory($id);$lastHeartbeat=0;
-        $progress=function(?string $message)use($id,&$lastHeartbeat): void {
+        $id=$job['id'];$dir=$this->directory($id);$lastHeartbeat=0;$buildLog=new BeamBuildLog();
+        $progress=function(?string $message)use($id,&$lastHeartbeat,$buildLog): void {
+            $buildLog->event($message);
             $q=$this->db->prepare('SELECT cancel_requested FROM beamng_exports WHERE id=?');$q->execute([$id]);$state=$q->fetch(PDO::FETCH_ASSOC);
             if(!$state || $state['cancel_requested'])throw new JobCancelled('Export cancelled.');
             if($message!==null)$this->db->prepare('UPDATE beamng_exports SET progress=?,updated_at=now() WHERE id=?')->execute([$message,$id]);
@@ -167,7 +168,8 @@ final class BeamJobs
                 $contextBudget-=count($context['branches']);$plan['carriageways'][$i]['intersection_data']=$context;
             }
             if(isset($plan['guardrail_data']['lines'])){$railIds=[];foreach($plan['guardrail_data']['lines'] as $line)foreach($line['osm_ids']??[] as $osmId)$railIds[$osmId]=true;$plan['guardrail_data']['source_ways']=count($railIds);}
-            $report=BeamMap::build($plan,$raster,$id,$dir.'/map.zip.part',$progress);$progress(null);
+            foreach(scandir($dir) as $inputFile)if(preg_match('/\\.(tif|json|bin|hdr|xml)$/i',$inputFile))$buildLog->artifact($inputFile,$dir.'/'.$inputFile);
+            $report=BeamMap::build($plan,$raster,$id,$dir.'/map.zip.part',$progress,null,$buildLog);$progress(null);
             $this->db->beginTransaction();
             $q=$this->db->prepare('SELECT cancel_requested FROM beamng_exports WHERE id=? FOR UPDATE');$q->execute([$id]);$state=$q->fetch(PDO::FETCH_ASSOC);if(!$state || $state['cancel_requested'])throw new JobCancelled('Export cancelled.');
             if(!rename($dir.'/map.zip.part',$dir.'/map.zip'))throw new \RuntimeException('Cannot finalize ZIP.');

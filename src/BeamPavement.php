@@ -5,7 +5,7 @@ namespace SweepLine;
 /** One welded top surface per side road, including its junction connector. */
 final class BeamPavement
 {
-    public static function key(array $p): string {return $p['lanes'].'_'.$p['backward'].'_'.(int)$p['oneway'].(!empty($p['unmarked'])?'_junction':'').(!empty($p['keep_edge_left'])?'_edgeL':'').(!empty($p['keep_edge_right'])?'_edgeR':'').(isset($p['shoulder_m'])?'_s'.(int)round(255*$p['shoulder_m']/$p['width_m']):'');}
+    public static function key(array $p): string {return $p['lanes'].'_'.$p['backward'].'_'.(int)$p['oneway'].(!empty($p['unmarked'])?'_junction':'').(!empty($p['keep_edge_left'])?'_edgeL':'').(!empty($p['keep_edge_right'])?'_edgeR':'').(!empty($p['lane_paint_segment'])?'_taper':'').(isset($p['shoulder_m'])?'_s'.(int)round(255*$p['shoulder_m']/$p['width_m']):'');}
     public static function section(array $points,array $profiles,int $i): array
     {
         $a=$points[max(0,$i-1)];$b=$points[min(count($points)-1,$i+1)];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy)?:1;$half=$profiles[$i]['width_m']/2;$p=$points[$i];
@@ -85,7 +85,7 @@ final class BeamPavement
         return ['points'=>$points,'surface'=>$surface,'profiles'=>$profiles,'width_m'=>max(array_column($profiles,'width_m'))];
     }
 
-    private static function collada(array $vertices,array $triangles,array $origin): string
+    public static function collada(array $vertices,array $triangles,array $origin): string
     {
         $normals=array_fill(0,count($vertices),[0.0,0.0,0.0]);$groups=[];$uv=[];
         foreach($triangles as $triangle){[$ia,$ib,$ic]=$triangle['v'];$a=$vertices[$ia];$b=$vertices[$ib];$c=$vertices[$ic];

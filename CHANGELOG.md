@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Include a detailed root build.log in BeamNG ZIPs: selection/source geometry, input hashes and raster requests, timed stages, generated geometry, rejected/limited decisions, structures, spawns and archive inventory. Retain original clicks for newly selected custom roads; exclude environment and account secrets.
+- Give short/native bridges closed visible undersides too. Replace floating bridge rails with closed collision walls sharing deck edges and exact mapped span ends on both carriageways.
+- Draw continuous non-colliding taper paint, merging the outermost right-hand driving lane boundary toward the next; preserve opposing dividers, legal direction and intersection openings.
+
 - Clarify bridge-estimation failures: identify the failing carriageway/bridge and report the elevation mismatch, location, grid spacing and approach samples. Preserve rejection thresholds; distinguish estimated-profile conflicts from real bridge obstructions.
 
 - Check finished BeamNG pavement triangles against native terrain, including curved edges, after corridor shaping; retain structure protections and the existing elevation/shoulder method.

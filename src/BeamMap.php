@@ -48,8 +48,9 @@ final class BeamMap
         return ['point'=>$road[$index],'width'=>$profiles[$index]['width_m'],'dx'=>$dx/$length,'dy'=>$dy/$length];
     }
 
-    public static function build(array $plan,BeamRaster $raster,string $id,string $zipPath,callable $progress,?BeamCompute $compute=null): array
+    public static function build(array $plan,BeamRaster $raster,string $id,string $zipPath,callable $progress,?BeamCompute $compute=null,?BeamBuildLog $buildLog=null): array
     {
+        if($buildLog===null){$buildLog=new BeamBuildLog();$originalProgress=$progress;$progress=static function($message)use($originalProgress,$buildLog){$buildLog->event($message);$originalProgress($message);};}
         $compute??=new BeamCompute(dirname($zipPath),\Closure::fromCallable(static fn()=>$progress(null)));
         $name='sweepline_'.substr($id,0,16);$base='levels/'.$name.'/';$path='/'.$base;$n=$raster->size;$side=$raster->side;$step=$side/$n;
         $anchors=[];foreach($plan['intersection_data']['branches']??[] as $branch)if(isset($branch['points'][0]))$anchors[]=$branch['points'][0];
@@ -201,11 +202,10 @@ final class BeamMap
                 $put('art/shapes/bridge-pier.dae',BeamAssets::shape($bridgeMaterial,'bridge-pier'));
                 $put('art/shapes/bridge.materials.json',self::json([$bridgeMaterial=>['class'=>'Material','name'=>$bridgeMaterial,'mapTo'=>$bridgeMaterial,'version'=>1,'groundType'=>'CONCRETE','Stages'=>[['diffuseColor'=>[0.48,0.49,0.5,1]]]]]));
                 foreach($bridges as $bi=>$bridge){[$first,$last]=BeamStructures::indices($chain,$bridge);if($last<=$first)throw new \RuntimeException('Bridge span is too short for reliable deck geometry.');
-                    foreach([-1,1] as $sideSign){$rail=[];
-                        for($i=$first;$i<=$last;$i++){
-                if($i%100===0)$progress(null);$p=$road[$i];$a=$road[max(0,$i-1)];$b=$road[min(count($road)-1,$i+1)];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$len=hypot($dx,$dy)?:1;$offset=$sideSign*($profiles[$i]['width_m']/2+0.25);
-                            $rail[]=[$p[0]+$dy/$len*$offset,$p[1]-$dx/$len*$offset,$p[2]+1.1,0.3,0.8,0,0,1];}
-                        $objects[]=['class'=>'MeshRoad','name'=>'bridge_'.$bi.'_rail_'.($sideSign>0?'right':'left'),'__parent'=>'MissionGroup','topMaterial'=>$bridgeMaterial,'bottomMaterial'=>$bridgeMaterial,'sideMaterial'=>$bridgeMaterial,'breakAngle'=>1,'nodes'=>$rail];
+                    $bridgeSections=BeamJunctionBoundary::sections($road,$profiles);
+                    foreach(BeamBridgeDeck::barriers($road,$bridgeSections,$bridge,$bridgeMaterial) as $railSide=>$xml){
+                        $file='art/shapes/bridge-'.$bi.'-'.$railSide.'.dae';$put($file,$xml);
+                        $objects[]=['class'=>'TSStatic','name'=>'bridge_'.$bi.'_rail_'.$railSide,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None','castShadows'=>true];
                     }
                     $lastPier=-INF;
                     for($i=$first;$i<=$last;$i++)if($chain[$i]-$lastPier>=25){$lastPier=$chain[$i];$p=$road[$i];$ground=$raster->height($p[0],$p[1])-$origin;$height=$p[2]-0.5-$ground;
@@ -214,7 +214,7 @@ final class BeamMap
                 }
             }
 
-            $roadMaterials=[];
+            $roadMaterials=BeamLanePaint::materials($prefix);
             $mainRendering=BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions']);
             $renderRoads=array_merge([['name'=>'road']+$mainRendering],$preparedIntersections['roads']);
             foreach($renderRoads as $renderRoad){
@@ -240,17 +240,21 @@ final class BeamMap
             if($explicitPavement){
                 $primarySections=BeamJunctionBoundary::renderSections($road,$profiles,$mainRendering['points']);
                 $primary=BeamPavement::build($mainRendering,$road,$profiles,$prefix,$primarySections);
-                if($bridges){
-                    $underdeck=BeamBridgeDeck::build($mainRendering['points'],$primarySections,$bridges,$bridgeMaterial);
-                    $put('art/shapes/bridge-deck.dae',$underdeck['xml']);unset($underdeck['xml']);
-                    $objects[]=['class'=>'TSStatic','name'=>'bridge_deck_shell','__parent'=>'MissionGroup','shapeName'=>$path.'art/shapes/bridge-deck.dae','position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'None','decalType'=>'None','castShadows'=>true];
-                }
                 $put('art/roads/primary.dae',$primary['xml']);
                 $put('art/roads/primary-edge.dae',$primary['fascia_xml']);
                 $objects[]=['class'=>'TSStatic','name'=>'road_visual_edge','__parent'=>'MissionGroup','shapeName'=>$path.'art/roads/primary-edge.dae','position'=>$primary['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'None','decalType'=>'None'];
 
                 $objects[]=['class'=>'TSStatic','name'=>'road_surface','__parent'=>'MissionGroup','shapeName'=>$path.'art/roads/primary.dae','position'=>$primary['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'Visible Mesh Final'];
             }
+            if($bridges){
+                $bridgeSections=BeamJunctionBoundary::renderSections($road,$profiles,$mainRendering['points']);
+                $underdeck=BeamBridgeDeck::build($mainRendering['points'],$bridgeSections,$bridges,$bridgeMaterial,$explicitPavement?0.5:0.52);
+                $put('art/shapes/bridge-deck.dae',$underdeck['xml']);unset($underdeck['xml']);
+                $objects[]=['class'=>'TSStatic','name'=>'bridge_deck_shell','__parent'=>'MissionGroup','shapeName'=>$path.'art/shapes/bridge-deck.dae','position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'None','decalType'=>'None','castShadows'=>true];
+            }
+            $paint=BeamLanePaint::build($mainRendering,BeamJunctionBoundary::renderSections($road,$profiles,$mainRendering['points']),$road,$profiles,$prefix);
+            $paintReport=null;
+            if($paint){$put('art/roads/lane-paint.dae',$paint['xml']);$objects[]=['class'=>'TSStatic','name'=>'lane_transition_paint','__parent'=>'MissionGroup','shapeName'=>$path.'art/roads/lane-paint.dae','position'=>$paint['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'None','decalType'=>'None','castShadows'=>false];unset($paint['xml']);$paintReport=$paint;}
             $pavementReports=[];
             foreach($preparedIntersections['roads'] as $i=>$branch){
                 $pavement=BeamPavement::build($branch,$road,$profiles,$prefix,null,array_map(static fn($t)=>['road'=>$t['road'],'profiles'=>$t['profiles']],$carriageways));$file='art/roads/side-'.$i.'.dae';$put($file,$pavement['xml']);
@@ -376,12 +380,19 @@ final class BeamMap
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
             if(!empty($preparedIntersections['final_clearance']['limited_branches']))$intersectionData['warning']=trim(($intersectionData['warning']??'').' Some side-road stretches were shortened or omitted where coarse terrain could not meet pavement without disturbing primary-road support.');
             unset($intersectionData['branches']);$intersectionData['rendered_branches']=count(array_filter($preparedIntersections['roads'],static fn($r)=>!isset($r['turnaround_for'])));$intersectionData['skipped_branches']=$preparedIntersections['skipped'];$intersectionData['surface_method']='Shared explicit primary ribbon and clipped side-road surfaces; original sampled centreline, elevations and widths preserved';$intersectionData['pavement_meshes']=$pavementReports;$unjoined=count(array_filter($pavementReports,static fn($p)=>$p['connector_expected']&&!$p['connector']));if($unjoined)$intersectionData['warning']=trim(($intersectionData['warning']??'').' '.$unjoined.' side-road entrances could not be matched to primary pavement.');$intersectionData['terrain_shaping']=$intersectionShaping;$intersectionData['final_clearance']=$preparedIntersections['final_clearance'];$intersectionData['turnarounds']=$preparedIntersections['turnarounds'];$intersectionData['navigation_nodes']=count($navigation['objects']);$intersectionData['navigation_edges']=count($navigation['segments']);
-            $report=['carriageways'=>['tracks'=>$carriagewayReports,'mapped_junction_links'=>$carriagewayLinks,'matching'=>$plan['carriageway_data']??null],'bridge_deck_shell'=>$underdeck??null,'tunnels'=>$tunnels,'tunnel_data'=>$tunnelGeometry['report'],'cpu_processing'=>$compute->report(),'paved_shoulder_each_side_ft'=>2,'curve_smoothing'=>['method'=>'Bounded quadratic corner rounds; endpoints, junctions, structures and sharp turns protected','max_deviation_m'=>BeamCurve::MAX_DEVIATION_M,'rounded'=>$rounded!==$plan['points'],'explicit_pavement'=>$explicitPavement],'guardrail_data'=>$guardrails['report'],'shadow_correction'=>$shadowCorrection,'intersection_context'=>$intersectionData,'target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes only for trees, bushes and rocks; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,'shoulder_transition'=>$shoulders,'bridge_approach_correction'=>$bridgeApproachCorrection,
+            $report=['lane_transition_paint'=>$paintReport,'carriageways'=>['tracks'=>$carriagewayReports,'mapped_junction_links'=>$carriagewayLinks,'matching'=>$plan['carriageway_data']??null],'bridge_deck_shell'=>$underdeck??null,'tunnels'=>$tunnels,'tunnel_data'=>$tunnelGeometry['report'],'cpu_processing'=>$compute->report(),'paved_shoulder_each_side_ft'=>2,'curve_smoothing'=>['method'=>'Bounded quadratic corner rounds; endpoints, junctions, structures and sharp turns protected','max_deviation_m'=>BeamCurve::MAX_DEVIATION_M,'rounded'=>$rounded!==$plan['points'],'explicit_pavement'=>$explicitPavement],'guardrail_data'=>$guardrails['report'],'shadow_correction'=>$shadowCorrection,'intersection_context'=>$intersectionData,'target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes only for trees, bushes and rocks; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,'shoulder_transition'=>$shoulders,'bridge_approach_correction'=>$bridgeApproachCorrection,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Fixed beam/slab bridges and viaducts up to 2000 meters use estimated approach-derived decks. Complex bridges and unsupported tunnel types are refused. Simple tunnel profiles, clearance and portals are estimated from approaches; not surveyed. Unmapped structures may be inaccurate.','Navigation includes the primary road, side branches and supported synthetic return loops. Enable traffic in-game; maneuvers require in-game validation.','Requires in-game v0.40 validation.']];
+            $report['build_log']='build.log';
             $put('sweepline-report.json',self::json($report));
-            $zip->addFromString('INSTALL.txt',"SweepLine BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." - SweepLine, then Start or End.\nStart is the default spawn. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nUses installed BeamNG.drive 0.40 vegetation from Utah, West Coast USA, East Coast USA or Johnson Valley. Required references are listed in the report. No BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
+            $zip->addFromString('INSTALL.txt',"SweepLine BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." - SweepLine, then Start or End.\nStart is the default spawn. Detailed selection, sources, processing and geometry diagnostics: build.log at the root of this ZIP. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nUses installed BeamNG.drive 0.40 vegetation from Utah, West Coast USA, East Coast USA or Johnson Valley. Required references are listed in the report. No BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
             $progress('Finalizing the map ZIP');
+            $profileFields=array_flip(['lanes','forward','backward','oneway','legal_forward','width_m','carriageway_width_m','shoulder_m','estimated_lanes','estimated_width','transition','unmarked']);
+            $summarize=static fn($p)=>array_intersect_key($p,$profileFields);
+            $tracks=[];foreach($carriageways as $track)$tracks[]=['name'=>$track['name'],'points'=>$track['road'],'profiles'=>array_map($summarize,$track['profiles']),'bridges'=>$track['bridges'],'tunnels'=>$track['tunnels'],'intersections'=>$track['context']];
+            $generated=['primary'=>['points'=>$road,'profiles'=>array_map($summarize,$profiles),'chainage_m'=>$chain],'carriageways'=>$tracks,'intersections'=>$preparedIntersections,'raster_provenance'=>$raster->provenance,'spawn_start'=>$start,'spawn_finish'=>$end];
+            $files=[];for($i=0;$i<$zip->numFiles;$i++){$stat=$zip->statIndex($i);$files[]=['name'=>$stat['name'],'uncompressed_bytes'=>$stat['size']];}
+            if(!$zip->addFromString('build.log',$buildLog->render($plan,$report,$generated,$files)))throw new \RuntimeException('Could not write export build.log');
         } finally {$zip->close();}
         return $report;
     }

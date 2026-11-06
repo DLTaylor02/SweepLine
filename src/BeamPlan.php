@@ -38,10 +38,10 @@ final class BeamPlan
         $projected=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['geometries'];
         $points=$projected[0]['coordinates'];$bounds=self::square($points,$options['padding_miles']*1609.344);
         $sources=[];
-        foreach($parts as $i=>$part)$sources[]=['points'=>$projected[$i+1]['coordinates'],'tags'=>$part['tags']??[],'highway'=>$part['highway']??$road['highway']??'secondary','direction'=>(int)($part['direction']??0)];
+        foreach($parts as $i=>$part)$sources[]=['points'=>$projected[$i+1]['coordinates'],'tags'=>$part['tags']??[],'highway'=>$part['highway']??$road['highway']??'secondary','direction'=>(int)($part['direction']??0),'osm_id'=>$part['osm_id']??null];
         $bridges=BeamStructures::spans($points,$sources,true);$tunnels=BeamTunnels::spans($points,$sources);
         $oneway=false;foreach($road['parts']??[] as $part)if((int)$part['direction']!==0)$oneway=true;
-        return $options+['name'=>$road['name'],'alternate_names'=>$road['alternate_names']??[],'epsg'=>$epsg,'bounds'=>$bounds,'points'=>$points,'sources'=>$sources,'bridges'=>$bridges,'tunnels'=>$tunnels,'oneway'=>$oneway,'center'=>[$lon,$lat]];
+        return $options+['name'=>$road['name'],'alternate_names'=>$road['alternate_names']??[],'epsg'=>$epsg,'bounds'=>$bounds,'points'=>$points,'sources'=>$sources,'bridges'=>$bridges,'tunnels'=>$tunnels,'oneway'=>$oneway,'center'=>[$lon,$lat],'selection'=>['original'=>$road['selection']??null,'exported_geometry'=>$road['geometry'],'exported_start'=>$geo[0],'exported_finish'=>$geo[count($geo)-1],'candidate_id'=>$road['id']??null]];
     }
     /** Keep original vertices while adding short supports, avoiding cuts across sharp corners. */
     public static function sample(array $points,float $spacing=8,float $minimumSegment=0.5): array

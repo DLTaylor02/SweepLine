@@ -59,6 +59,8 @@ final class BeamTrack
             }
             $mesh=BeamPavement::build($surface,$road,$profiles,$prefix,$sections,$obstacles);if(!$mesh['triangles'])continue;$file='art/roads/'.$key.'-'.$i.'.dae';$put($file,$mesh['xml']);$objects[]=$static($key.'_surface_'.$i,$file,$mesh['position']);
             $edge='art/roads/'.$key.'-'.$i.'-edge.dae';$put($edge,$mesh['fascia_xml']);$objects[]=$static($key.'_edge_'.$i,$edge,$mesh['position'],'None');
+            $paint=BeamLanePaint::build($surface,$sections??BeamJunctionBoundary::sections($surface['points'],$surface['profiles']),$road,$profiles,$prefix,$obstacles);
+            if($paint){$file='art/roads/'.$key.'-'.$i.'-paint.dae';$put($file,$paint['xml']);$o=$static($key.'_paint_'.$i,$file,$paint['position'],'None');$o['castShadows']=false;$objects[]=$o;unset($paint['xml']);$mesh['lane_transition_paint']=$paint;}
             unset($mesh['xml'],$mesh['fascia_xml']);$report[]=$mesh;
         }
         if($track['bridges']){
@@ -67,9 +69,8 @@ final class BeamTrack
             $sections=BeamJunctionBoundary::renderSections($road,$profiles,$render['points']);
             $deck=BeamBridgeDeck::build($render['points'],$sections,$track['bridges'],$bridgeMaterial);$file='art/shapes/'.$key.'-deck.dae';$put($file,$deck['xml']);$objects[]=$static($key.'_deck',$file,[0,0,0],'None');
             foreach($track['bridges'] as $bi=>$span){[$first,$last]=BeamStructures::indices($track['chain'],$span);
-                foreach([-1,1] as $sign){$rail=[];
-                    for($i=$first;$i<=$last;$i++){$p=$road[$i];$a=$road[max(0,$i-1)];$b=$road[min(count($road)-1,$i+1)];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$len=hypot($dx,$dy)?:1;$offset=$sign*($profiles[$i]['width_m']/2+0.25);$rail[]=[$p[0]+$dy/$len*$offset,$p[1]-$dx/$len*$offset,$p[2]+1.1,0.3,0.8,0,0,1];}
-                    $objects[]=['class'=>'MeshRoad','name'=>$key.'_bridge_'.$bi.'_rail_'.($sign>0?'right':'left'),'__parent'=>'MissionGroup','topMaterial'=>$bridgeMaterial,'bottomMaterial'=>$bridgeMaterial,'sideMaterial'=>$bridgeMaterial,'breakAngle'=>1,'nodes'=>$rail];
+                foreach(BeamBridgeDeck::barriers($render['points'],$sections,$span,$bridgeMaterial) as $railSide=>$xml){
+                    $file='art/shapes/'.$key.'-bridge-'.$bi.'-'.$railSide.'.dae';$put($file,$xml);$objects[]=$static($key.'_bridge_'.$bi.'_rail_'.$railSide,$file,[0,0,0]);
                 }
                 $lastPier=-INF;for($i=$first;$i<=$last;$i++)if($track['chain'][$i]-$lastPier>=25){
                     $lastPier=$track['chain'][$i];$p=$road[$i];$ground=$raster->height($p[0],$p[1])-$origin;$height=$p[2]-0.5-$ground;

@@ -20,6 +20,7 @@ final class BeamPng
             if(!empty($profile['unmarked'])){if((!empty($profile['keep_edge_left'])&&abs($x-$edgeMargin)<=1)||(!empty($profile['keep_edge_right'])&&abs($x-(255-$edgeMargin))<=1))return [235,235,225];return $color;}
             $margin=isset($profile['shoulder_m'])?(int)round(255*$profile['shoulder_m']/$profile['width_m']):0;
             if($margin?abs($x-$margin)<=1||abs($x-(255-$margin))<=1:$x<5||$x>250)return [235,235,225];
+            if(!empty($profile['lane_paint_segment']))return $color;
             for($lane=1;$lane<$profile['lanes'];$lane++) {
                 $line=(int)round($margin+$lane/$profile['lanes']*(255-2*$margin));
                 $center=!$profile['oneway'] && $lane===$profile['backward'];

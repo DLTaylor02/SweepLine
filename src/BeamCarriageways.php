@@ -19,10 +19,11 @@ final class BeamCarriageways
     {
         $main=new BeamRoadIndex([['points'=>$plan['points']]]);
         $legal=new BeamRoadIndex(array_values(array_filter($plan['sources'],static fn($s)=>(int)($s['direction']??0)!==0)));
-        $identities=self::identities($plan);$matches=[];$pointsBudget=0;
+        $identities=self::identities($plan);$matches=[];$pointsBudget=0;$rejected=[];
         foreach($candidates as $candidate){
             $progress(null);$direction=(int)$candidate['direction'];
-            if(!$direction||!in_array(RoadGraph::identity($candidate),$identities,true))continue;
+            if(!$direction||!in_array(RoadGraph::identity($candidate),$identities,true)){$rejected[]=['candidate_id'=>$candidate['id'],'name'=>$candidate['name'],'reason'=>!$direction?'Not explicitly one-way':'Road identity differs'];continue;}
+            $beforeMatches=count($matches);
             $raw=$direction<0?array_reverse($candidate['points']):$candidate['points'];
             if(($pointsBudget+=count($raw))>60000)throw new \RuntimeException('Carriageway matching geometry budget exceeded.');
             $sample=BeamPlan::sample($raw,20,0.001);$run=[];$distances=[];$along=[];
@@ -39,6 +40,7 @@ final class BeamCarriageways
                 if($ok){$sign=(int)$source['line']['direction'];$dot=(($b[0]-$a[0])/$len*$source['dx']+($b[1]-$a[1])/$len*$source['dy'])*$sign;$ok=$dot<-0.8&&$source['line']['highway']===$candidate['highway'];}
                 if(!$ok){$flush();continue;}$run[]=$p;$distances[]=$near['distance'];$along[]=$near['along'];
             }$flush();
+            if(count($matches)===$beforeMatches)$rejected[]=['candidate_id'=>$candidate['id'],'name'=>$candidate['name'],'reason'=>'No sufficiently long opposite-heading, same-class, separated run within the selected corridor'];
         }
         // Prefer the closest continuous match; reject competing similar-distance paths.
         usort($matches,static fn($a,$b)=>($a['mean_separation_m']<=>$b['mean_separation_m'])?:($b['length_m']<=>$a['length_m']));
@@ -48,7 +50,7 @@ final class BeamCarriageways
                 $overlap=min($match['main_range'][1],$prior['main_range'][1])-max($match['main_range'][0],$prior['main_range'][0]);
                 if($overlap>min($match['length_m'],$prior['length_m'])*0.5){$duplicate=true;break;}
             }
-            if($duplicate)continue;
+            if($duplicate){$rejected[]=['candidate_id'=>$match['candidate_id'],'reason'=>'Duplicate or overlapping already-selected counterpart'];continue;}
             foreach($matches as $other)if($other['candidate_id']!==$match['candidate_id']){
                 $overlap=min($match['main_range'][1],$other['main_range'][1])-max($match['main_range'][0],$other['main_range'][0]);
                 if($overlap>min($match['length_m'],$other['length_m'])*0.5&&abs($match['mean_separation_m']-$other['mean_separation_m'])<2){
@@ -56,9 +58,10 @@ final class BeamCarriageways
                     if(($a->nearest($mid,5)['distance']??INF)>1){$duplicate=true;$ambiguous++;break;}
                 }
             }
+            if($duplicate)$rejected[]=['candidate_id'=>$match['candidate_id'],'reason'=>'Ambiguous competing counterpart'];
             if(!$duplicate)$out[]=$match;if(count($out)>=self::MAX_TRACKS)break;
         }
-        return ['tracks'=>$out,'matching_cap_reached'=>count($out)>=self::MAX_TRACKS,'ambiguous_matches'=>$ambiguous,'source'=>'Local OSM identity, classification, opposite legal heading and parallel proximity'];
+        return ['tracks'=>$out,'matching_cap_reached'=>count($out)>=self::MAX_TRACKS,'ambiguous_matches'=>$ambiguous,'rejected_candidates'=>$rejected,'source'=>'Local OSM identity, classification, opposite legal heading and parallel proximity'];
     }
     public static function fetch(PDO $db,array $plan,callable $progress): array
     {
@@ -86,6 +89,7 @@ final class BeamCarriageways
             // A candidate can include two-way approaches: retain only its
             // explicitly one-way pieces rather than inventing an opposite lane.
             $runs=self::verifiedRuns($plan,$track);
+            if(!$runs)$data['rejected_candidates'][]=['candidate_id'=>$track['candidate_id'],'reason'=>'Source verification failed: one-way coverage, legal heading or pavement separation'];
             foreach($runs as $points){
                 $length=0.;for($j=1;$j<count($points);$j++)$length+=hypot($points[$j][0]-$points[$j-1][0],$points[$j][1]-$points[$j-1][1]);
                 if($length<self::MIN_LENGTH_M||count($resolved)>=self::MAX_TRACKS)continue;

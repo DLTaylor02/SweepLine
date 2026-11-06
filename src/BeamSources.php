@@ -50,7 +50,7 @@ final class BeamSources
     }
     public function fetch(array $plan,string $dir,callable $progress): BeamRaster
     {
-        [$w,$s,$e,$north]=$plan['bounds'];
+        [$w,$s,$e,$north]=$plan['bounds'];$provenance=[];
         foreach(['dem'=>'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage',
                  'aerial'=>'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage'] as $kind=>$url) {
             $grid=self::grid($plan,$kind);$n=$grid['size'];$bbox=$grid['bbox'];
@@ -59,6 +59,7 @@ final class BeamSources
             if($kind==='aerial')$common['renderingRule']=json_encode(['rasterFunction'=>'NaturalColor']);
             $params=$common+($kind==='dem'?['pixelType'=>'F32']:['pixelType'=>'U8','bandIds'=>'0,1,2']);
             $this->downloadRaster($url.'?'.http_build_query($params),$dir.'/'.$kind.'.tif',$kind==='dem'?'USGS elevation':'NAIP aerial imagery',$progress);
+            $provenance[$kind]=['endpoint'=>$url,'request'=>$params,'download_bytes'=>filesize($dir.'/'.$kind.'.tif'),'sha256'=>hash_file('sha256',$dir.'/'.$kind.'.tif'),'fetched_utc'=>gmdate('c')];
             $progress('Aligning '.$kind.' raster to the square map');
             self::run(['gdalwarp','-q','-overwrite','-t_srs','EPSG:'.$plan['epsg'],'-te',...(array_map('strval',$bbox)),'-ts',(string)$n,(string)$n,'-r','bilinear','-dstnodata',$kind==='dem'?'-9999':'0',$dir.'/'.$kind.'.tif',$dir.'/'.$kind.'-aligned.tif'],static fn()=>$progress(null));
             $args=['gdal_translate','-q','-of','ENVI','-ot',$kind==='dem'?'Float32':'Byte','-co','INTERLEAVE=BSQ'];
@@ -68,7 +69,7 @@ final class BeamSources
             if(!preg_match('/byte order\s*=\s*0/',$header))throw new \RuntimeException('GDAL did not produce a supported little-endian raster.');
         }
         $progress('Preparing terrain from original 1024 elevation samples');
-        return BeamRaster::fromElevation($plan['resolution'],$e-$w,file_get_contents($dir.'/dem.bin'),file_get_contents($dir.'/aerial.bin'),1024,$progress);
+        $raster=BeamRaster::fromElevation($plan['resolution'],$e-$w,file_get_contents($dir.'/dem.bin'),file_get_contents($dir.'/aerial.bin'),1024,$progress);$raster->provenance=$provenance;return $raster;
     }
 }
 

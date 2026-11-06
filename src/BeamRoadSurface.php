@@ -15,11 +15,12 @@ final class BeamRoadSurface
     }
     public static function taper(array $points,array $profiles): array
     {
+        $original=$profiles;
         $chain=[0.0];for($i=1;$i<count($points);$i++)$chain[]=$chain[$i-1]+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);
         $changes=[];for($i=1;$i<count($profiles);$i++)if(abs($profiles[$i]["width_m"]-$profiles[$i-1]["width_m"])>0.01 || $profiles[$i]["lanes"]!==$profiles[$i-1]["lanes"])$changes[]=[$chain[$i],$profiles[$i]["width_m"]-$profiles[$i-1]["width_m"]];
         $baseWidth=$profiles[0]["width_m"];
         foreach($profiles as $i=>&$profile){$width=$baseWidth;$profile["transition"]=false;foreach($changes as [$at,$delta]){if(abs($chain[$i]-$at)<30.48)$profile["transition"]=true;$t=max(0,min(1,($chain[$i]-$at+30.48)/60.96));$width+=$delta*($t*$t*(3-2*$t));}$profile["width_m"]=max(2.4,$width);}unset($profile);
-        return $profiles;
+        return BeamLanePaint::profiles($chain,$profiles,$original);
     }
     /** Protect every terrain cell corner supporting primary pavement during branch passes. */
     public static function primaryContactMask(array $road,array $profiles,BeamRaster $raster,string $base=""): string

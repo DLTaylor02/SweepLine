@@ -74,7 +74,7 @@ final class CustomRoads
         $road['parts']=[['name'=>$road['name'],'ref'=>$road['ref'],'direction'=>$road['travel_direction'],'reversed'=>false,'geometry'=>$geometry]];
         // Preserve source tags for lane/structure analysis, but clip their geometry to this selection.
         $q=$this->db->prepare("WITH selected AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON(?),4326)::geography g)
-            SELECT s.name,s.ref,s.direction,s.highway,s.tags,ST_AsGeoJSON((ST_Dump(ST_CollectionExtract(ST_Intersection(s.geom,ST_Buffer(p.g,1)::geometry),2))).geom,9) geometry
+            SELECT s.osm_id,s.name,s.ref,s.direction,s.highway,s.tags,ST_AsGeoJSON((ST_Dump(ST_CollectionExtract(ST_Intersection(s.geom,ST_Buffer(p.g,1)::geometry),2))).geom,9) geometry
             FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id CROSS JOIN selected p
             WHERE m.candidate_id=? AND ST_DWithin(s.geom::geography,p.g,2) LIMIT 501");
         $q->execute([json_encode($geometry,JSON_THROW_ON_ERROR),$match['id']]);$road['source_parts']=[];
@@ -83,6 +83,7 @@ final class CustomRoads
             $part['tags']=json_decode($part['tags'],true,512,JSON_THROW_ON_ERROR);$road['source_parts'][]=$part;
         }
         if(count($road['source_parts'])>500)throw new HttpException(422,'Too many source segments. Select a shorter stretch.');
+        $road['selection']=['method'=>'custom','clicked_start'=>$a,'clicked_finish'=>$b,'snapped_geometry'=>$geometry];
         $road['preferred_orientation']=self::orientation($first,$last,(int)$road['travel_direction']);
         $zip=$this->db->prepare('SELECT zip FROM zip_codes ORDER BY location <-> ST_SetSRID(ST_MakePoint(?,?),4326)::geography LIMIT 1');
         $zip->execute($a);$search=Validation::search(['zip'=>$zip->fetchColumn(),'profile'=>$profile,'radius_miles'=>5]);

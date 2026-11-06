@@ -180,7 +180,7 @@ final class BeamIntersections
             $at=[];foreach($cuts as $cut)if($cut>$along+0.00001&&$cut<$along+$length-0.00001)$at[]=$cut;$at[]=$along+$length;$at=array_unique($at);
             foreach($at as $cut){
                 $t=($cut-$along)/$length;$points[]=[$a[0]+($b[0]-$a[0])*$t,$a[1]+($b[1]-$a[1])*$t,$a[2]+($b[2]-$a[2])*$t];
-                $p=$profiles[$i];$p['width_m']=$profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t;$p['unmarked']=false;$p['keep_edge_left']=false;$p['keep_edge_right']=false;$mid=($previous+$cut)/2;
+                $p=$profiles[$i];$p['width_m']=$profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t;$p['unmarked']=false;if(isset($profiles[$i-1]['lane_paint'],$profiles[$i]['lane_paint']))foreach($p['lane_paint'] as $paintId=>&$line)foreach(['u','visible'] as $paintKey)$line[$paintKey]=$profiles[$i-1]['lane_paint'][$paintId][$paintKey]*(1-$t)+$profiles[$i]['lane_paint'][$paintId][$paintKey]*$t;unset($line);$p['keep_edge_left']=false;$p['keep_edge_right']=false;$mid=($previous+$cut)/2;
                 $openLeft=false;$openRight=false;
                 foreach($junctions as $join)if(abs($mid-$join['along'])<$join['radius']){$p['unmarked']=true;if(($join['side']??'')!=='right')$openLeft=true;if(($join['side']??'')!=='left')$openRight=true;}
                 if($p['unmarked']){$p['keep_edge_left']=!$openLeft;$p['keep_edge_right']=!$openRight;}
