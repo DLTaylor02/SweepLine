@@ -50,3 +50,20 @@ check(count($pair['tracks'])===1,'PostGIS matching finds the opposite carriagewa
 check($pair['tracks'][0]['length_m']>1000,'Database matching exports the corresponding carriageway beyond 600-foot side-road context');
 check(count($pair['tracks'][0]['sources'])>0,'Matched opposite carriageway retains real OSM lane and structure tags');
 foreach($pair['tracks'][0]['sources'] as $part)check(isset($part['tags'],$part['osm_id'],$part['direction']),'Projected opposite source attributes preserve identity and direction');
+
+
+// Regional copies and clipped discovery labels must not govern source-network coverage.
+$db->beginTransaction();
+try{
+    $copyRegion=$db->query("INSERT INTO regions(slug,name,imported_at) VALUES ('carriageway-regional-copy','Synthetic raw-way duplicate',now()+interval '1 minute') RETURNING id")->fetchColumn();
+    $copyJob=$db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage) SELECT ?,'complete','synthetic-no-source-file',coverage FROM import_jobs WHERE id=? RETURNING id");
+    $copyJob->execute([$copyRegion,$splitJobId]);$copyJobId=(int)$copyJob->fetchColumn();
+    $copyWays=$db->prepare('INSERT INTO road_segments(job_id,osm_id,name,ref,highway,direction,surface,speed_mph,node_ids,tags,geom) SELECT ?,osm_id,name,ref,highway,direction,surface,speed_mph,node_ids,tags,geom FROM road_segments WHERE job_id=?');
+    $copyWays->execute([$copyJobId,$splitJobId]);
+    $db->prepare('UPDATE regions SET active_job_id=? WHERE id=?')->execute([$copyJobId,$copyRegion]);
+    $db->prepare("UPDATE road_candidates SET ref='NOT-A-SOURCE-MATCH',name='Unrelated discovery label' WHERE job_id=?")->execute([$splitJobId]);
+    $rawPair=SweepLine\BeamCarriageways::fetch($db,$pairPlan,static function($m){});
+    check(count($rawPair['tracks'])===1&&$rawPair['tracks'][0]['length_m']>1000,'Opposite-carriageway export uses connected raw ways even when discovery candidates do not match');
+    check($rawPair['source_ways']===2,'Active regional OSM copies are deduplicated before building carriageway topology');
+    check($rawPair['tracks'][0]['candidate_id']===null&&isset($rawPair['tracks'][0]['network_path_id'],$rawPair['tracks'][0]['source_way_ids']),'Raw network path provenance is not mislabeled as a discovery database candidate');
+}finally{$db->rollBack();}

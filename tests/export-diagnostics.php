@@ -10,7 +10,7 @@ $paintPoints=[];$paintProfiles=[];
 for($i=0;$i<=40;$i++){$paintPoints[]=[$i*5,100,40];$paintProfiles[]=SweepLine\BeamLanes::infer(['lanes'=>$i<20?'3':'2','oneway'=>'yes'],'primary',1);}
 $paintProfiles=BeamRoadSurface::shoulders(BeamRoadSurface::taper($paintPoints,$paintProfiles));
 check(abs($paintProfiles[0]['lane_paint']['f1']['u']-1/3)<1e-8&&abs($paintProfiles[40]['lane_paint']['f1']['u']-0.5)<1e-8,'Surviving lane boundary joins the old and new normal lane positions');
-check(abs($paintProfiles[40]['lane_paint']['f2']['u']-$paintProfiles[40]['lane_paint']['f1']['u'])<1e-8&&abs($paintProfiles[40]['lane_paint']['f2']['visible'])<1e-8,'Outermost right boundary converges into the next surviving boundary');
+check(abs($paintProfiles[40]['lane_paint']['f2']['u']-1)<1e-8&&abs($paintProfiles[40]['lane_paint']['f2']['visible'])<1e-8,'Outermost right lane closes against the right paved edge');
 check($paintProfiles[20]['lane_paint']['f2']['u']>$paintProfiles[20]['lane_paint']['f1']['u'],'Taper keeps lane boundaries ordered through the merge');
 $paint=BeamLanePaint::build(['points'=>$paintPoints,'profiles'=>$paintProfiles],BeamJunctionBoundary::sections($paintPoints,$paintProfiles),$paintPoints,$paintProfiles,'test');
 check($paint!==null&&$paint['triangles']>0&&$paint['collision']==='None','Lane tapers produce independent visual paint without driving collision');
@@ -20,7 +20,7 @@ $z=[];for($i=2;$i<count($paintValues);$i+=3)$z[]=$paintValues[$i]+$paint['positi
 check(min($z)>40&&max($z)<40.01,'Paint follows pavement with only a small visual offset');
 $reverseProfiles=[];for($i=0;$i<=40;$i++)$reverseProfiles[]=SweepLine\BeamLanes::infer(['lanes'=>$i<20?'3':'2','oneway'=>'yes'],'primary',1)+['legal_forward'=>false];
 $reverseProfiles=BeamRoadSurface::taper($paintPoints,$reverseProfiles);
-check(abs($reverseProfiles[0]['lane_paint']['f2']['u']-1/3)<1e-8&&abs($reverseProfiles[40]['lane_paint']['f2']['u']-0.5)<1e-8,'Right-hand lane merge reverses geometrically with mapped legal direction');
+check(abs($reverseProfiles[0]['lane_paint']['f2']['u']-1/3)<1e-8&&abs($reverseProfiles[40]['lane_paint']['f2']['u'])<1e-8,'Right-hand lane merge reverses geometrically with mapped legal direction');
 $twoWayProfiles=[];for($i=0;$i<=40;$i++)$twoWayProfiles[]=SweepLine\BeamLanes::infer(['lanes'=>$i<20?'4':'2'],'primary',0);
 $twoWayProfiles=BeamRoadSurface::taper($paintPoints,$twoWayProfiles);
 check(count(array_filter($twoWayProfiles,static fn($p)=>abs($p['lane_paint']['center']['u']-0.5)>1e-8))===0,'Two-way lane merges preserve the opposing-traffic divider');
@@ -57,3 +57,10 @@ try{
  check($connected,'Bridge walls intersect the slab, share the exact pavement edge and reach both mapped span ends');
  $zip->close();
 }finally{@unlink($shortFile);}
+
+check(min(array_map(static fn($p)=>$p['lane_paint']['f2']['u']-$p['lane_paint']['f1']['u'],$paintProfiles))>0.3,'Middle lane retains positive width throughout the rightmost-lane drop');
+$addProfiles=[];
+for($i=0;$i<=40;$i++)$addProfiles[]=SweepLine\BeamLanes::infer(['lanes'=>$i<20?'2':'3','oneway'=>'yes'],'primary',1);
+$addProfiles=BeamRoadSurface::taper($paintPoints,$addProfiles);
+check(abs($addProfiles[0]['lane_paint']['f2']['u']-1)<1e-8&&abs($addProfiles[40]['lane_paint']['f2']['u']-2/3)<1e-8,'Added lane opens from the outer paved edge instead of splitting a middle lane');
+check($addProfiles[20]['lane_paint']['f2']['u']>$addProfiles[20]['lane_paint']['f1']['u'],'Existing lanes remain ordered when an outer lane is added');

@@ -16,7 +16,7 @@ final class BeamLanePaint
         foreach($ids as $id){
             if($id==='center'){$u=$b/$n;$visible=!$oneway&&$f>0&&$b>0;}
             else{$forward=$id[0]==='f';$rank=(int)substr($id,1);$count=$forward?$f:$b;
-                $u=($b+($forward?1:-1)*min($rank,max(0,$count-1)))/$n;$visible=$rank<$count;
+                $u=($b+($forward?1:-1)*min($rank,max(0,$count)))/$n;$visible=$rank<$count;
                 if($oneway&&!($p['legal_forward']??true))$u=1-$u;
             }
             $out[$id]=['u'=>$u,'visible'=>(float)$visible,'yellow'=>$id==='center'];
@@ -88,6 +88,6 @@ final class BeamLanePaint
         foreach($obstacles as $other)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$other['road'],$other['profiles'],$other['sections']??null);
         if(!$triangles)return null;
         foreach($vertices as &$v)$v[2]+=0.006;unset($v);
-        return ['xml'=>BeamPavement::collada($vertices,$triangles,$points[0]),'position'=>$points[0],'triangles'=>count($triangles),'collision'=>'None','method'=>'Outermost right-hand driving lane boundaries converge into the next boundary; physical paint follows the existing taper and pavement planes.'];
+        return ['xml'=>BeamPavement::collada($vertices,$triangles,$points[0]),'position'=>$points[0],'triangles'=>count($triangles),'collision'=>'None','method'=>'The outermost right-hand driving lane opens/closes against the paved outer edge; surviving lane boundaries remain continuous.'];
     }
 }

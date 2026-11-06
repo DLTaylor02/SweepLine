@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Match opposite carriageways across active imported OSM ways, deduplicating regional copies and joining shared-node continuity in projected metres instead of discarding overlapping discovery candidates. Add source/path provenance and explicit partial-coverage warnings.
+- Correct lane additions/removals to open or close the outermost right lane at the paved edge, preserving the middle lane. Add generated cross-region, gap/fork, direction and outer-lane regressions plus disposable-PostGIS coverage.
+
 - Fix the frontend custom-road map mock to support session-triggered resizing. Assert that path, explicitly reject unhandled promises in CI, and let queued async failures surface before printing test success.
 
 - Update GitHub Actions checkout to v6 (Node.js 24) and explicitly install the GD PHP extension required by Composer and export tests.

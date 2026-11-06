@@ -10,8 +10,9 @@ final class RoadGraph
         return strtolower(trim($road['ref'] ?: ($road['name'] ?: '')));
     }
     /** Split at shared OSM nodes, then follow unambiguous, direction-compatible continuations. */
-    public static function candidates(array $roads,?callable $checkpoint=null): \Generator
+    public static function candidates(array $roads,?callable $checkpoint=null,bool $projected=false): \Generator
     {
+        $measure=$projected?static function(array $p):float{$length=0.;for($i=1;$i<count($p);$i++)$length+=hypot($p[$i][0]-$p[$i-1][0],$p[$i][1]-$p[$i-1][1]);return $length;}:[Geometry::class,'length'];
         $uses=[]; $neighbors=[];
         foreach ($roads as $r) {
             if ($checkpoint) { $checkpoint(); }
@@ -47,7 +48,7 @@ final class RoadGraph
             $edge=$edges[$seed];
             if ($checkpoint) { $checkpoint(); }
             if (isset($visited[$seed])) { continue; }
-            $visited[$seed]=true; $local=[$seed=>true]; $chain=[$edge]; $length=Geometry::length($edge['points']);
+            $visited[$seed]=true; $local=[$seed=>true]; $chain=[$edge]; $length=$measure($edge['points']);
             // Extend both ends. Reversing the chain preserves each way's legal direction.
             for ($side=0;$side<2;$side++) {
                 $direction=self::direction($chain);
@@ -58,12 +59,12 @@ final class RoadGraph
                         if (isset($local[$id])) { continue; }
                         $next=$edges[$id];
                         if ($next['nodes'][0]!==$node) { $next=self::reverse($next); }
-                        if (!self::compatible($tail,$next) || ($direction!==0 && $next['direction']!==0 && $direction!==$next['direction'])) { continue; }
+                        if (!self::compatible($tail,$next,$projected) || ($direction!==0 && $next['direction']!==0 && $direction!==$next['direction'])) { continue; }
                         $choices[$id]=$next;
                     }
                     if (count($choices)!==1) { break; }
                     $id=array_key_first($choices); $next=$choices[$id];
-                    $nextLength=Geometry::length($next['points']);
+                    $nextLength=$measure($next['points']);
                     if ($length+$nextLength>50000) { break; }
                     $visited[$id]=true; $local[$id]=true; if($next['direction']!==0)$direction=$next['direction']; $chain[]=$next; $length+=$nextLength;
                 }
@@ -92,11 +93,12 @@ final class RoadGraph
         $r['points']=array_reverse($r['points']); $r['nodes']=array_reverse($r['nodes']);
         $r['direction']= -$r['direction']; $r['reversed']=!$r['reversed']; return $r;
     }
-    public static function compatible(array $a,array $b): bool
+    public static function compatible(array $a,array $b,bool $projected=false): bool
     {
         if (self::identity($a)==='' || self::identity($a)!==self::identity($b) || $a['highway']!==$b['highway']) { return false; }
         if ($a['direction']!==0 && $b['direction']!==0 && $a['direction']!==$b['direction']) { return false; }
         $p=$a['points']; $q=$b['points'];
+        if($projected){$before=$p[max(0,count($p)-2)];$last=$p[count($p)-1];$first=$q[0];$after=$q[1];$dot=($last[0]-$before[0])*($after[0]-$first[0])+($last[1]-$before[1])*($after[1]-$first[1]);$den=hypot($last[0]-$before[0],$last[1]-$before[1])*hypot($after[0]-$first[0],$after[1]-$first[1]);return $den>0&&$dot/$den>cos(deg2rad(55));}
         return abs(Geometry::turn(Geometry::bearing($p[max(0,count($p)-2)],$p[count($p)-1]),Geometry::bearing($q[0],$q[1]))) < 55;
     }
 }

@@ -420,6 +420,7 @@ require __DIR__.'/beamng.php';
 require __DIR__.'/large-bridges.php';
 require __DIR__.'/bridge-deck.php';
 require __DIR__.'/carriageways.php';
+require __DIR__.'/carriageway-network.php';
 require __DIR__.'/import-cleanup.php';
 require __DIR__.'/terrain-contact.php';
 require __DIR__.'/export-diagnostics.php';

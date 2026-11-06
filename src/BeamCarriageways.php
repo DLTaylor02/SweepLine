@@ -63,41 +63,80 @@ final class BeamCarriageways
         }
         return ['tracks'=>$out,'matching_cap_reached'=>count($out)>=self::MAX_TRACKS,'ambiguous_matches'=>$ambiguous,'rejected_candidates'=>$rejected,'source'=>'Local OSM identity, classification, opposite legal heading and parallel proximity'];
     }
+    /** Build export-local continuous paths from deduplicated active OSM ways, not regional discoveries. */
+    public static function networkCandidates(array $roads,callable $progress): array
+    {
+        $unique=[];$points=0;
+        foreach($roads as $road){
+            $id=(string)$road['osm_id'];if(isset($unique[$id]))continue;
+            $points+=count($road['points']);if($points>120000)throw new \RuntimeException('Opposite-carriageway source geometry exceeds 120,000 points. Select a shorter stretch.');
+            $unique[$id]=$road;
+        }
+        if(count($unique)>500)throw new \RuntimeException('Opposite carriageway exceeds the 500-source-way budget. Select a shorter stretch.');
+        $out=[];
+        foreach(RoadGraph::candidates(array_values($unique),static fn()=>$progress(null),true) as $path){
+            if(count($out)>=64)throw new \RuntimeException('Too many possible opposite-carriageway paths; select a shorter stretch.');
+            $parts=$path['parts'];$first=$parts[0];$sources=[];
+            foreach($parts as $part)$sources[]=['points'=>$part['points'],'tags'=>$part['tags'],'highway'=>$part['highway'],'direction'=>(int)$part['direction'],'osm_id'=>(int)$part['osm_id']];
+            $out[]=['id'=>count($out)+1,'name'=>$first['name']?:($first['ref']?:'Unnamed road'),'ref'=>$first['ref'],'highway'=>$first['highway'],'direction'=>RoadGraph::direction($parts),'points'=>$path['points'],'sources'=>$sources];
+        }
+        return $out;
+    }
     public static function fetch(PDO $db,array $plan,callable $progress): array
     {
         if(!array_filter($plan['sources'],static fn($s)=>(int)($s['direction']??0)!==0))return ['tracks'=>[],'source'=>'No one-way source sections'];
-        $progress('Matching the opposite carriageway from local road coverage');
+        $progress('Matching the opposite carriageway from connected local OSM ways');
         $q=$db->prepare("WITH route AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON(?),CAST(? AS integer)) g)
-            SELECT c.id,c.name,c.ref,c.highway,ST_NPoints(c.geom::geometry) point_count,ST_AsGeoJSON(ST_Transform(c.geom::geometry,ST_SRID(p.g)),6) geometry,
-            COALESCE((SELECT s.direction*CASE WHEN m.reversed THEN -1 ELSE 1 END FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id WHERE m.candidate_id=c.id AND s.direction<>0 ORDER BY m.position LIMIT 1),0) direction
-            FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id CROSS JOIN route p
-            WHERE ST_DWithin(c.geom,ST_Transform(p.g,4326)::geography,CAST(? AS double precision))
-              AND lower(trim(COALESCE(NULLIF(c.ref,''),c.name))) IN (SELECT value FROM jsonb_array_elements_text(?::jsonb))
-              AND ST_NPoints(c.geom::geometry)<=20000 ORDER BY c.id LIMIT 65");
-        $q->execute([json_encode(['type'=>'LineString','coordinates'=>$plan['points']],JSON_THROW_ON_ERROR),$plan['epsg'],self::RANGE_M,json_encode(self::identities($plan),JSON_THROW_ON_ERROR)]);
-        $rows=$q->fetchAll(PDO::FETCH_ASSOC);if(count($rows)>64)throw new \RuntimeException('Too many possible opposite carriageways; select a shorter road.');
-        if(array_sum(array_column($rows,'point_count'))>60000)throw new \RuntimeException('Carriageway matching geometry budget exceeded. Select a shorter road.');
-        foreach($rows as &$row)$row['points']=json_decode($row['geometry'],true,512,JSON_THROW_ON_ERROR)['coordinates'];unset($row);
-        $data=self::match($plan,$rows,$progress);$resolved=[];$sourcePointCount=0;
-        foreach($data['tracks'] as $i=>&$track){
-            $q=$db->prepare('SELECT DISTINCT s.osm_id,s.highway,s.direction,s.tags,ST_AsGeoJSON(ST_Transform(s.geom,CAST(? AS integer)),6) geometry FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id WHERE m.candidate_id=? LIMIT 501');
-            $q->execute([$plan['epsg'],$track['candidate_id']]);$track['sources']=[];
-            while($s=$q->fetch(PDO::FETCH_ASSOC))$track['sources'][]=['points'=>json_decode($s['geometry'],true,512,JSON_THROW_ON_ERROR)['coordinates'],'tags'=>json_decode($s['tags'],true,512,JSON_THROW_ON_ERROR),'direction'=>(int)$s['direction'],'highway'=>$s['highway'],'osm_id'=>(int)$s['osm_id']];
+            SELECT DISTINCT ON (s.osm_id) s.id,s.osm_id,s.name,s.ref,s.highway,s.direction,s.tags,s.node_ids,
+                ST_NPoints(s.geom) point_count,ST_AsGeoJSON(ST_Transform(s.geom,ST_SRID(p.g)),6) geometry
+            FROM road_segments s JOIN regions r ON r.active_job_id=s.job_id CROSS JOIN route p
+            WHERE s.direction<>0 AND s.highway IN ('motorway','trunk','primary','secondary','tertiary','unclassified')
+              AND s.geom && ST_Transform(ST_Expand(p.g,CAST(? AS double precision)),4326)
+              AND ST_DWithin(s.geom::geography,ST_Transform(p.g,4326)::geography,CAST(? AS double precision))
+              AND lower(trim(COALESCE(NULLIF(s.ref,''),s.name))) IN (SELECT value FROM jsonb_array_elements_text(?::jsonb))
+            ORDER BY s.osm_id,r.imported_at DESC NULLS LAST,s.id DESC LIMIT 501");
+        $q->execute([json_encode(['type'=>'LineString','coordinates'=>$plan['points']],JSON_THROW_ON_ERROR),$plan['epsg'],self::RANGE_M,self::RANGE_M,json_encode(self::identities($plan),JSON_THROW_ON_ERROR)]);
+        $roads=$q->fetchAll(PDO::FETCH_ASSOC);
+        if(count($roads)>500)throw new \RuntimeException('Opposite carriageway exceeds the 500-source-way budget. Select a shorter stretch.');
+        if(array_sum(array_column($roads,'point_count'))>120000)throw new \RuntimeException('Opposite-carriageway source geometry exceeds 120,000 points. Select a shorter stretch.');
+        foreach($roads as &$road){
+            $road['points']=json_decode($road['geometry'],true,512,JSON_THROW_ON_ERROR)['coordinates'];
+            $road['nodes']=json_decode($road['node_ids'],true,512,JSON_THROW_ON_ERROR);$road['tags']=json_decode($road['tags'],true,512,JSON_THROW_ON_ERROR);
+            $road['direction']=(int)$road['direction'];unset($road['geometry'],$road['node_ids']);
+        }unset($road);
+        $paths=self::networkCandidates($roads,$progress);$data=self::match($plan,$paths,$progress);
+        $data['source']='Deduplicated active OSM ways joined through shared nodes, identity, class and legal direction; planar continuity';
+        $data['candidate_id_namespace']='Export-local continuity path identifiers, not road_candidates database IDs';
+        $data['source_ways']=count($roads);$data['network_paths']=count($paths);$resolved=[];$sourcePointCount=0;
+        $main=new BeamRoadIndex([['points'=>$plan['points']]]);
+        foreach($data['tracks'] as $track){
+            $pathId=$track['candidate_id'];$track['sources']=$paths[$pathId-1]['sources'];
             foreach($track['sources'] as $source)$sourcePointCount+=count($source['points']);
             if($sourcePointCount>120000)throw new \RuntimeException('Opposite-carriageway source geometry exceeds the export budget. Select a shorter road.');
-            if(count($track['sources'])>500)throw new \RuntimeException('Opposite carriageway source budget exceeded.');
-            // A candidate can include two-way approaches: retain only its
-            // explicitly one-way pieces rather than inventing an opposite lane.
             $runs=self::verifiedRuns($plan,$track);
-            if(!$runs)$data['rejected_candidates'][]=['candidate_id'=>$track['candidate_id'],'reason'=>'Source verification failed: one-way coverage, legal heading or pavement separation'];
+            if(!$runs)$data['rejected_candidates'][]=['candidate_id'=>$pathId,'reason'=>'Source verification failed: one-way coverage, legal heading or pavement separation'];
             foreach($runs as $points){
                 $length=0.;for($j=1;$j<count($points);$j++)$length+=hypot($points[$j][0]-$points[$j-1][0],$points[$j][1]-$points[$j-1][1]);
-                if($length<self::MIN_LENGTH_M||count($resolved)>=self::MAX_TRACKS)continue;
-                $copy=$track;$points=self::mergeApproaches($plan,$track,$points);$copy['points']=$points;unset($copy['candidate_points']);$copy['merge_nodes']=[];foreach([$points[0],end($points)] as $endpoint)foreach($plan['points'] as $node)if(hypot($endpoint[0]-$node[0],$endpoint[1]-$node[1])<0.05){$copy['merge_nodes'][]=$node;break;}$copy['length_m']=0.;for($k=1;$k<count($points);$k++)$copy['length_m']+=hypot($points[$k][0]-$points[$k-1][0],$points[$k][1]-$points[$k-1][1]);$copy['name']='carriageway_'.count($resolved);$resolved[]=$copy;
+                if($length<self::MIN_LENGTH_M)continue;
+                if(count($resolved)>=self::MAX_TRACKS){$data['matching_cap_reached']=true;break;}
+                $copy=$track;$points=self::mergeApproaches($plan,$track,$points);$copy['points']=$points;unset($copy['candidate_points']);
+                $copy['candidate_id']=null;$copy['network_path_id']=$pathId;$copy['source_way_ids']=array_values(array_unique(array_column($track['sources'],'osm_id')));
+                $copy['merge_nodes']=[];
+                foreach([$points[0],end($points)] as $endpoint)foreach($plan['points'] as $node)if(hypot($endpoint[0]-$node[0],$endpoint[1]-$node[1])<0.05){$copy['merge_nodes'][]=$node;break;}
+                $copy['length_m']=0.;for($k=1;$k<count($points);$k++)$copy['length_m']+=hypot($points[$k][0]-$points[$k-1][0],$points[$k][1]-$points[$k-1][1]);
+                $stations=[];foreach($points as $p){$near=$main->nearest($p,self::RANGE_M);if($near)$stations[]=$near['along'];}
+                $copy['main_range']=[min($stations),max($stations)];$copy['name']='carriageway_'.count($resolved);$resolved[]=$copy;
             }
-        }unset($track);$data['tracks']=$resolved;
-        $warnings=[];if($data['ambiguous_matches'])$warnings[]='Ambiguous opposite-carriageway matches were omitted rather than guessed.';
+        }
+        $data['tracks']=$resolved;$intervals=array_column($resolved,'main_range');usort($intervals,static fn($a,$b)=>$a[0]<=>$b[0]);$covered=0.;$end=0.;
+        foreach($intervals as [$lo,$hi]){$covered+=max(0,$hi-max($lo,$end));$end=max($end,$hi);}
+        $total=0.;for($i=1;$i<count($plan['points']);$i++)$total+=hypot($plan['points'][$i][0]-$plan['points'][$i-1][0],$plan['points'][$i][1]-$plan['points'][$i-1][1]);
+        $data['coverage']=['selected_length_m'=>$total,'matched_selected_span_m'=>$covered,'unmatched_selected_span_m'=>max(0,$total-$covered)];
+        $warnings=[];
+        if($data['ambiguous_matches'])$warnings[]='Ambiguous opposite-carriageway matches were omitted rather than guessed.';
         if($data['matching_cap_reached'])$warnings[]='Opposite-carriageway matching reached the four-stretch export cap.';
+        if($total>0&&$covered/$total<0.9&&!array_filter($plan['sources'],static fn($s)=>(int)($s['direction']??0)===0))
+            $warnings[]=sprintf('Opposite-carriageway coverage is partial (%.1f of %.1f miles); local OSM geometry could not confirm the remainder.',$covered/1609.344,$total/1609.344);
         if($warnings)$data['warning']=implode(' ',$warnings);
         return $data;
     }
