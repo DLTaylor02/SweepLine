@@ -17,7 +17,7 @@ final class BeamPreview
         if($spawn){[$x,$y]=$project($spawn);imagefilledellipse($im,$x,$y,22,22,$white);imagefilledellipse($im,$x,$y,12,12,$blue);}
         imagefilledrectangle($im,0,0,$w,108,$dark);imagefilledrectangle($im,0,$h-42,$w,$h,$dark);
         $text=static function(string $text,int $y)use($im,$white){$text=preg_replace("/[^ -~]/","?",$text);$layer=imagecreatetruecolor(500,18);$bg=imagecolorallocate($layer,12,22,38);imagefill($layer,0,0,$bg);imagestring($layer,5,0,0,$text,imagecolorallocate($layer,255,255,255));imagecopyresized($im,$layer,20,$y,0,0,1000,36,500,18);imagedestroy($layer);};
-        $text("SWEEPLINE".($label!==""?" / ".$label:""),12);
+         $text(strtoupper(Version::label()).($label!==""?" / ".$label:""),12);
         $title=wordwrap($name,52,"\n",true);$lines=explode("\n",$title);$text($lines[0],55);if(isset($lines[1]))$text($lines[1],87);
         imagestring($im,4,20,$h-30,"Map-derived preview | OpenStreetMap contributors | USGS / USDA NAIP",$white);
         ob_start();imagepng($im);$out=ob_get_clean();imagedestroy($im);return $out;

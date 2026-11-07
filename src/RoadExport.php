@@ -52,8 +52,8 @@ final class RoadExport
     {
         $name=self::xml($road['name']);$p=$road['geometry']['coordinates'];
         $out='<?xml version="1.0" encoding="UTF-8"?>'."\n".
-            '<gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1" creator="SweepLine">'.
-            '<metadata><name>'.$name.'</name><desc>Selected road track. Road data © OpenStreetMap contributors. Verify access and conditions.</desc></metadata>';
+            '<gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1" creator="'.self::xml(Version::label()).'">'.
+            '<metadata><name>'.$name.'</name><desc>'.self::xml(Version::label()).' — Selected road track. Road data © OpenStreetMap contributors. Verify access and conditions.</desc></metadata>';
         foreach ([['Start',$p[0]],['End',$p[count($p)-1]]] as [$label,$point]) {
             $out.=sprintf('<wpt lat="%.9f" lon="%.9f"><name>%s</name></wpt>',$point[1],$point[0],$label);
         }
@@ -67,7 +67,7 @@ final class RoadExport
         foreach ($road['geometry']['coordinates'] as $p) {$coordinates[]=sprintf('%.9f,%.9f,0',$p[0],$p[1]);}
         $out='<?xml version="1.0" encoding="UTF-8"?>'."\n".
             '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>'.$name.'</name>'.
-            '<description>Road data © OpenStreetMap contributors. Verify access and conditions.</description>'.
+            '<description>'.self::xml(Version::label()).' — Road data © OpenStreetMap contributors. Verify access and conditions.</description>'.
             '<Placemark><name>'.$name.'</name><description>'.self::xml(RoadNames::description($road)."\nApproximate road-shape notes. Mileage from start; (+mi) since previous note.\n".implode("\n",$road['instructions'])).'</description>'.
             '<Style><LineStyle><color>ffd500ff</color><width>8</width></LineStyle></Style>'.
             '<LineString><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode><coordinates>'.

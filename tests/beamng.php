@@ -35,7 +35,8 @@ try {
     $archive=new ZipArchive();check($archive->open($file)===true,'Generated BeamNG ZIP opens');
     $base='levels/sweepline_aaaaaaaaaaaaaaaa/';
     $info=json_decode($archive->getFromName($base.'info.json'),true,512,JSON_THROW_ON_ERROR);
-    check($info['title']===$plan['name'].' - SweepLine' && !str_contains($archive->getFromName($base.'info.json'),'\u') && str_contains($archive->getFromName($base.'info.json'),'Café'),'BeamNG menu title uses plain separator and UTF-8 names without escaped Unicode labels');
+    check($info['title']===$plan['name'].' - '.SweepLine\Version::label() && !str_contains($archive->getFromName($base.'info.json'),'\u') && str_contains($archive->getFromName($base.'info.json'),'Café'),'BeamNG menu title uses plain separator and UTF-8 names without escaped Unicode labels');
+    check($report['sweepline_version']===SweepLine\Version::number() && str_contains($archive->getFromName('INSTALL.txt'),SweepLine\Version::label()) && str_contains($archive->getFromName('build.log'),SweepLine\Version::label()),'BeamNG archive preserves generating version in report, instructions and build log');
     check($info['defaultSpawnPointName']==='spawns_start' && count($info['spawnPoints'])===2,'Two selectable spawns with Start default');
     check($info['size']===[1200,1200],'World dimensions remain true-scale and square');
     foreach(['preview.png','spawn-start.png','spawn-end.png'] as $preview){

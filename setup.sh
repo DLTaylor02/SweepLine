@@ -282,6 +282,9 @@ else
 fi
 chown "$INSTALL_USER:$SYSTEM_USER" "$env_file"; chmod 0640 "$env_file"
 
+info "Stamping application version"
+"${PHP_CLI[@]}" "$APP_DIR/bin/version.php" --write --source "$SOURCE_DIR"
+
 info "Installing Composer dependencies and project data"
 if [[ "$(id -un)" == "$INSTALL_USER" ]]; then COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader --no-interaction
 else as_user "$INSTALL_USER" composer install --no-dev --optimize-autoloader --no-interaction; fi

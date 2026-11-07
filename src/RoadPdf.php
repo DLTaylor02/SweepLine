@@ -23,7 +23,7 @@ final class RoadPdf
     private static function header(string $name,string $section): string
     {
         $out=self::box(0,770,612,22,'0.15 0.39 0.65').
-            self::text('SWEEPLINE',40,745,12,'F2','0.15 0.39 0.65').
+            self::text(strtoupper(Version::label()),40,745,12,'F2','0.15 0.39 0.65').
             self::text($section,400,745,9,'F2','0.38 0.45 0.54');
         $lines=explode("\n",wordwrap($name,44,"\n",true));
         foreach (array_slice($lines,0,2) as $i=>$line) {$out.=self::text($line,40,713-$i*24,22,'F2');}
@@ -32,7 +32,7 @@ final class RoadPdf
     private static function footer(string $content,int $page,int $total): string
     {
         return $content."q 0.85 0.89 0.94 RG 40 37 m 572 37 l S Q\n".
-            self::text('SweepLine | Road data (c) OpenStreetMap contributors',40,23,8,'F1','0.38 0.45 0.54').
+            self::text(Version::label().' | Road data (c) OpenStreetMap contributors',40,23,8,'F1','0.38 0.45 0.54').
             self::text($page.' / '.$total,535,23,9,'F2');
     }
     private static function path(array $points,callable $plot): string

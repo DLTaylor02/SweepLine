@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Introduce commit-based versions starting at 0.120.0 for the 120 existing commits, automatically stamped during installation. Display the version on every page and in GPX, KMZ, PDF and BeamNG exports, including previews and build metadata.
+
+- Simplify the project README to overview, installation and features; move detailed guides and references into indexed documents under docs.
+
 - Correct terrain detail UV selectors and add neutral detail to stock imagery fallback. Close tunnel terrain cuts and support low ground through short portal transitions without changing bridges. Distinguish split/merge lane layouts and preserve travel-left yellow boundaries. Cache validated BeamNG rasters and OSM context for seven days with automatic expiry. Add a quick validation path and concise per-suite timing while retaining complete archive/integration coverage.
 
 - Fix fatal-export subprocess tests on Linux by retaining the normal CLI extension configuration instead of disabling shared PDO with php -n. Report fixture startup stderr and repeat failed check names in the final test summary.
