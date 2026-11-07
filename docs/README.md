@@ -11,7 +11,7 @@ Start with the [project overview and quick installation](../README.md).
 | [API reference](api.md) | Session/CSRF conventions, endpoints, request examples and response codes |
 | [Development and verification](development.md) | Project layout, tests and integration setup |
 | [Limitations and attribution](limitations.md) | Data quality, external sources and licensing |
-| [Application versions](versioning.md) | Commit-based numbering, deployment stamps and release packaging |
+| [Application versions](versioning.md) | Manual release numbering and deployment |
 | [Architecture decisions](architecture.md) | Detailed implementation rationale and engineering notes |
 | [Password workflow decisions](password-policy.md) | Authentication and password-policy implementation |
 | [Optional data tools](data-tools.md) | Advanced diagnostic imports; not required for normal installation |

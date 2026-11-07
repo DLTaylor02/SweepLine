@@ -1,15 +1,17 @@
 # Application versions
 
-SweepLine uses `0.N.0`, starting with `0.1.0` for the first commit. `N` is the number of commits reachable from the checked-out commit (`git rev-list --count HEAD`), including merge commits. The initial stamp is **0.120.0**, based on the 120 existing commits. This is a commit counter, not conventional semantic versioning. Every commit is considered released immediately; there is no separate unreleased period.
+SweepLine uses a manually maintained `VERSION` file. Every commit is a release. Before committing a patch, increment the middle component once (for example, `0.123.0` to `0.124.0`) and include VERSION in that commit. Versions are no longer calculated from Git history.
 
-`VERSION` is the single runtime source. Web requests never execute Git. Every page shows the version in its header; GPX and KMZ carry it in descriptions, PDFs print it in their header/footer, and BeamNG maps include it in the menu title, preview images, installation notes, report and build log. Existing downloaded files are not rewritten.
+The initial numbering began at `0.1.0` and was caught up to the project's existing commits. The current release stamp is `0.123.0`. Future release numbers are maintained explicitly, including for documentation-only commits.
 
-Committing does not rewrite the tracked VERSION file: no Git commit hook is installed. The installer automatically stamps the deployed VERSION from the source checkout's complete Git history. No new package is required: if Git/history is unavailable, it retains the bundled VERSION. Shallow clones cannot establish a lifetime count and also retain that stamp; use a full checkout for accurate commit-based deployment versions.
+The installer copies and validates the bundled VERSION without changing it. Full clones, shallow clones and source archives therefore deploy the same version. No Git access, commit hook or version-generation step is required on the server.
 
-For a release archive or local development, refresh the stamp before packaging:
+To print the bundled version:
 
 ```bash
-php bin/version.php --write
+php bin/version.php
 ```
 
-Without `--write`, the command prints the version derived from the current checkout. Run it after the commit whose version you want to package. The installer recalculates after subsequent commits automatically. Source archives must include the stamped VERSION file. Branches with the same reachable commit count can share a number; the exported build diagnostics remain separate from this application version.
+Every page shows the version in its header. GPX and KMZ carry it in descriptions, PDFs print it in their header/footer, and BeamNG maps include it in menu titles, preview images, installation notes, reports and build logs. Existing downloaded files retain the version that generated them.
+
+Keep VERSION, release notes and source code together when packaging or committing changes. Rerun `sudo ./setup.sh` from the updated source to deploy the new version.

@@ -1,8 +1,10 @@
 # SweepLine changelog
 
-Every commit is a release. Versions follow `0.<reachable commit count>.0`; there is no separate release or publishing step. The notes below summarize changes across the commit history. Working-tree edits become released when committed.
+Every commit is a release. Versions are maintained explicitly in VERSION; there is no separate release or publishing step. The notes below summarize changes across the commit history. Working-tree edits become released when committed.
 
 ## Commit release notes
+
+- **0.123.0:** Switch to a manually maintained VERSION file. Installers validate and preserve the bundled release number rather than deriving it from Git history, so shallow checkouts and archives report the correct version.
 
 - Improve median contact on bridge/tunnel approaches without filling structure interiors. Smooth divided-road anchor transitions, keep yellow split/merge paint out of opposing shared lanes, and limit road fascia to the true perimeter to remove internal fins. Add textured concrete tunnel walls/ceilings and visible emissive light fixtures.
 
