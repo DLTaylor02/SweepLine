@@ -7,14 +7,14 @@ final class BeamGroundMaterials
 {
     public static function material(string $name,int $layer,string $path,string $style,float $tile): array
     {
-        $entry=BeamTerrain::PALETTE[$layer]??BeamTerrain::PALETTE[5];$stock=$style==='stock'&&$entry['prefix']!==null;$vegetation=$layer<2;
-        $base=$style==='stock'&&$stock?'palette-'.$layer.'.color.png':($style==='stock'?'fallback.color.png':'aerial.color.png');
+        $entry=BeamTerrain::PALETTE[$layer]??BeamTerrain::PALETTE[5];$stock=$style==='stock';$detailPrefix=$entry['prefix']??BeamTerrain::PALETTE[2]['prefix'];$vegetation=$layer<2;
+        $base=$style==='stock'&&$entry['prefix']!==null?'palette-'.$layer.'.color.png':($style==='stock'?'fallback.color.png':'aerial.color.png');
         $stage=['baseColorMap'=>$path.'art/terrains/'.$base,'baseColorFactor'=>[1,1,1,1],'normalMap'=>$path.'art/terrains/flat.normal.png','roughnessMap'=>$path.'art/terrains/roughness.data.png','roughnessFactor'=>1,'ambientOcclusionMap'=>$path.'art/terrains/ao.data.png','metallicFactor'=>0,'useAnisotropic'=>true];
-        if($stock)$stage+=['detailMap'=>$entry['prefix'].'_b.png','detailBaseColorMapStrength'=>$vegetation?0.02:0.18,
-            'detailNormalMap'=>$entry['prefix'].'_nm.png','detailNormalMapStrength'=>$vegetation?0.25:0.65,
-            'roughnessDetailMap'=>$entry['prefix'].'_r.png','detailRoughnessMapStrength'=>0.25,
-            'ambientOcclusionDetailMap'=>$entry['prefix'].'_ao.png','detailAoMapStrength'=>$vegetation?0.04:0.12,
-            'detailScale'=>[1/$tile,1/$tile],'detailMapUV'=>1,'normalDetailMapUV'=>1];
+        if($stock)$stage+=['detailMap'=>$layer===5?$path.'art/terrains/detail.color.png':$detailPrefix.'_b.png','detailBaseColorMapStrength'=>$layer===5?0.08:($vegetation?0.02:0.18),
+            'detailNormalMap'=>$detailPrefix.'_nm.png','detailNormalMapStrength'=>$layer===5?0.25:($vegetation?0.25:0.65),
+            'roughnessDetailMap'=>$detailPrefix.'_r.png','detailRoughnessMapStrength'=>0.25,
+            'ambientOcclusionDetailMap'=>$detailPrefix.'_ao.png','detailAoMapStrength'=>$vegetation?0.04:0.12,
+            'detailScale'=>[1/$tile,1/$tile],'detailMapUseUV'=>1,'normalDetailMapUseUV'=>1,'roughnessDetailMapUseUV'=>1,'ambientOcclusionDetailMapUseUV'=>1];
         return ['class'=>'Material','name'=>$name,'mapTo'=>$name,'version'=>1.5,'doubleSided'=>true,'groundType'=>$style==='stock'?$entry['ground']:([0=>'GRASS',1=>'DIRT',2=>'ROCK',3=>'CONCRETE',4=>'DIRT'][$layer]??'DIRT'),'Stages'=>[$stage]];
     }
     public static function prepare(array $surface,string $layers,BeamRaster $raster,string $style,string $prefix,string $path,callable $progress): array

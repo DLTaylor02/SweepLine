@@ -10,15 +10,15 @@ final class BeamLanePaint
         $n=$p['lanes'];$oneway=$p['oneway']??false;
         return [$p['forward']??($oneway?$n:(int)ceil($n/2)),$p['backward']??($oneway?0:(int)floor($n/2)),$oneway];
     }
-    private static function state(array $p,array $ids): array
+    private static function state(array $p,array $ids,bool $reverse=false): array
     {
-        [$f,$b,$oneway]=self::counts($p);$n=max(1,$f+$b);$out=[];
+        [$f,$b,$oneway]=self::counts($p);if($reverse&&!$oneway)[$f,$b]=[$b,$f];$n=max(1,$f+$b);$out=[];
         foreach($ids as $id){
-            if($id==='center'){$u=$b/$n;$visible=!$oneway&&$f>0&&$b>0;}
+            if($id==='center'){$u=$oneway?0:$b/$n;$visible=$oneway||($f>0&&$b>0);}
             else{$forward=$id[0]==='f';$rank=(int)substr($id,1);$count=$forward?$f:$b;
                 $u=($b+($forward?1:-1)*min($rank,max(0,$count)))/$n;$visible=$rank<$count;
-                if($oneway&&!($p['legal_forward']??true))$u=1-$u;
             }
+            if($reverse)$u=1-$u;
             $out[$id]=['u'=>$u,'visible'=>(float)$visible,'yellow'=>$id==='center'];
         }
         return $out;
@@ -26,16 +26,22 @@ final class BeamLanePaint
     public static function profiles(array $chain,array $profiles,array $original): array
     {
         if(!array_filter($profiles,static fn($p)=>!empty($p['transition'])))return $profiles;
-        $maxF=0;$maxB=0;foreach($original as $p){[$f,$b]=self::counts($p);$maxF=max($maxF,$f);$maxB=max($maxB,$b);}
+        $reverse=false;foreach($original as $p)if(!empty($p['oneway'])){$reverse=!($p['legal_forward']??true);break;}
+        $maxF=0;$maxB=0;foreach($original as $p){[$f,$b,$oneway]=self::counts($p);if($reverse&&!$oneway)[$f,$b]=[$b,$f];$maxF=max($maxF,$f);$maxB=max($maxB,$b);}
         $ids=['center'];for($i=1;$i<$maxF;$i++)$ids[]='f'.$i;for($i=1;$i<$maxB;$i++)$ids[]='b'.$i;
-        $changes=[];$previous=self::state($original[0],$ids);
-        for($i=1;$i<count($original);$i++){$current=self::state($original[$i],$ids);if($current!==$previous)$changes[]=[$chain[$i],$previous,$current];$previous=$current;}
-        $base=self::state($original[0],$ids);
+        $changes=[];$previous=self::state($original[0],$ids,$reverse);
+        for($i=1;$i<count($original);$i++){$current=self::state($original[$i],$ids,$reverse);if($current!==$previous)$changes[]=[$chain[$i],$previous,$current,($original[$i]['oneway']??false)!==($original[$i-1]['oneway']??false),$original[$i]['oneway']??false];$previous=$current;}
+        $base=self::state($original[0],$ids,$reverse);
         foreach($profiles as $i=>&$p){
             $paint=$base;
-            foreach($changes as [$at,$before,$after]){
-                $t=max(0,min(1,($chain[$i]-$at+30.48)/60.96));$t=$t*$t*(3-2*$t);
+            foreach($changes as [$at,$before,$after,$split,$afterOneWay]){
+                $t=$split?max(0,min(1,($chain[$i]-$at+($afterOneWay?30.48:0))/30.48)):max(0,min(1,($chain[$i]-$at+30.48)/60.96));$t=$t*$t*(3-2*$t);
                 foreach($ids as $id)foreach(['u','visible'] as $key)$paint[$id][$key]+=($after[$id][$key]-$before[$id][$key])*$t;
+            }
+            // At a split, opposing lanes belong to the other carriageway; do not
+            // sweep their dividers through this road as if driving lanes were dropped.
+            foreach($changes as [$at,$before,$after,$split])if($split&&abs($chain[$i]-$at)<=30.48){
+                $raw=self::state($original[$i],$ids,$reverse);foreach($paint as $id=>&$line)if(str_starts_with($id,'b'))$line=$raw[$id];unset($line);
             }
             foreach($paint as &$line){$line['u']=max(0,min(1,$line['u']));$line['visible']=max(0,min(1,$line['visible']));}unset($line);
             $p['lane_paint']=$paint;$p['lane_paint_segment']=!empty($p['transition'])||($i>0&&!empty($profiles[$i-1]['transition']));
@@ -68,6 +74,7 @@ final class BeamLanePaint
                 $signature=sprintf('%.6f:%.6f:%d',$begin['u'],$end['u'],$end['yellow']);if(isset($seen[$signature]))continue;$seen[$signature]=true;
                 for($j=1;$j<count($cuts);$j++){
                     $lo=$cuts[$j-1];$hi=$cuts[$j];$mid=($lo+$hi)/2;
+                    if($begin['visible']*(1-$mid)+$end['visible']*$mid<0.5)continue;
                     if(!$end['yellow']&&fmod($start+$mid*$length,12)>=3)continue;
                     $quad=[];
                     foreach([$lo,$hi] as $t){

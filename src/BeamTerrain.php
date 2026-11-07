@@ -147,12 +147,12 @@ final class BeamTerrain
             $material[$slot."BaseTexSize"]=$gridSize;
             $neutral=match($slot){"baseColor"=>"neutral.color.png","normal"=>"neutral.normal.png",default=>"neutral.data.png"};
             $material[$slot."MacroTex"]=$path."art/terrains/".$neutral;$material[$slot."MacroTexSize"]=4;$material[$slot."MacroStrength"]=[0,0];
-            $material[$slot."DetailTex"]=$fallback?$path."art/terrains/".($slot==="baseColor"?"detail-neutral.color.png":$file):$entry["prefix"].$suffix;
+            $material[$slot."DetailTex"]=$fallback&&$slot==='normal'?self::PALETTE[2]['prefix'].'_nm.png':($fallback?$path."art/terrains/".($slot==="baseColor"?"detail.color.png":$file):$entry["prefix"].$suffix);
             $material[$slot."DetailTexSize"]=$tile;
             // Vegetation must retain its green base at full close-up detail strength.
             // Height detail must not change category blending as the camera approaches.
             $vegetation=$id<2;
-            $strength=$fallback?0:match($slot){"baseColor"=>$vegetation?0.02:0.18,"normal"=>$vegetation?0.25:0.65,"roughness"=>0.25,"ao"=>$vegetation?0.04:0.12,default=>0.0};
+            $strength=$fallback?match($slot){'baseColor'=>0.08,'normal'=>0.25,default=>0}:match($slot){"baseColor"=>$vegetation?0.02:0.18,"normal"=>$vegetation?0.25:0.65,"roughness"=>0.25,"ao"=>$vegetation?0.04:0.12,default=>0.0};
             $material[$slot."DetailStrength"]=[$strength,$strength];
         }
         return $material;

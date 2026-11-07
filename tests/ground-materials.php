@@ -5,7 +5,7 @@ $groundMat=BeamGroundMaterials::material('ground',0,'/levels/test/','stock',8);
 check($groundMat['Stages'][0]['baseColorMap']===$nativeMat['baseColorBaseTex'],'Replacement terrain shares native palette tint texture');
 check($groundMat['Stages'][0]['detailMap']===$nativeMat['baseColorDetailTex']&&$groundMat['Stages'][0]['detailNormalMap']===$nativeMat['normalDetailTex'],'Replacement terrain shares native stock color and normal detail');
 check($groundMat['Stages'][0]['detailBaseColorMapStrength']===$nativeMat['baseColorDetailStrength'][0]&&$groundMat['Stages'][0]['detailNormalMapStrength']===$nativeMat['normalDetailStrength'][0],'Replacement terrain retains native bounded grass detail strengths');
-check($groundMat['Stages'][0]['detailMapUV']===1&&$groundMat['Stages'][0]['detailScale']===[0.125,0.125],'Stock mesh detail uses world-scale secondary UVs');
+check($groundMat['Stages'][0]['detailMapUseUV']===1&&$groundMat['Stages'][0]['detailScale']===[0.125,0.125],'Stock mesh detail uses world-scale secondary UVs');
 $aerialMat=BeamGroundMaterials::material('ground',5,'/levels/test/','aerial',8);
 check(str_ends_with($aerialMat['Stages'][0]['baseColorMap'],'aerial.color.png')&&!isset($aerialMat['Stages'][0]['detailMap']),'Aerial-only terrain keeps its original fallback material');
 $materialRaster=new BeamRaster(4,40,str_repeat(pack('g',0),16),str_repeat(chr(100),48));
@@ -52,3 +52,14 @@ check(abs(BeamMedianSurface::nativeHeight($qRaster,15,15,100,64)-$qExpected)<1e-
 $chunkFixture=['vertices'=>[[0,0,0],[1,0,0],[0,1,0]],'faces'=>array_fill(0,10001,[0,1,2]),'uv'=>array_fill(0,10001,[[0,0],[1,0],[0,1]]),'detail_uv'=>array_fill(0,10001,[[0,0],[1,0],[0,1]]),'face_materials'=>array_fill(0,10001,'chunk'),'materials'=>['chunk'=>[]]];
 $chunks=[];$files=BeamGroundMaterials::write($chunkFixture,'ground.dae',static function($file,$xml)use(&$chunks){$doc=simplexml_load_string($xml);$doc->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');$chunks[$file]=(int)$doc->xpath('//c:triangles')[0]['count'];});
 check($files===['ground.dae','ground-1.dae']&&array_sum($chunks)===10001&&max($chunks)===10000,'Terrain serialization uses bounded mesh parts without losing collision faces');
+
+$fallbackNative=BeamTerrain::material('fallback',5,'/levels/test/',16,2);
+$fallbackMesh=BeamGroundMaterials::material('fallback',5,'/levels/test/','stock',8);
+check(isset($fallbackMesh['Stages'][0]['detailMap'])&&$fallbackMesh['Stages'][0]['detailMap']===$fallbackNative['baseColorDetailTex']&&str_ends_with($fallbackMesh['Stages'][0]['baseColorMap'],'fallback.color.png'),'Stock imagery fallback retains its aerial color and gains shared neutral ground detail');
+check(isset($groundMat['Stages'][0]['detailMapUseUV'],$groundMat['Stages'][0]['normalDetailMapUseUV'])&&!isset($groundMat['Stages'][0]['detailMapUV']),'Terrain materials use BeamNG documented detail UV property names');
+$lowSurface=['vertices'=>[[-5,-5,-2],[15,-5,-2],[15,15,-2],[-5,15,-2]],'faces'=>[[0,1,2],[0,2,3]],'uv'=>[[[0,0],[1,0],[1,1]],[[0,0],[1,1],[0,1]]]];
+$supportPavements=[['points'=>[[0,0,0],[10,0,0],[10,10,0]],'raise_floor'=>true],['points'=>[[0,0,0],[10,10,0],[0,10,0]],'raise_floor'=>true]];
+$supported=BeamTunnelClearance::clear($lowSurface,$supportPavements,static fn($m)=>null);
+check(max(array_column($supported['vertices'],2))>-.051&&$supported['report']['connecting_faces']>0,'Low tunnel ground reaches the road floor with connecting terrain faces');
+$diagonalWall=false;foreach(SweepLine\BeamMedianSurface::triangles($supported) as $tri)if(abs(BeamPolygon::cross(...$tri))<1e-8){$internal=true;foreach($tri as $p)$internal=$internal&&abs($p[0]-$p[1])<1e-7&&$p[0]>0.01&&$p[0]<9.99;$diagonalWall=$diagonalWall||$internal;}
+check(!$diagonalWall,'Tunnel connecting faces never become internal walls across a pavement diagonal');

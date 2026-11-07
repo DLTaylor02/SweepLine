@@ -229,8 +229,13 @@ final class BeamTunnels
         }
         $pavements=[];
         foreach($work as $track){
-            $cross=BeamJunctionBoundary::sections($track['road'],$track['profiles']);
-            for($i=1;$i<count($cross);$i++){[$a,$b]=$cross[$i-1];[$d,$c]=$cross[$i];$pavements[]=[$a,$b,$c];$pavements[]=[$a,$c,$d];}
+            $expanded=$track['profiles'];foreach($expanded as &$profile)$profile['width_m']+=1.5;unset($profile);
+            $cross=BeamJunctionBoundary::sections($track['road'],$expanded);$chain=0.;
+            $support=static function($at)use($track){$weight=0.;foreach($track['spans'] as $span){$distance=max(0,$span['start_m']-$at,$at-$span['end_m']);$t=max(0,1-$distance/10);$weight=max($weight,$t*$t*(3-2*$t));}return $weight;};
+            for($i=1;$i<count($cross);$i++){
+                $before=$chain;$chain+=hypot($track['road'][$i][0]-$track['road'][$i-1][0],$track['road'][$i][1]-$track['road'][$i-1][1]);$wa=$support($before);$wb=$support($chain);$raise=max($wa,$wb)>0;
+                [$a,$b]=$cross[$i-1];[$d,$c]=$cross[$i];$pavements[]=['points'=>[$a,$b,$c],'raise_floor'=>$raise,'fill_weights'=>[$wa,$wa,$wb]];$pavements[]=['points'=>[$a,$c,$d],'raise_floor'=>$raise,'fill_weights'=>[$wa,$wb,$wb]];
+            }
         }
         $clearance=max(1.,min(array_column($reportedSpans,'clearance_m'))-0.15);
         $terrainSurface=BeamTunnelClearance::clear(['vertices'=>$terrainVertices,'faces'=>$terrainFaces,'uv'=>$terrainUv],$pavements,$progress,$clearance);

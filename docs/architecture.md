@@ -198,3 +198,18 @@ Replacement terrain shares welded vertices and UV arrays, avoids repeating cell 
 BeamNG runs in the CLI worker, so inspect `sudo journalctl -u sweepline-worker.service -n 100 --no-pager` for worker crashes; the PHP-FPM `php-error.log` is not the worker log. Stage changes now include PHP heap/peak usage in the worker log. PHP fatal errors that reach shutdown use a reserved-memory handler to persist a specific job failure and last stage. A process kill or restart that cannot execute PHP shutdown still retains the last recorded stage in its recovery message; consult the journal for the actual exit cause.
 
 Terrain and tunnel material conversion run sequentially. Redundant full tunnel XML/raw UV buffers are deferred, serializer batches shrink with available PHP heap, and large mesh entries use owner-only file-backed ZIP sources rather than retaining every XML string until archive close. Temporary sources are removed after ZIP close, including cancellation/failure; interrupted workspaces are removed by existing recovery/maintenance. The default 512 MB PHP limit is unchanged. Extremely large geometry can still be stopped with a controlled error rather than exhausting the worker.
+
+
+### Terrain detail, tunnel seams and divided-road paint
+
+Replacement terrain uses BeamNG's documented `detailMapUseUV` and `normalDetailMapUseUV` selectors for its world-scale detail coordinates ([BeamNG reference](https://documentation.beamng.com/modding/materials/vehicle/common-detail/)). Stock-mode imagery fallback now has subtle neutral surface grain and soil normal detail in both the native terrain and replacement ground, without changing its aerial base color.
+
+The final tunnel pavement cut connects newly cut external terrain edges, trims connecting faces against neighboring road clearances and never creates walls on internal pavement diagonals. Ground below the floor is supported inside the tunnel and blended over a 10 m portal transition; shoulder clearance follows the existing 0.75 m walkway. Overburden remains, and bridge terrain behavior is unchanged. These are estimated tunnel surroundings, not surveyed structures.
+
+Split/merge paint distinguishes through lanes from the opposing carriageway. Opposing dividers stop at the shared two-way approach rather than sweeping across the selected one-way lanes. Yellow median boundaries remain at the travel-left edge; reverse-oriented exports use separate material identities. Direction-layout changes trigger paint transitions even when width is unchanged.
+
+### Fast validation
+
+`composer test` runs quick algorithm/security/cache checks, including generated tunnel-clearance geometry, without rebuilding every complete map archive. `composer test:full` retains all archive scenarios; `composer test:integration` adds the disposable-PostGIS tests. CI still runs the complete set. Output is condensed by suite with timings and an explicit failure summary; add `--verbose` to `php tests/run.php` for every assertion. Quick mode is also available as `php tests/run.php --quick`. On the development machine the quick path takes about eight seconds; timings depend on the host.
+
+Validated BeamNG inputs are shared for seven days in the owner-only `var/beam-resources/` cache. Keys cover exact provider URLs/query bodies and resource types; stored size/hash and format checks reject corrupt or incomplete data. Publication is atomic and per-key locked. The existing scheduled BeamNG cleanup expires data without new services, packages or migrations. Upgrades preserve this directory under `var/`; small lock files contain no source data. Resource caching does not change completed ZIP download expiry or regional road-import refresh rules.

@@ -154,7 +154,8 @@ Back up PostgreSQL, `.env`, and runtime data according to your existing server b
 
 ```bash
 composer install
-php tests/run.php
+composer test
+# Full archive scenarios: composer test:full
 # Optional frontend checks with Node (development/CI only):
 node tests/frontend.test.js
 find src bin public tests -name '*.php' -print0 | xargs -0 -n1 php -l
@@ -372,7 +373,7 @@ Road surfaces now use 3 cm clearance above the shaped corridor to reduce terrain
 
 The BeamNG action appears beside GPX/KMZ/PDF. Generate becomes an orange Download link when the private ZIP is ready; status and cancellation remain below the export row. Padding/resolution controls are removed from the UI; defaults are 0.5 miles and 2048. Road clearance is now 8 cm. Finish always faces Start for simulation; mapped one-way navigation data still describes the source road direction.
 
-Every new BeamNG generation downloads fresh elevation and imagery; completed exports are never reused for generation. Raw rasters and intermediate files are discarded immediately after completion, failure or cancellation. Only the finished ZIP remains downloadable for 30 minutes. Reopening a road resumes queued/running work, but does not restore a completed export as a substitute for fresh generation. Duplicate clicks while an identical job is active share that job.
+BeamNG source downloads are cached privately for seven days in `var/beam-resources/`. Validated DEM/NAIP TIFFs and OSM building, land-use and guardrail responses are reused only for an identical provider request (including bounds, projection, resolution and query). Cache hits retain their original acquisition date; reads do not extend the lifetime. Expired or corrupt inputs are downloaded again. The existing cleanup task prunes expired cache data automatically. Generated geometry and ZIPs are rebuilt; finished ZIP downloads still expire after 30 minutes. Per-job intermediate files are removed after completion, failure or cancellation, while validated shared source inputs remain until cache expiry.
 
 BeamNG 0.40 samples terrain base textures in grid units. Export material BaseTexSize fields therefore use terrain resolution, while squareSize retains the real-world meter spacing. The aerial PNG remains north-up to match the shader''s Y flip. This avoids stretching a small portion of the imagery across a large map. Road clearance is 10 cm; regeneration is required for existing ZIPs.
 
@@ -416,7 +417,7 @@ Optional read-only verification: php tests/beamng-assets.php PATH_TO_BEAMNG_INST
 
 ### Mapped buildings, road tapers and terrain checks
 
-BeamNG generation now requests fresh OSM building ways in a bounded 90 m corridor through the configured OSM_OVERPASS_URL provider. Only closed convex footprints of 12–1,500 square meters with radius at most 25 m are eligible. Full footprint bounds must remain outside selected pavement and within the 200-foot roadside band, and corner elevation spread must be at most 1.5 m. Overlapping buildings are skipped; vegetation reserves accepted building footprints. Generic collision meshes follow footprint polygons; heights use mapped height or building:levels, otherwise an explicitly estimated 6 m default (clamped to 3–30 m). Building relations, holes, concave/complex footprints and large buildings are currently omitted.
+BeamNG generation uses cached or newly requested OSM building ways in a bounded 90 m corridor through the configured OSM_OVERPASS_URL provider. Only closed convex footprints of 12–1,500 square meters with radius at most 25 m are eligible. Full footprint bounds must remain outside selected pavement and within the 200-foot roadside band, and corner elevation spread must be at most 1.5 m. Overlapping buildings are skipped; vegetation reserves accepted building footprints. Generic collision meshes follow footprint polygons; heights use mapped height or building:levels, otherwise an explicitly estimated 6 m default (clamped to 3–30 m). Building relations, holes, concave/complex footprints and large buildings are currently omitted.
 
 Building retrieval is bounded to 1,000 ways, 50,000 vertices and 16 MiB. Partial/provider failures omit buildings with a report/UI warning; no color-based guesses are substituted. Downloads are temporary and discarded with other job source data. The building pass adds no database migration or persistent cache. Offline placement tests run by default; the existing disposable PostGIS integration suite now tests corridor SQL and reprojection with injected provider responses. Live building retrieval has not been verified in this development environment.
 
@@ -436,7 +437,7 @@ New BeamNG exports start at 7 AM with time progression disabled. The scene uses 
 
 Vegetation placement now combines a broad regional/elevation prior with nine neighboring raw aerial-color samples, rather than requiring a single bright-green pixel before any tree can spawn. Shaded or muted canopy can support trees; coherent strongly blue neighborhoods remain excluded as water. Western montane settings increase tree probability and favor the installed stock pine model. Bright neutral bare/snow-like terrain suppresses trees, and a latitude-adjusted high-elevation fade prevents the heuristic from adding forests indefinitely uphill.
 
-These are visual heuristics, not measured species distributions, climate zones or authoritative land-cover data. No road name, ZIP or locality is special-cased. The report records inferred biome counts, actual asset counts and the inference method so future exports can be assessed. Density budgets, footprint/road checks, 200-foot limits and fresh source downloads remain in force. Authoritative canopy/land-cover datasets are a future improvement; stock pines are appearance proxies rather than claims of exact local species.
+These are visual heuristics, not measured species distributions, climate zones or authoritative land-cover data. No road name, ZIP or locality is special-cased. The report records inferred biome counts, actual asset counts and the inference method so future exports can be assessed. Density budgets, footprint/road checks and 200-foot limits remain in force; validated source downloads may be reused for up to seven days. Authoritative canopy/land-cover datasets are a future improvement; stock pines are appearance proxies rather than claims of exact local species.
 
 ### Start/Finish selection and export direction
 
@@ -454,7 +455,7 @@ BeamNG startup time now explicitly sets both TimeOfDay.time and TimeOfDay.startT
 
 ### Stock terrain materials (experimental)
 
-The BeamNG export row now offers Stock materials (default) or Aerial imagery. Changing style resets the action to Generate; job restoration and errors are scoped by style as well as selected name/direction. The preference is retained for the browser session. Exports still download fresh source imagery/elevation; choosing stock terrain does not remove those data requirements.
+BeamNG exports use stock terrain materials blended with aerial imagery. Job restoration and errors remain scoped to the selected road name and direction. Exports reuse validated source imagery/elevation for up to seven days; stock terrain still requires those inputs.
 
 Stock mode references five PBR surfaces already supplied with BeamNG.drive 0.40: grass, forest floor, dry soil, gravel and rocky ground. Each uses stock albedo, normal, roughness, AO and height textures from the shared assets/materials/terrain archive. All were verified at 1024-square dimensions against the installed game. The map references these textures without copying them; the server does not need the game installed. Texture repetition is expressed in terrain-grid units, approximately 8 m per repeat (rounded to at least one grid cell). No extra geometry displacement is added to collision terrain.
 
@@ -773,3 +774,18 @@ Replacement terrain shares welded vertices and UV arrays, avoids repeating cell 
 BeamNG runs in the CLI worker, so inspect `sudo journalctl -u sweepline-worker.service -n 100 --no-pager` for worker crashes; the PHP-FPM `php-error.log` is not the worker log. Stage changes now include PHP heap/peak usage in the worker log. PHP fatal errors that reach shutdown use a reserved-memory handler to persist a specific job failure and last stage. A process kill or restart that cannot execute PHP shutdown still retains the last recorded stage in its recovery message; consult the journal for the actual exit cause.
 
 Terrain and tunnel material conversion run sequentially. Redundant full tunnel XML/raw UV buffers are deferred, serializer batches shrink with available PHP heap, and large mesh entries use owner-only file-backed ZIP sources rather than retaining every XML string until archive close. Temporary sources are removed after ZIP close, including cancellation/failure; interrupted workspaces are removed by existing recovery/maintenance. The default 512 MB PHP limit is unchanged. Extremely large geometry can still be stopped with a controlled error rather than exhausting the worker.
+
+
+### Terrain detail, tunnel seams and divided-road paint
+
+Replacement terrain uses BeamNG's documented `detailMapUseUV` and `normalDetailMapUseUV` selectors for its world-scale detail coordinates ([BeamNG reference](https://documentation.beamng.com/modding/materials/vehicle/common-detail/)). Stock-mode imagery fallback now has subtle neutral surface grain and soil normal detail in both the native terrain and replacement ground, without changing its aerial base color.
+
+The final tunnel pavement cut connects newly cut external terrain edges, trims connecting faces against neighboring road clearances and never creates walls on internal pavement diagonals. Ground below the floor is supported inside the tunnel and blended over a 10 m portal transition; shoulder clearance follows the existing 0.75 m walkway. Overburden remains, and bridge terrain behavior is unchanged. These are estimated tunnel surroundings, not surveyed structures.
+
+Split/merge paint distinguishes through lanes from the opposing carriageway. Opposing dividers stop at the shared two-way approach rather than sweeping across the selected one-way lanes. Yellow median boundaries remain at the travel-left edge; reverse-oriented exports use separate material identities. Direction-layout changes trigger paint transitions even when width is unchanged.
+
+### Fast validation
+
+`composer test` runs quick algorithm/security/cache checks, including generated tunnel-clearance geometry, without rebuilding every complete map archive. `composer test:full` retains all archive scenarios; `composer test:integration` adds the disposable-PostGIS tests. CI still runs the complete set. Output is condensed by suite with timings and an explicit failure summary; add `--verbose` to `php tests/run.php` for every assertion. Quick mode is also available as `php tests/run.php --quick`. On the development machine the quick path takes about eight seconds; timings depend on the host.
+
+Validated BeamNG inputs are shared for seven days in the owner-only `var/beam-resources/` cache. Keys cover exact provider URLs/query bodies and resource types; stored size/hash and format checks reject corrupt or incomplete data. Publication is atomic and per-key locked. The existing scheduled BeamNG cleanup expires data without new services, packages or migrations. Upgrades preserve this directory under `var/`; small lock files contain no source data. Resource caching does not change completed ZIP download expiry or regional road-import refresh rules.

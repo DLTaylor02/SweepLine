@@ -7,6 +7,15 @@ final class BeamOsm
 {
     public static function download(string $url,string $file,string $query,callable $progress,?callable $download=null,?callable $sleep=null,string $label='buildings'): array
     {
+        if($download===null){
+            (new BeamResourceCache())->fetch(BeamResourceCache::key('osm',$url,$query),$file,
+                static fn($path)=>self::download($url,$path,$query,$progress,[Download::class,'file'],$sleep,$label),
+                static function($path){
+                    $data=json_decode(file_get_contents($path),true,512,JSON_THROW_ON_ERROR);
+                    if(!is_array($data)||isset($data['remark'])||!isset($data['elements'])||!is_array($data['elements']))throw new \RuntimeException('Cached OSM context is incomplete.');
+                },$progress);
+            return json_decode(file_get_contents($file),true,512,JSON_THROW_ON_ERROR);
+        }
         $sleep??=static fn()=>usleep(1000000);$provider=ucfirst(rtrim($label,'s')).' provider';
         for($attempt=1;$attempt<=3;$attempt++){
             $progress('Fetching mapped '.$label.' (attempt '.$attempt.'/3)');

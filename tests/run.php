@@ -2,10 +2,10 @@
 declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
 use SweepLine\{Geometry,RoadGraph,Scorer,Controls,Validation,Importer};
-$failures=0; $checks=0;
+$failures=0; $checks=0; $failedChecks=[];$verbose=in_array('--verbose',$argv,true);
 function check(bool $ok,string $message): void {
-    global $failures,$checks; $checks++;
-    echo ($ok?'PASS ':'FAIL ').$message."\n"; if (!$ok) { $failures++; }
+    global $failures,$checks,$failedChecks,$verbose; $checks++;
+    if($verbose||!$ok)echo ($ok?'PASS ':'FAIL ').$message."\n"; if (!$ok) { $failures++; $failedChecks[]=$message; }
 }
 function rejects(callable $fn): bool { try { $fn(); return false; } catch (InvalidArgumentException $e) { return true; } }
 check(Validation::zip('12345')==='12345','Synthetic ZIP validation');
@@ -409,30 +409,16 @@ foreach(SweepLine\CoveragePlanner::children($customArea) as $child)check(SweepLi
 check(SweepLine\CoveragePlanner::canSplit(['bounds'=>[0,0,0.01,0.5]]),'Long narrow custom extracts can split when too dense');
 check(rejects(fn()=>SweepLine\CoveragePlanner::customArea([179.9,52],[-179.9,52])),'Date-line custom selection cannot accidentally request a world-wide rectangle');
 
-require __DIR__.'/divided-roads.php';
-require __DIR__.'/elevations.php';
-require __DIR__.'/buildings.php';
-require __DIR__.'/guardrails.php';
-require __DIR__.'/beamng-enhancements.php';
-require __DIR__.'/shadows.php';
-require __DIR__.'/intersections.php';
-require __DIR__.'/pavement.php';
-require __DIR__.'/compute.php';
-require __DIR__.'/tunnels.php';
-require __DIR__.'/tunnel-clearance.php';
-require __DIR__.'/beamng.php';
-require __DIR__.'/large-bridges.php';
-require __DIR__.'/bridge-deck.php';
-require __DIR__.'/carriageways.php';
-require __DIR__.'/carriageway-network.php';
-require __DIR__.'/median-pavement.php';
-require __DIR__.'/median.php';
-require __DIR__.'/median-surface.php';
-require __DIR__.'/ground-materials.php';
-require __DIR__.'/export-memory.php';
-require __DIR__.'/import-cleanup.php';
-require __DIR__.'/import-input.php';
-require __DIR__.'/terrain-contact.php';
-require __DIR__.'/export-diagnostics.php';
-if (in_array('--integration',$argv,true)) { require __DIR__.'/integration.php'; }
-echo "$checks checks, $failures failures\n"; exit($failures?1:0);
+$quick=in_array('--quick',$argv,true)&&!in_array('--integration',$argv,true);
+echo ($failures?'FAIL ':'PASS ').'Core: '.$checks." checks\n";
+$suites=['divided-roads','elevations','buildings','guardrails','beamng-enhancements','shadows','intersections','pavement','compute','tunnels','tunnel-clearance','beamng','large-bridges','bridge-deck','carriageways','carriageway-network','median-pavement','median','median-surface','ground-materials','export-memory','resource-cache','carriageway-paint','import-cleanup','import-input','terrain-contact','export-diagnostics'];
+$archiveSuites=['tunnels','beamng','large-bridges','bridge-deck','carriageways','median-pavement','export-diagnostics'];
+foreach($suites as $suiteName){
+    if($quick&&in_array($suiteName,$archiveSuites,true))continue;
+    $suiteChecks=$checks;$suiteFailures=$failures;$suiteStarted=microtime(true);
+    require __DIR__.'/'.$suiteName.'.php';
+    echo ($failures===$suiteFailures?'PASS ':'FAIL ').$suiteName.': '.($checks-$suiteChecks).' checks, '.round(microtime(true)-$suiteStarted,2)."s\n";
+}
+if(in_array('--integration',$argv,true))require __DIR__.'/integration.php';
+if($failedChecks)fwrite(STDERR,"Failed checks:\n - ".implode("\n - ",$failedChecks)."\n");
+echo "$checks checks, $failures failures".($quick?' (quick; full archive scenarios available with composer test:full)':'')."\n";exit($failures?1:0);

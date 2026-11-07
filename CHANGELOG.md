@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Correct terrain detail UV selectors and add neutral detail to stock imagery fallback. Close tunnel terrain cuts and support low ground through short portal transitions without changing bridges. Distinguish split/merge lane layouts and preserve travel-left yellow boundaries. Cache validated BeamNG rasters and OSM context for seven days with automatic expiry. Add a quick validation path and concise per-suite timing while retaining complete archive/integration coverage.
+
+- Fix fatal-export subprocess tests on Linux by retaining the normal CLI extension configuration instead of disabling shared PDO with php -n. Report fixture startup stderr and repeat failed check names in the final test summary.
+
 - Reduce BeamNG export peak memory by converting tunnel/median ground sequentially, deferring redundant tunnel XML/UV buffers, adapting mesh batches to heap headroom and using private file-backed ZIP entries. Clean temporary sources on completion/cancellation. Persist fatal-memory job errors with the last stage, retain stages on restart recovery, and log worker heap usage to the CLI journal; keep the 512 MB limit unchanged.
 
 - Share native terrain classification, palette tint and stock PBR detail with median/tunnel ground using independent detail UVs. Blend median ends over 20 m and replace complete native cells with quantized boundary-matched ground. Cut tunnel replacement terrain against exact pavement triangles, preserving overburden and UVs. Add material, full-cell coverage, transition and generated-archive regressions; release mesh buffers between stages.

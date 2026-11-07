@@ -85,8 +85,8 @@ $tFlatRoad=array_map(static fn($p)=>[$p[0],$p[1],10.25],$tPoints);
 $tPreserved=BeamTunnels::build($tFlatRoad,$tProfiles,$tSpans,$tFlat,90,str_repeat(chr(0),$tn*$tn),'test_tunnel','test_patch',static function($m){});
 $tPreservedXml=simplexml_load_string($tPreserved['terrain']);$tPreservedXml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
 $tGroundValues=array_map('floatval',preg_split('/\s+/',trim((string)$tPreservedXml->xpath('//c:source[@id="positions"]/c:float_array')[0])));
-$tLowUnchanged=true;for($i=2;$i<count($tGroundValues);$i+=3)if(abs($tGroundValues[$i]-10)>0.00001)$tLowUnchanged=false;
-check($tLowUnchanged&&count($tGroundValues)>0,'Tunnel replacement preserves terrain already below the road');
+$tOutsideUnchanged=true;$tFloorSupported=false;for($i=0;$i<count($tGroundValues);$i+=3){[$x,$y,$z]=array_slice($tGroundValues,$i,3);if(abs($y-160)>5&&abs($z-10)>0.00001)$tOutsideUnchanged=false;if($x>130&&$x<190&&abs($y-160)<4.75&&abs($z-10.2)<0.00001)$tFloorSupported=true;}
+check($tOutsideUnchanged&&$tFloorSupported,'Tunnel support raises low corridor ground while preserving terrain outside its shoulders');
 $tCutRoad=array_map(static fn($p)=>[$p[0],$p[1],9.],$tPoints);
 $tCut=BeamTunnels::build($tCutRoad,$tProfiles,$tSpans,$tFlat,90,str_repeat(chr(0),$tn*$tn),'test_tunnel','test_patch',static function($m){});
 $tCutXml=simplexml_load_string($tCut['terrain']);$tCutXml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');

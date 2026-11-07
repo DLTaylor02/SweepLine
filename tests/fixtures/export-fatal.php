@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require dirname(__DIR__,2).'/src/bootstrap.php';
 if(PHP_SAPI!=='cli'||count($argv)!==3)exit(2);
+if(!class_exists(PDO::class)){fwrite(STDERR,"Fatal export fixture requires the PDO extension in the child PHP configuration.\n");exit(2);}
 final class ExportFatalStatement extends PDOStatement
 {
     public function __construct(private string $path){}

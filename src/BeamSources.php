@@ -58,8 +58,14 @@ final class BeamSources
             $progress($kind==='dem'?'Downloading real USGS elevation':'Downloading NAIP aerial colors');
             if($kind==='aerial')$common['renderingRule']=json_encode(['rasterFunction'=>'NaturalColor']);
             $params=$common+($kind==='dem'?['pixelType'=>'F32']:['pixelType'=>'U8','bandIds'=>'0,1,2']);
-            $this->downloadRaster($url.'?'.http_build_query($params),$dir.'/'.$kind.'.tif',$kind==='dem'?'USGS elevation':'NAIP aerial imagery',$progress);
-            $provenance[$kind]=['endpoint'=>$url,'request'=>$params,'download_bytes'=>filesize($dir.'/'.$kind.'.tif'),'sha256'=>hash_file('sha256',$dir.'/'.$kind.'.tif'),'fetched_utc'=>gmdate('c')];
+            $request=$url.'?'.http_build_query($params);
+            $meta=(new BeamResourceCache())->fetch(BeamResourceCache::key($kind,$request),$dir.'/'.$kind.'.tif',
+                fn($file)=>$this->downloadRaster($request,$file,$kind==='dem'?'USGS elevation':'NAIP aerial imagery',$progress),
+                static function($file)use($n,$kind,$progress){
+                    $info=json_decode(self::run(['gdalinfo','-json',$file],static fn()=>$progress(null)),true,512,JSON_THROW_ON_ERROR);
+                    if(($info['driverShortName']??null)!=='GTiff'||($info['size']??[])!==[$n,$n]||count($info['bands']??[])<($kind==='dem'?1:3))throw new \RuntimeException('Raster provider returned an unexpected image layout.');
+                },$progress);
+            $provenance[$kind]=['endpoint'=>$url,'request'=>$params,'download_bytes'=>$meta['bytes'],'sha256'=>$meta['sha256'],'fetched_utc'=>$meta['fetched_utc'],'cache_hit'=>$meta['cache_hit'],'cache_expires_utc'=>gmdate('c',$meta['created_at']+BeamResourceCache::TTL)];
             $progress('Aligning '.$kind.' raster to the square map');
             self::run(['gdalwarp','-q','-overwrite','-t_srs','EPSG:'.$plan['epsg'],'-te',...(array_map('strval',$bbox)),'-ts',(string)$n,(string)$n,'-r','bilinear','-dstnodata',$kind==='dem'?'-9999':'0',$dir.'/'.$kind.'.tif',$dir.'/'.$kind.'-aligned.tif'],static fn()=>$progress(null));
             $args=['gdal_translate','-q','-of','ENVI','-ot',$kind==='dem'?'Float32':'Byte','-co','INTERLEAVE=BSQ'];
