@@ -41,5 +41,12 @@ try{
  $groundMaterials=json_decode($medianZip->getFromName($medianBase.'art/terrains/median.materials.json'),true,512,JSON_THROW_ON_ERROR);
  check($groundMaterials&&count(array_filter($groundMaterials,static fn($m)=>in_array($m['groundType'],['GRASS','DIRT','ROCK','GRAVEL'],true)))===count($groundMaterials),'Median collision uses terrain ground types instead of roadway or custom sticky material');
 
+ $groundDoc=simplexml_load_string($groundXml);$groundDoc->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
+ check(count($groundDoc->xpath('//c:triangles/c:input[@semantic="TEXCOORD" and @set="1"]'))>0,'Exported median ground has independent stock-detail UVs');
+ $allPbr=true;foreach($groundMaterials as $mat)$allPbr=$allPbr&&$mat['version']===1.5&&isset($mat['Stages'][0]['baseColorMap']);
+ check($allPbr,'Exported median materials use the shared terrain PBR pipeline');
+ $terrainBytes=$medianZip->getFromName($medianBase.'theTerrain.ter');$medianLayerBytes=substr($terrainBytes,5+64*64*2,64*64);
+ check(substr_count($medianLayerBytes,chr(255))===$medianMapReport['median']['refined_surface']['replacement_cells'],'Exported median replaces native collision cells instead of overlaying them');
+
  $medianZip->close();
 }finally{@unlink($medianMapFile);}

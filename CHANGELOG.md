@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Share native terrain classification, palette tint and stock PBR detail with median/tunnel ground using independent detail UVs. Blend median ends over 20 m and replace complete native cells with quantized boundary-matched ground. Cut tunnel replacement terrain against exact pavement triangles, preserving overburden and UVs. Add material, full-cell coverage, transition and generated-archive regressions; release mesh buffers between stages.
+
 - Fix median shaping being suppressed by an inherited ordinary-carriageway protection mask. Add exact-edge refined median terrain with terrain ground materials, top-only collision and underlying native clearance; preserve curved edge stations, structures, tunnel holes and junction support. Replace ineffective grid fitting passes and verify actual ZIP geometry/materials.
 
 - Improve native median terrain contact on coarse grids: shape supporting cell corners beyond the median edges and run two bounded edge-fitting/clearance passes. Protect structures, tunnel holes and side-road support; refresh tunnel seams after fitting. Add sub-cell and protected-contact regressions.

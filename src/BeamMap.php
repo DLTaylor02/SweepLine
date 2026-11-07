@@ -170,8 +170,9 @@ final class BeamMap
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
         $put=static function($file,$bytes)use($zip,$base){if(!$zip->addFromString($base.$file,$bytes))throw new \RuntimeException('Could not write BeamNG archive.');};
         try {
+            $groundLayers=$categories;
             $prefix='sl_'.substr($id,0,12);$materials=[];$terrainNames=[];$ground=['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
-            $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways);
+            $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways,$maxHeight);
             $contactRepair=BeamTerrainContact::repairCorridors($repairSurfaces,$raster,$origin,$progress,$tunnelGeometry['layers']);
             // Native shaping remains the broad base; exact median ground no longer depends on grid fitting.
             $median['report']['contact_passes']=[];
@@ -180,14 +181,23 @@ final class BeamMap
             $contactRepair['tunnel_patch_rebuilt']=false;
             if($tunnelGeometry['shell']!==null&&(array_sum(array_column($contactRepair['roads'],'lowered_vertices'))>0||$contactRepair['median_contact_refined'])){
                 unset($tunnelGeometry);$progress('Updating tunnel seams after final terrain clearance checks');
-                $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways);$contactRepair['tunnel_patch_rebuilt']=true;
+                $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways,$maxHeight);$contactRepair['tunnel_patch_rebuilt']=true;
             }
             $categories=$tunnelGeometry['layers'];unset($tunnelGeometry['layers']);
             $progress('Building exact pavement-edge median terrain');
-            $medianSurface=BeamMedianSurface::build($road,$profiles,$carriageways,$coveredSpans,$raster,$medianMask,$categories,$progress);
+            $medianSurface=BeamMedianSurface::build($road,$profiles,$carriageways,$coveredSpans,$raster,$medianMask,$categories,$progress,$origin,$maxHeight);
+            $medianSurface=BeamMedianSurface::replaceCells($medianSurface,$raster,$origin,$categories,$progress,$maxHeight);
+            $categories=$medianSurface['layers'];unset($medianSurface['layers']);
             $median['report']['refined_surface']=$medianSurface['report'];
-            if($medianSurface['faces']){
-                $median['report']['refined_surface']['native_clearance']=BeamTerrainContact::triangles(BeamMedianSurface::triangles($medianSurface),$raster,$origin,$medianMask,$progress,true,$categories);
+            $medianGround=BeamGroundMaterials::prepare($medianSurface,$groundLayers,$raster,$terrainStyle,$prefix.'_median_ground',$path,$progress);unset($medianSurface);
+            $median['report']['ground_materials']=$medianGround['report'];
+            $median['report']['refined_surface']['collision_ground_types']=array_values(array_unique(array_column($medianGround['materials'],'groundType')));
+            $medianGround=['files'=>BeamGroundMaterials::write($medianGround,'art/terrains/median-ground.dae',$put),'materials'=>$medianGround['materials'],'has_faces'=>(bool)$medianGround['faces']];
+            $tunnelGround=null;
+            if(isset($tunnelGeometry['terrain_surface'])){
+                $tunnelGround=BeamGroundMaterials::prepare($tunnelGeometry['terrain_surface'],$groundLayers,$raster,$terrainStyle,$prefix.'_tunnel_ground',$path,$progress);
+                unset($tunnelGeometry['terrain_surface'],$tunnelGeometry['terrain']);
+                $tunnelGeometry['terrain_files']=BeamGroundMaterials::write($tunnelGround,'art/tunnels/terrain-patch.dae',$put);$tunnelGeometry['report']['mesh_parts']=count($tunnelGeometry['terrain_files']);$tunnelGeometry['report']['ground_materials']=$tunnelGround['report'];$tunnelGround=['materials'=>$tunnelGround['materials']];
             }
             $progress('Writing collision terrain and generic surface materials');
             // v0.40 terrain UVs are in layer/grid units, not world meters.
@@ -212,27 +222,20 @@ final class BeamMap
                 ['class'=>'TimeOfDay','name'=>'timeOfDay','__parent'=>'MissionGroup','time'=>19/24,'startTime'=>19/24,'version'=>2,'play'=>false],
                 ['class'=>'TerrainBlock','name'=>'theTerrain','__parent'=>'MissionGroup','position'=>[0,0,0],'terrainFile'=>$path.'theTerrain.ter','squareSize'=>$step,'maxHeight'=>$maxHeight,'baseTexSize'=>1024,'castShadows'=>true,'materialTextureSet'=>$prefix.'_terrain_set']];
             if($tunnelGeometry['shell']!==null){
-                $put('art/tunnels/interior.dae',$tunnelGeometry['shell']);$put('art/tunnels/terrain-patch.dae',$tunnelGeometry['terrain']);
-                $tunnelMaterial=$prefix.'_tunnel';$patchMaterial=$prefix.'_tunnel_terrain';
+                $put('art/tunnels/interior.dae',$tunnelGeometry['shell']);
+                $tunnelMaterial=$prefix.'_tunnel';
                 $put('art/tunnels/main.materials.json',self::json([
                     $tunnelMaterial=>['class'=>'Material','name'=>$tunnelMaterial,'mapTo'=>$tunnelMaterial,'version'=>1,'doubleSided'=>true,'groundType'=>'CONCRETE','Stages'=>[['diffuseColor'=>[0.55,0.56,0.57,1]]]],
-                    $patchMaterial=>['class'=>'Material','name'=>$patchMaterial,'mapTo'=>$patchMaterial,'version'=>1,'doubleSided'=>true,'groundType'=>'DIRT','Stages'=>[['diffuseMap'=>$path.'art/terrains/aerial.color.png','diffuseColor'=>[1,1,1,1],'useAnisotropic'=>true]]]
-                ]));
-                foreach(['interior','terrain-patch'] as $part)$objects[]=['class'=>'TSStatic','name'=>'tunnel_'.$part,'__parent'=>'MissionGroup','shapeName'=>$path.'art/tunnels/'.$part.'.dae','position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None','castShadows'=>true];
+                ]+($tunnelGround['materials']??[])));
+                foreach(['interior'] as $part)$objects[]=['class'=>'TSStatic','name'=>'tunnel_'.$part,'__parent'=>'MissionGroup','shapeName'=>$path.'art/tunnels/'.$part.'.dae','position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None','castShadows'=>true];
+                foreach($tunnelGeometry['terrain_files'] as $i=>$file)$objects[]=['class'=>'TSStatic','name'=>'tunnel_terrain-patch'.($i?'_'.$i:''),'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None','castShadows'=>true];
                 $objects=array_merge($objects,$tunnelGeometry['objects']);unset($tunnelGeometry['shell'],$tunnelGeometry['terrain'],$tunnelGeometry['objects']);
             }
-            if($medianSurface['faces']){
-                $materialNames=array_map(static fn($kind)=>$prefix.'_median_ground_'.$kind,$medianSurface['kinds']);
-                $put('art/terrains/median-ground.dae',BeamAssets::mesh($medianSurface['vertices'],$medianSurface['faces'],$prefix.'_median_ground_dirt',$medianSurface['uv'],$materialNames));
-                $medianMaterials=[];
-                foreach(array_unique($medianSurface['kinds']) as $kind){
-                    $material=$prefix.'_median_ground_'.$kind;
-                    $medianMaterials[$material]=['class'=>'Material','name'=>$material,'mapTo'=>$material,'version'=>1,'doubleSided'=>true,'groundType'=>strtoupper($kind),'Stages'=>[['diffuseMap'=>$path.'art/terrains/aerial.color.png','diffuseColor'=>[1,1,1,1],'specularStrength'=>0,'useAnisotropic'=>true]]];
-                }
-                $put('art/terrains/median.materials.json',self::json($medianMaterials));
-                $objects[]=['class'=>'TSStatic','name'=>'median_ground','__parent'=>'MissionGroup','shapeName'=>$path.'art/terrains/median-ground.dae','position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'Visible Mesh Final','castShadows'=>true];
+            if($medianGround['has_faces']){
+                $put('art/terrains/median.materials.json',self::json($medianGround['materials']));
+                foreach($medianGround['files'] as $i=>$file)$objects[]=['class'=>'TSStatic','name'=>'median_ground'.($i?'_'.$i:''),'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'Visible Mesh Final','castShadows'=>true];
             }
-            unset($medianSurface);
+            unset($medianGround,$tunnelGround);
             $bridgeMaterial=$prefix.'_bridge';
             if($bridges){
                 $put('art/shapes/bridge-pier.dae',BeamAssets::shape($bridgeMaterial,'bridge-pier'));

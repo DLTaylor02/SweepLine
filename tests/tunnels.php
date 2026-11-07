@@ -49,6 +49,12 @@ try{
  $tTerrain=$tZip->getFromName($tBase.'theTerrain.ter');$tLayers=substr($tTerrain,5+2*$tn*$tn,$tn*$tn);
  check(substr_count($tLayers,chr(255))===$tReport['tunnel_data']['hole_cells'],'Terrain ZIP stores actual hole map alongside replacement collision mesh');
  check(count($tReport['tunnels'])===1&&$tReport['tunnel_data']['estimated'],'Export report labels tunnel engineering estimates');
+ $patchDoc=simplexml_load_string($tZip->getFromName($tBase.'art/tunnels/terrain-patch.dae'));$patchDoc->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
+ check(count($patchDoc->xpath('//c:triangles/c:input[@semantic="TEXCOORD" and @set="1"]'))>0,'Exported tunnel terrain has independent detail texture UVs');
+ $patchMaterials=json_decode($tZip->getFromName($tBase.'art/tunnels/main.materials.json'),true,512,JSON_THROW_ON_ERROR);$hasSharedGround=false;
+ foreach($patchMaterials as $key=>$mat)if(str_contains($key,'_tunnel_ground_'))$hasSharedGround=$hasSharedGround||($mat['version']===1.5&&isset($mat['Stages'][0]['baseColorMap']));
+ check($hasSharedGround,'Exported tunnel terrain shares the native-ground PBR material pipeline');
+
  $tZip->close();
 }finally{@unlink($tFile);}
 

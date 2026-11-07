@@ -62,7 +62,7 @@ final class BeamTunnels
         }throw new \RuntimeException('Tunnel station lies outside the selected road.');
     }
     /** Convex-prism subtraction preserves interpolated terrain positions and UVs. */
-    private static function subtract(array $polygon,array $planes,?array &$removed=null): array
+    public static function subtract(array $polygon,array $planes,?array &$removed=null): array
     {
         $out=[];$inside=$polygon;
         foreach($planes as $plane){
@@ -76,7 +76,7 @@ final class BeamTunnels
             if(count($reject)>=3&&array_filter($inside,static fn($p)=>$distance($p)<-1e-8))$out[]=$reject;$inside=$keep;
         }$removed=count($inside)>=3?$inside:[];return $out;
     }
-    public static function build(array $road,array $profiles,array $spans,BeamRaster $raster,float $origin,string $layers,string $material,string $terrainMaterial,callable $progress,array $additional=[]): array
+    public static function build(array $road,array $profiles,array $spans,BeamRaster $raster,float $origin,string $layers,string $material,string $terrainMaterial,callable $progress,array $additional=[],float $heightRange=0): array
     {
         $work=[['road'=>$road,'profiles'=>$profiles,'spans'=>$spans]];$reportedSpans=$spans;
         foreach($additional as $track){$work[]=['road'=>$track['road'],'profiles'=>$track['profiles'],'spans'=>$track['tunnels']];foreach($track['tunnels'] as $s)$reportedSpans[]=$s+['track'=>$track['name']];}
@@ -161,7 +161,7 @@ final class BeamTunnels
         $terrainVertices=[];$terrainFaces=[];$terrainUv=[];$counter=0;$floorPieces=0;$walls=[];
         foreach($cells as $key=>$ids){
             if(++$counter%100===0)$progress(null);$x=$key%$n;$y=intdiv($key,$n);$layers[$key]=chr(255);$corners=[];
-            foreach([[0,0],[1,0],[1,1],[0,1]] as [$ox,$oy]){$wx=($x+$ox)*$step;$wy=($y+$oy)*$step;$corners[]=[$wx,$wy,$raster->cell($x+$ox,$y+$oy)-$origin,$wx/$raster->side,$wy/$raster->side];}
+            foreach([[0,0],[1,0],[1,1],[0,1]] as [$ox,$oy]){$wx=($x+$ox)*$step;$wy=($y+$oy)*$step;$corners[]=[$wx,$wy,BeamMedianSurface::nativeCell($raster,$x+$ox,$y+$oy,$origin,$heightRange),$wx/$raster->side,$wy/$raster->side];}
             foreach([[$corners[0],$corners[1],$corners[2]],[$corners[0],$corners[2],$corners[3]]] as $triangle){
                 $pieces=[$triangle];foreach(array_unique($ids) as $id){
                     $next=[];foreach($pieces as $piece){
@@ -227,8 +227,15 @@ final class BeamTunnels
                 $terrainFaces[]=[$base,$base+1,$base+2];$terrainUv[]=array_map(static fn($p)=>array_slice($p,3,2),$triangle);$wallFaces++;
             }
         }
-        return ['layers'=>$layers,'shell'=>BeamAssets::mesh($vertices,$faces,$material,$uv),'terrain'=>BeamAssets::mesh($terrainVertices,$terrainFaces,$terrainMaterial,$terrainUv),
-            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['spans'=>$reportedSpans,'hole_cells'=>count($cells),'terrain_patch_triangles'=>count($terrainFaces),'excavated_floor_pieces'=>$floorPieces,'excavation_wall_triangles'=>$wallFaces,'floor_clearance_m'=>0.05,'estimated'=>true,
+        $pavements=[];
+        foreach($work as $track){
+            $cross=BeamJunctionBoundary::sections($track['road'],$track['profiles']);
+            for($i=1;$i<count($cross);$i++){[$a,$b]=$cross[$i-1];[$d,$c]=$cross[$i];$pavements[]=[$a,$b,$c];$pavements[]=[$a,$c,$d];}
+        }
+        $clearance=max(1.,min(array_column($reportedSpans,'clearance_m'))-0.15);
+        $terrainSurface=BeamTunnelClearance::clear(['vertices'=>$terrainVertices,'faces'=>$terrainFaces,'uv'=>$terrainUv],$pavements,$progress,$clearance);
+        return ['terrain_surface'=>$terrainSurface,'layers'=>$layers,'shell'=>BeamAssets::mesh($vertices,$faces,$material,$uv),'terrain'=>BeamAssets::mesh($terrainSurface['vertices'],$terrainSurface['faces'],$terrainMaterial,$terrainSurface['uv']),
+            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['spans'=>$reportedSpans,'hole_cells'=>count($cells),'exact_pavement_clearance'=>$terrainSurface['report'],'terrain_patch_triangles'=>count($terrainSurface['faces']),'excavated_floor_pieces'=>$floorPieces,'excavation_wall_triangles'=>$wallFaces,'floor_clearance_m'=>0.05,'estimated'=>true,
                 'method'=>'Approach-derived floor; generic concrete single bore and portals; native holes with clipped replacement terrain preserving overburden.','limitations'=>'Underground grade, clearance, portals and lighting are estimates. Not a surveyed tunnel model.']];
     }
 }

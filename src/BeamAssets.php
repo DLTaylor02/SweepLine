@@ -46,9 +46,9 @@ final class BeamAssets
         return self::mesh($vertices,$triangles,$material);
     }
 
-    public static function mesh(array $vertices,array $triangles,string $material,array $textureCoordinates=[],array $faceMaterials=[]): string
+    public static function mesh(array $vertices,array $triangles,string $material,array $textureCoordinates=[],array $faceMaterials=[],array $detailCoordinates=[]): string
     {
-        $positions=[];$normals=[];$tex=[];$groups=[];$id=0;$textured=(bool)$textureCoordinates;
+        $positions=[];$normals=[];$tex=[];$detailTex=[];$groups=[];$id=0;$textured=(bool)$textureCoordinates;$detailed=$textured&&(bool)$detailCoordinates;
         foreach($triangles as $face=>$triangle){
             [$a,$b,$c]=array_map(static fn($i)=>$vertices[$i],$triangle);
             $u=[$b[0]-$a[0],$b[1]-$a[1],$b[2]-$a[2]];$v=[$c[0]-$a[0],$c[1]-$a[1],$c[2]-$a[2]];
@@ -57,16 +57,17 @@ final class BeamAssets
             foreach([$a,$b,$c] as $corner=>$p){
                 array_push($positions,...$p);array_push($normals,...array_map(static fn($x)=>$x/$len,$normal));
                 $groups[$group][]=$id;$groups[$group][]=$id;
-                if($textured){array_push($tex,...$textureCoordinates[$face][$corner]);$groups[$group][]=$id;}$id++;
+                if($textured){array_push($tex,...$textureCoordinates[$face][$corner]);$groups[$group][]=$id;}if($detailed){array_push($detailTex,...$detailCoordinates[$face][$corner]);$groups[$group][]=$id;}$id++;
             }
         }
         $count=$id*3;$mats='';$bindings='';$faces='';
         foreach($groups as $name=>$indices){
             $mats.='<material id="'.$name.'" name="'.$name.'"><instance_effect url="#surface-fx"/></material>';
-            $bindings.='<instance_material symbol="'.$name.'" target="#'.$name.'">'.($textured?'<bind_vertex_input semantic="UVSET0" input_semantic="TEXCOORD" input_set="0"/>':'').'</instance_material>';
-            $faces.='<triangles count="'.(count($indices)/($textured?9:6)).'" material="'.$name.'"><input semantic="VERTEX" source="#vertices" offset="0"/><input semantic="NORMAL" source="#normals" offset="1"/>'.($textured?'<input semantic="TEXCOORD" source="#uv" offset="2" set="0"/>':'').'<p>'.implode(' ',$indices).'</p></triangles>';
+            $bindings.='<instance_material symbol="'.$name.'" target="#'.$name.'">'.($textured?'<bind_vertex_input semantic="UVSET0" input_semantic="TEXCOORD" input_set="0"/>':'') .($detailed?'<bind_vertex_input semantic="UVSET1" input_semantic="TEXCOORD" input_set="1"/>':'').'</instance_material>';
+            $faces.='<triangles count="'.(count($indices)/($textured?($detailed?12:9):6)).'" material="'.$name.'"><input semantic="VERTEX" source="#vertices" offset="0"/><input semantic="NORMAL" source="#normals" offset="1"/>'.($textured?'<input semantic="TEXCOORD" source="#uv" offset="2" set="0"/>':'').($detailed?'<input semantic="TEXCOORD" source="#detail-uv" offset="3" set="1"/>':'').'<p>'.implode(' ',$indices).'</p></triangles>';
         }
         $uv=$textured?'<source id="uv"><float_array id="uv-array" count="'.count($tex).'">'.implode(' ',$tex).'</float_array><technique_common><accessor source="#uv-array" count="'.$id.'" stride="2"><param name="S" type="float"/><param name="T" type="float"/></accessor></technique_common></source>':'';
+        if($detailed)$uv.='<source id="detail-uv"><float_array id="detail-uv-array" count="'.count($detailTex).'">'.implode(' ',$detailTex).'</float_array><technique_common><accessor source="#detail-uv-array" count="'.$id.'" stride="2"><param name="S" type="float"/><param name="T" type="float"/></accessor></technique_common></source>';
         return '<?xml version="1.0" encoding="UTF-8"?><COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1"><asset><contributor><author>SweepLine</author></contributor><created>2026-01-01T00:00:00Z</created><modified>2026-01-01T00:00:00Z</modified><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset><library_effects><effect id="surface-fx"><profile_COMMON><technique sid="common"><lambert><diffuse><color>0.5 0.5 0.5 1</color></diffuse></lambert></technique></profile_COMMON></effect></library_effects><library_materials>'.$mats.'</library_materials><library_geometries><geometry id="mesh"><mesh><source id="positions"><float_array id="positions-array" count="'.$count.'">'.implode(' ',$positions).'</float_array><technique_common><accessor source="#positions-array" count="'.$id.'" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source><source id="normals"><float_array id="normals-array" count="'.$count.'">'.implode(' ',$normals).'</float_array><technique_common><accessor source="#normals-array" count="'.$id.'" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>'.$uv.'<vertices id="vertices"><input semantic="POSITION" source="#positions"/></vertices>'.$faces.'</mesh></geometry></library_geometries><library_visual_scenes><visual_scene id="scene"><node id="object2" name="object2"><instance_geometry url="#mesh"><bind_material><technique_common>'.$bindings.'</technique_common></bind_material></instance_geometry></node></visual_scene></library_visual_scenes><scene><instance_visual_scene url="#scene"/></scene></COLLADA>';
     }
 }
