@@ -22,7 +22,7 @@ final class BeamPavement
         $vertex=static function($p)use(&$vertices,&$lookup){$key=implode(',',array_map(static fn($v)=>sprintf('%.7F',$v),$p));if(isset($lookup[$key]))return $lookup[$key];$id=count($vertices);$vertices[]=$p;$lookup[$key]=$id;return $id;};
         $quad=static function($a,$b,$c,$d,$material,$uv)use(&$triangles,$vertex){
             $ids=array_map($vertex,[$a,$b,$c,$d]);
-            foreach([[0,1,2],[0,2,3]] as $t){$x=$ids[$t[0]];$y=$ids[$t[1]];$z=$ids[$t[2]];if($x===$y||$y===$z||$z===$x||abs(BeamPolygon::cross([$a,$b,$c,$d][$t[0]],[$a,$b,$c,$d][$t[1]],[$a,$b,$c,$d][$t[2]]))<0.00000001)continue;$triangles[]=['v'=>[$x,$y,$z],'uv'=>[$uv[$t[0]],$uv[$t[1]],$uv[$t[2]]],'material'=>$material];}
+            foreach([[0,1,2],[0,2,3]] as $t){$x=$ids[$t[0]];$y=$ids[$t[1]];$z=$ids[$t[2]];if($x===$y||$y===$z||$z===$x||BeamPolygon::cross([$a,$b,$c,$d][$t[0]],[$a,$b,$c,$d][$t[1]],[$a,$b,$c,$d][$t[2]])<=0.00000001)continue;$triangles[]=['v'=>[$x,$y,$z],'uv'=>[$uv[$t[0]],$uv[$t[1]],$uv[$t[2]]],'material'=>$material];}
         };
         $sections=$surfaceSections??BeamJunctionBoundary::sections($points,$profiles);
         for($i=1;$i<count($points);$i++){
@@ -40,7 +40,7 @@ final class BeamPavement
         foreach($obstacles as $obstacle)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true);
         $independentHeight=(bool)array_filter($obstacles,static fn($obstacle)=>($obstacle['weld_boundary']??true)===false);
         return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge',array_merge($rings?array_slice($rings,0,-1):[],$sections)),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
-            'connector_end_seam_m'=>($connector?0.0:null),'boundary_height_welding'=>!$independentHeight,'method'=>$independentHeight?'Exact XY overlap clipping; independent carriageway elevations preserved.':'Exact ribbon boundary; overlapping side pavement removed; contact heights shared with primary surface.'];
+            'connector_end_seam_m'=>($connector?0.0:null),'boundary_height_welding'=>!$independentHeight,'junction_height_blend_m'=>$independentHeight?0:BeamJunctionBoundary::HEIGHT_BLEND_M,'method'=>$independentHeight?'Exact XY overlap clipping; independent carriageway elevations preserved.':'Exact ribbon boundary; overlapping side pavement removed; junction heights blend continuously into the primary surface.'];
     }
 
     /** Visible thickness only. Never add collision sidewalls at pavement seams. */

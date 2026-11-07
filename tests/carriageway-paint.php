@@ -30,3 +30,17 @@ foreach([false,true] as $reverse){
     $maximum=0.;for($i=1;$i<count($joined);$i++)$maximum=max($maximum,abs($joined[$i][1]-$joined[$i-1][1]));
     check($maximum<0.25,'Split/merge lane anchoring has a bounded gradual lateral transition');
 })();
+
+(function(): void {
+    foreach([false,true] as $reverse){
+        $points=[];$raw=[];for($x=0;$x<=300;$x+=2){$points[]=[$x,0];$one=$x>=100&&$x<200;$p=\SweepLine\BeamLanes::infer(['lanes'=>$one?'2':'4'],'trunk',$one?1:0);$p['legal_forward']=!$reverse;$raw[]=$p;}
+        $profiles=\SweepLine\BeamRoadSurface::taper($points,$raw);$full=true;$minimum=INF;
+        foreach($profiles as $i=>$p){
+            if(!$raw[$i]['oneway'])$full=$full&&abs($p['width_m']-$raw[$i]['width_m'])<1e-8;
+            $paint=$p['lane_paint'];$edge=$reverse?0.:1.;
+            $minimum=min($minimum,abs($paint['f1']['u']-$paint['center']['u'])*$p['width_m'],abs($edge-$paint['f1']['u'])*$p['width_m']);
+        }
+        check($full,'Shared four-lane sections retain their full pavement width, orientation '.(int)$reverse);
+        check($minimum>=3.5-1e-7,'Both through lanes retain usable width throughout split and merge, orientation '.(int)$reverse);
+    }
+})();

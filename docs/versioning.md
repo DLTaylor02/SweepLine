@@ -2,7 +2,7 @@
 
 SweepLine uses a manually maintained `VERSION` file. Every commit is a release. Before committing a patch, increment the middle component once (for example, `0.123.0` to `0.124.0`) and include VERSION in that commit. Versions are no longer calculated from Git history.
 
-The initial numbering began at `0.1.0` and was caught up to the project's existing commits. The current release stamp is `0.123.0`. Future release numbers are maintained explicitly, including for documentation-only commits.
+The initial numbering began at `0.1.0` and was caught up to the project's existing commits. Read the current release stamp from `VERSION`. Future release numbers are maintained explicitly, including for documentation-only commits.
 
 The installer copies and validates the bundled VERSION without changing it. Full clones, shallow clones and source archives therefore deploy the same version. No Git access, commit hook or version-generation step is required on the server.
 

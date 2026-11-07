@@ -10,7 +10,7 @@ final class BeamTerrainContact
         $sections=$render?BeamJunctionBoundary::renderSections($road,$profiles,$render):BeamJunctionBoundary::sections($road,$profiles);$triangles=[];
         for($i=1;$i<count($sections);$i++){
             [$a,$b]=$sections[$i-1];[$d,$c]=$sections[$i];
-            $triangles[]=[$a,$b,$c];$triangles[]=[$a,$c,$d];
+            foreach([[$a,$b,$c],[$a,$c,$d]] as $triangle)if(BeamPolygon::cross(...$triangle)>1e-8)$triangles[]=$triangle;
         }
         return self::triangles($triangles,$raster,$origin,$protected,$progress);
     }
@@ -120,7 +120,7 @@ final class BeamTerrainContact
                 if($span['end_m']<$hi)$next[]=[max($lo,$span['end_m']),$hi];
             }$intervals=$next;}
             [$a,$b]=$sections[$i-1];[$d,$c]=$sections[$i];$a[]=$start;$b[]=$start;$c[]=$along;$d[]=$along;
-            foreach([[$a,$b,$c],[$a,$c,$d]] as $triangle)foreach($intervals as [$lo,$hi]){
+            foreach(array_filter([[$a,$b,$c],[$a,$c,$d]],static fn($triangle)=>BeamPolygon::cross(...$triangle)>1e-8) as $triangle)foreach($intervals as [$lo,$hi]){
                 $poly=$clipStation($clipStation($triangle,$lo,true),$hi,false);
                 for($j=1;$j<count($poly)-1;$j++)$out[]=[array_slice($poly[0],0,3),array_slice($poly[$j],0,3),array_slice($poly[$j+1],0,3)];
             }

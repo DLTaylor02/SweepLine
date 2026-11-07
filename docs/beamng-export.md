@@ -371,3 +371,14 @@ Divided-road anchoring fades over 100 feet at joins to shared two-way roads, rem
 Tunnels include a locally generated tiled concrete texture, a darker textured roof and a small ceiling fixture at every estimated point light. Housings have emissive undersides and no collision, and remain above the driving clearance. No game textures are copied or redistributed. The report records fixture counts. These are generic estimated interiors rather than reconstructions of actual tunnel fittings.
 
 A read-only replay of the supplied divided-road archive found 140 internal visual-fin triangles before the perimeter filter and zero after rebuilding. This verifies the generated mesh; fresh exports still need in-game visual and collision validation. Existing ZIPs are unchanged.
+
+
+## 0.124.0: divided-road width and junction height continuity
+
+At transitions between shared two-way pavement and separate carriageways, width and lane paint now use the same transition clock. The width taper occurs entirely on the one-way approach, preserving full shared-road width until the split and restoring it before the merge. Ordinary lane additions/removals keep their existing two-sided 100-foot taper. This prevents the original four-lane label from being painted onto pavement already narrowed for two lanes.
+
+True-junction clipping blends height corrections over four metres from the nearest external pavement edge, including its endpoints. A vertex barely outside the former one-micrometre welding tolerance therefore cannot retain a different height and form a narrow collision fin. Terrain contact and paint clipping share this rule. Overlap clipping of independent carriageways still preserves their own elevations, and median/bridge/tunnel-ground methods are unchanged.
+
+The supplied Tahoe archive contained 244 and 206 steep asphalt triangles on two opposite-carriageway side-road surfaces. A read-only replay using their saved geometry with continuous edge/endpoint blending produced zero triangles above 50% grade on either surface. These are offline mesh checks, not in-game validation; regenerate the map to apply the correction. No source downloads were required for the audit and the supplied archive was not modified.
+
+Tight side-road bends can also fold an inner ribbon triangle backward. Those overlap triangles are omitted instead of reversing their normals into steep driving surfaces; pavement cutters, paint height lookup and terrain contact use the same orientation rule. The replay also checked all three primary-road junctions: the remaining 83.8-grade spike was removed, with no junction triangles over 50% grade afterward.

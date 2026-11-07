@@ -35,7 +35,7 @@ final class BeamLanePaint
         foreach($profiles as $i=>&$p){
             $paint=$base;
             foreach($changes as [$at,$before,$after,$split,$afterOneWay]){
-                $t=$split?max(0,min(1,($chain[$i]-$at+($afterOneWay?0:30.48))/30.48)):max(0,min(1,($chain[$i]-$at+30.48)/60.96));$t=$t*$t*(3-2*$t);
+                $t=BeamRoadSurface::transitionProgress($chain[$i],$at,$split?$afterOneWay:null);
                 foreach($ids as $id)foreach(['u','visible'] as $key)$paint[$id][$key]+=($after[$id][$key]-$before[$id][$key])*$t;
             }
             // At a split, opposing lanes belong to the other carriageway; do not
@@ -61,7 +61,7 @@ final class BeamLanePaint
             $a=$ringA[0];$b=$ringA[1];$c=$ringB[1];$d=$ringB[0];$left=[];$right=[];
             foreach([0,1,2] as $k){$left[$k]=$a[$k]*(1-$t)+$d[$k]*$t;$right[$k]=$b[$k]*(1-$t)+$c[$k]*$t;}
             $p=[];foreach([0,1,2] as $k)$p[$k]=$left[$k]*(1-$u)+$right[$k]*$u;
-            foreach([[$a,$b,$c],[$a,$c,$d]] as $triangle){$w=BeamTerrainContact::weights($p,$triangle);if($w&&min($w)>=-1e-7){$p[2]=0.;foreach($w as $j=>$f)$p[2]+=$f*$triangle[$j][2];break;}}return $p;
+            foreach([[$a,$b,$c],[$a,$c,$d]] as $triangle){if(BeamPolygon::cross(...$triangle)<=1e-8)continue;$w=BeamTerrainContact::weights($p,$triangle);if($w&&min($w)>=-1e-7){$p[2]=0.;foreach($w as $j=>$f)$p[2]+=$f*$triangle[$j][2];break;}}return $p;
         };
         for($i=1;$i<count($points);$i++){
             $length=hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);$start=$along;$along+=$length;

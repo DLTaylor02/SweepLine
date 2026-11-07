@@ -5,6 +5,7 @@ namespace SweepLine;
 /** Exact ribbon boundary shared by primary pavement and adjoining collision meshes. */
 final class BeamJunctionBoundary
 {
+    public const HEIGHT_BLEND_M=4.;
     public static function sections(array $road,array $profiles): array
     {
         $out=[];foreach($road as $i=>$point)$out[]=BeamPavement::section($road,$profiles,$i);return $out;
@@ -48,13 +49,13 @@ final class BeamJunctionBoundary
     public static function cutters(array $road,array $profiles,array $vertices,?array $surfaceSections=null): array
     {
         if(!$vertices)return [];
-        $xs=array_column($vertices,0);$ys=array_column($vertices,1);$bounds=[min($xs)-0.01,min($ys)-0.01,max($xs)+0.01,max($ys)+0.01];$s=$surfaceSections??self::sections($road,$profiles);$out=[];
+        $xs=array_column($vertices,0);$ys=array_column($vertices,1);$bounds=[min($xs)-self::HEIGHT_BLEND_M,min($ys)-self::HEIGHT_BLEND_M,max($xs)+self::HEIGHT_BLEND_M,max($ys)+self::HEIGHT_BLEND_M];$s=$surfaceSections??self::sections($road,$profiles);$out=[];
         for($i=1;$i<count($s);$i++){
             $a=$s[$i-1][0];$b=$s[$i-1][1];$c=$s[$i][1];$d=$s[$i][0];
             foreach([[$a,$b,$c],[$a,$c,$d]] as $triangle){
                 $x=array_column($triangle,0);$y=array_column($triangle,1);
                 if(max($x)<$bounds[0]||min($x)>$bounds[2]||max($y)<$bounds[1]||min($y)>$bounds[3])continue;
-                if(BeamPolygon::cross(...$triangle)<0)$triangle=array_reverse($triangle);
+                if(BeamPolygon::cross(...$triangle)<=1e-8)continue;
                 $out[]=$triangle;
             }
         }
@@ -82,7 +83,7 @@ final class BeamJunctionBoundary
     {
         $cutters=self::cutters($road,$profiles,$vertices,$surfaceSections);$s=$surfaceSections??self::sections($road,$profiles);$result=[];$out=[];$lookup=[];$edges=[];
         $xs=array_column($vertices,0);$ys=array_column($vertices,1);if(!$xs)return [$vertices,$triangles];
-        $bounds=[min($xs)-0.01,min($ys)-0.01,max($xs)+0.01,max($ys)+0.01];
+        $bounds=[min($xs)-self::HEIGHT_BLEND_M,min($ys)-self::HEIGHT_BLEND_M,max($xs)+self::HEIGHT_BLEND_M,max($ys)+self::HEIGHT_BLEND_M];
         if($weldBoundary)for($i=1;$i<count($s);$i++)foreach([0,1] as $side){
             $a=$s[$i-1][$side];$b=$s[$i][$side];
             if(max($a[0],$b[0])<$bounds[0]||min($a[0],$b[0])>$bounds[2]||max($a[1],$b[1])<$bounds[1]||min($a[1],$b[1])>$bounds[3])continue;
@@ -102,11 +103,17 @@ final class BeamJunctionBoundary
             }
             foreach($pieces as $piece){
                 foreach($piece as &$p){
-                    // Only real external ribbon edges set contact elevation; never internal diagonals.
+                    // A tolerance-only height snap creates vertical slivers when two
+                    // nearly coincident clip vertices fall on opposite sides of it.
+                    // Blend from the true external edge; independent carriageways
+                    // have no edges here and retain their original elevations.
+                    $nearest=self::HEIGHT_BLEND_M;$height=null;
                     foreach($edges as [$a,$b]){$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$l=$dx*$dx+$dy*$dy;if($l<1e-12)continue;
-                        $t=(($p[0]-$a[0])*$dx+($p[1]-$a[1])*$dy)/$l;
-                        if($t>=-1e-8&&$t<=1+1e-8&&hypot($p[0]-$a[0]-$t*$dx,$p[1]-$a[1]-$t*$dy)<0.000001)$p[2]=$a[2]+$t*($b[2]-$a[2]);
+                        $t=max(0,min(1,(($p[0]-$a[0])*$dx+($p[1]-$a[1])*$dy)/$l));
+                        $distance=hypot($p[0]-$a[0]-$t*$dx,$p[1]-$a[1]-$t*$dy);
+                        if($distance<$nearest){$nearest=$distance;$height=$a[2]+$t*($b[2]-$a[2]);}
                     }
+                    if($height!==null){$t=$nearest<1e-6?0:$nearest/self::HEIGHT_BLEND_M;$weight=1-$t*$t*(3-2*$t);$p[2]+=($height-$p[2])*$weight;}
                 }unset($p);
                 for($i=1;$i<count($piece)-1;$i++){
                     $p=[$piece[0],$piece[$i],$piece[$i+1]];if(abs(BeamPolygon::cross(...$p))<1e-8)continue;

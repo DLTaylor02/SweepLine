@@ -160,3 +160,23 @@ check(abs(min(array_column($weldedVertices,2))-50)<1e-8&&abs(max(array_column($w
     for($i=0;$i<count($values);$i+=3){$x=$values[$i]+$mesh['position'][0];$y=$values[$i+1]+$mesh['position'][1];$valid=$valid&&(abs($x)<1e-6||abs($x-100)<1e-6||abs($y-1)<1e-6||abs($y-11)<1e-6);}
     check($valid,'Clipped road interiors never receive vertical visual fins');
 })();
+
+(function(): void {
+    $road=[[0,0,0],[100,0,0]];$profiles=[['width_m'=>10.],['width_m'=>10.]];
+    $v=[[99.9999,5,0.6],[100.00001,5.000001,0.6],[99,7,0.6]];
+    $f=[['v'=>[0,1,2],'uv'=>[[0,0],[1,0],[0,1]],'material'=>'test']];
+    [$v,$f]=\SweepLine\BeamJunctionBoundary::trim($v,$f,$road,$profiles);
+    $maximum=0.;foreach($f as $face){[$a,$b,$c]=array_map(static fn($i)=>$v[$i],$face['v']);$u=[$b[0]-$a[0],$b[1]-$a[1],$b[2]-$a[2]];$w=[$c[0]-$a[0],$c[1]-$a[1],$c[2]-$a[2]];$maximum=max($maximum,hypot($u[1]*$w[2]-$u[2]*$w[1],$u[2]*$w[0]-$u[0]*$w[2])/max(1e-12,abs($u[0]*$w[1]-$u[1]*$w[0])));}
+    check(count($f)>0&&$maximum<0.5,'Nearly coincident junction vertices at a road endpoint cannot form asphalt fins');
+})();
+
+(function(): void {
+    // Synthetic short inside bend: one ribbon triangle folds back over its neighbor.
+    $points=[[0,0,0],[1.83784308,-0.07487521,0.28497895]];$p=\SweepLine\BeamLanes::infer(['lanes'=>'2'],'secondary',0);$p['width_m']=9.2192;
+    $sections=[[[0.18764317,4.60577922,0],[-0.18764317,-4.60577922,0]],[[3.85107925,4.07184545,0.28497895],[-0.17539309,-4.22159588,0.28497895]]];
+    $mesh=\SweepLine\BeamPavement::build(['points'=>$points,'profiles'=>[$p,$p]],$points,[$p,$p],'fold_fixture',$sections);
+    $xml=simplexml_load_string($mesh['xml']);$xml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
+    $values=array_map('floatval',preg_split('/\s+/',trim((string)$xml->xpath('//c:source[@id="positions"]/c:float_array')[0])));$maximum=0.;
+    foreach($xml->xpath('//c:triangles') as $group){$indices=array_map('intval',preg_split('/\s+/',trim((string)$group->p)));for($i=0;$i<count($indices);$i+=9){[$a,$b,$c]=array_map(static fn($j)=>array_slice($values,$indices[$i+$j*3]*3,3),[0,1,2]);$u=[$b[0]-$a[0],$b[1]-$a[1],$b[2]-$a[2]];$v=[$c[0]-$a[0],$c[1]-$a[1],$c[2]-$a[2]];$maximum=max($maximum,hypot($u[1]*$v[2]-$u[2]*$v[1],$u[2]*$v[0]-$u[0]*$v[2])/max(1e-12,abs($u[0]*$v[1]-$u[1]*$v[0])));}}
+    check($mesh['triangles']>0&&$maximum<0.5,'A backwards-folding inside road edge cannot become an upright asphalt spike');
+})();

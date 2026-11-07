@@ -13,13 +13,19 @@ final class BeamRoadSurface
             $profile['width_m']+=2*self::PAVED_SHOULDER_M;
         }unset($profile);return $profiles;
     }
+    /** Shared geometry/paint clock. Divided joins taper only on their one-way side. */
+    public static function transitionProgress(float $along,float $at,?bool $afterOneWay=null): float
+    {
+        $t=$afterOneWay===null?($along-$at+30.48)/60.96:($along-$at+($afterOneWay?0:30.48))/30.48;
+        $t=max(0,min(1,$t));return $t*$t*(3-2*$t);
+    }
     public static function taper(array $points,array $profiles): array
     {
         $original=$profiles;
         $chain=[0.0];for($i=1;$i<count($points);$i++)$chain[]=$chain[$i-1]+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);
-        $changes=[];for($i=1;$i<count($profiles);$i++)if(abs($profiles[$i]["width_m"]-$profiles[$i-1]["width_m"])>0.01 || $profiles[$i]["lanes"]!==$profiles[$i-1]["lanes"] || ($profiles[$i]["oneway"]??false)!==($profiles[$i-1]["oneway"]??false) || ($profiles[$i]["forward"]??0)!==($profiles[$i-1]["forward"]??0) || ($profiles[$i]["backward"]??0)!==($profiles[$i-1]["backward"]??0))$changes[]=[$chain[$i],$profiles[$i]["width_m"]-$profiles[$i-1]["width_m"]];
+        $changes=[];for($i=1;$i<count($profiles);$i++)if(abs($profiles[$i]["width_m"]-$profiles[$i-1]["width_m"])>0.01 || $profiles[$i]["lanes"]!==$profiles[$i-1]["lanes"] || ($profiles[$i]["oneway"]??false)!==($profiles[$i-1]["oneway"]??false) || ($profiles[$i]["forward"]??0)!==($profiles[$i-1]["forward"]??0) || ($profiles[$i]["backward"]??0)!==($profiles[$i-1]["backward"]??0))$changes[]=[$chain[$i],$profiles[$i]["width_m"]-$profiles[$i-1]["width_m"],($profiles[$i]["oneway"]??false)!==($profiles[$i-1]["oneway"]??false),$profiles[$i]["oneway"]??false];
         $baseWidth=$profiles[0]["width_m"];
-        foreach($profiles as $i=>&$profile){$width=$baseWidth;$profile["transition"]=false;foreach($changes as [$at,$delta]){if(abs($chain[$i]-$at)<30.48)$profile["transition"]=true;$t=max(0,min(1,($chain[$i]-$at+30.48)/60.96));$width+=$delta*($t*$t*(3-2*$t));}$profile["width_m"]=max(2.4,$width);}unset($profile);
+        foreach($profiles as $i=>&$profile){$width=$baseWidth;$profile["transition"]=false;foreach($changes as [$at,$delta,$split,$afterOneWay]){$t=self::transitionProgress($chain[$i],$at,$split?$afterOneWay:null);$inside=$split?($afterOneWay?$chain[$i]>=$at&&$chain[$i]<=$at+30.48:$chain[$i]>=$at-30.48&&$chain[$i]<=$at):abs($chain[$i]-$at)<30.48;if($inside)$profile["transition"]=true;$width+=$delta*$t;}$profile["width_m"]=max(2.4,$width);}unset($profile);
         return BeamLanePaint::profiles($chain,$profiles,$original);
     }
     /** Protect every terrain cell corner supporting primary pavement during branch passes. */
