@@ -162,8 +162,9 @@ final class BeamMap
         foreach($carriageways as &$track)$track['terrain_correction']['exact_pavement']=BeamTerrainContact::clear($track['road'],$track['profiles'],$raster,$origin,$mainStructureMask|$companionMask,$progress,BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']);
         unset($track);
         $medianMask=$mainStructureMask|$companionMask;
-        foreach($preparedIntersections['roads'] as $branch)$medianMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianMask);
-        foreach($carriageways as $track)foreach($track['context']['roads'] as $branch)$medianMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianMask);
+        $medianSurfaceMask=str_repeat("\0",$n*$n);
+        foreach($preparedIntersections['roads'] as $branch){$medianMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianMask);$medianSurfaceMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianSurfaceMask);}
+        foreach($carriageways as $track)foreach($track['context']['roads'] as $branch){$medianMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianMask);$medianSurfaceMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianSurfaceMask);}
         $median=BeamMedian::build($road,$profiles,$carriageways,$coveredSpans,$raster,$origin,$medianMask,$progress);
         $repairSurfaces=[['name'=>'primary','road'=>$road,'profiles'=>$profiles,'spans'=>$coveredSpans,'render'=>BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']]];
         foreach($carriageways as $track)$repairSurfaces[]=['name'=>$track['name'],'road'=>$track['road'],'profiles'=>$track['profiles'],'obstacles'=>[['road'=>$road,'profiles'=>$profiles,'weld_boundary'=>false]],'spans'=>array_merge($track['bridges'],$track['tunnels']),'render'=>BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']];
@@ -199,7 +200,7 @@ final class BeamMap
                 $tunnelGeometry['terrain_files']=BeamGroundMaterials::write($tunnelGround,'art/tunnels/terrain-patch.dae',$putMesh);$tunnelGeometry['report']['mesh_parts']=count($tunnelGeometry['terrain_files']);$tunnelGeometry['report']['ground_materials']=$tunnelGround['report'];$tunnelGround=['materials'=>$tunnelGround['materials']];
             }
             $progress('Building exact pavement-edge median terrain');
-            $medianSurface=BeamMedianSurface::build($road,$profiles,$carriageways,$coveredSpans,$raster,$medianMask,$categories,$progress,$origin,$maxHeight);
+            $medianSurface=BeamMedianSurface::build($road,$profiles,$carriageways,$coveredSpans,$raster,$medianSurfaceMask,$categories,$progress,$origin,$maxHeight);
             $medianSurface=BeamMedianSurface::replaceCells($medianSurface,$raster,$origin,$categories,$progress,$maxHeight);
             $categories=$medianSurface['layers'];unset($medianSurface['layers']);
             $median['report']['refined_surface']=$medianSurface['report'];
@@ -231,12 +232,15 @@ final class BeamMap
                 ['class'=>'TerrainBlock','name'=>'theTerrain','__parent'=>'MissionGroup','position'=>[0,0,0],'terrainFile'=>$path.'theTerrain.ter','squareSize'=>$step,'maxHeight'=>$maxHeight,'baseTexSize'=>1024,'castShadows'=>true,'materialTextureSet'=>$prefix.'_terrain_set']];
             if($tunnelGeometry['shell']!==null){
                 $put('art/tunnels/interior.dae',$tunnelGeometry['shell']);
+                $put('art/tunnels/concrete.color.png',BeamTunnelFinish::texture());
+                $put('art/tunnels/light-fixture.dae',BeamTunnelFinish::fixture($prefix.'_tunnel_fixture'));
                 $tunnelMaterial=$prefix.'_tunnel';
                 $put('art/tunnels/main.materials.json',self::json([
-                    $tunnelMaterial=>['class'=>'Material','name'=>$tunnelMaterial,'mapTo'=>$tunnelMaterial,'version'=>1,'doubleSided'=>true,'groundType'=>'CONCRETE','Stages'=>[['diffuseColor'=>[0.55,0.56,0.57,1]]]],
+                    ...BeamTunnelFinish::materials($tunnelMaterial,$path),
                 ]+($tunnelGround['materials']??[])));
                 foreach(['interior'] as $part)$objects[]=['class'=>'TSStatic','name'=>'tunnel_'.$part,'__parent'=>'MissionGroup','shapeName'=>$path.'art/tunnels/'.$part.'.dae','position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None','castShadows'=>true];
                 foreach($tunnelGeometry['terrain_files'] as $i=>$file)$objects[]=['class'=>'TSStatic','name'=>'tunnel_terrain-patch'.($i?'_'.$i:''),'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None','castShadows'=>true];
+                foreach($tunnelGeometry['objects'] as &$tunnelObject)if($tunnelObject['class']==='TSStatic')$tunnelObject['shapeName']=$path.$tunnelObject['shapeName'];unset($tunnelObject);
                 $objects=array_merge($objects,$tunnelGeometry['objects']);unset($tunnelGeometry['shell'],$tunnelGeometry['terrain'],$tunnelGeometry['objects']);
             }
             if($medianGround['has_faces']){

@@ -1,6 +1,12 @@
 # SweepLine changelog
 
-## Unreleased
+Every commit is a release. Versions follow `0.<reachable commit count>.0`; there is no separate release or publishing step. The notes below summarize changes across the commit history. Working-tree edits become released when committed.
+
+## Commit release notes
+
+- Improve median contact on bridge/tunnel approaches without filling structure interiors. Smooth divided-road anchor transitions, keep yellow split/merge paint out of opposing shared lanes, and limit road fascia to the true perimeter to remove internal fins. Add textured concrete tunnel walls/ceilings and visible emissive light fixtures.
+
+
 
 - Introduce commit-based versions starting at 0.120.0 for the 120 existing commits, automatically stamped during installation. Display the version on every page and in GPX, KMZ, PDF and BeamNG exports, including previews and build metadata.
 

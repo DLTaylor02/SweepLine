@@ -360,3 +360,14 @@ The final tunnel pavement cut connects newly cut external terrain edges, trims c
 
 Split/merge paint distinguishes through lanes from the opposing carriageway. Opposing dividers stop at the shared two-way approach rather than sweeping across the selected one-way lanes. Yellow median boundaries remain at the travel-left edge; reverse-oriented exports use separate material identities. Direction-layout changes trigger paint transitions even when width is unchanged.
 
+
+
+## Structure approaches, divided joins and tunnel interiors
+
+Median replacement ground now uses exact structure spans instead of the broad native-terrain protection halo. Bridge decks and tunnel spans stay excluded, as do native tunnel-hole cells and side-road support. The median interior retains its 20 m end blend, while a 2 m band at each paved edge retains contact until the final 2 m seam transition. This avoids tapering the whole road edge down throughout the approach. No terrain is filled beneath bridge interiors or over tunnel openings.
+
+Divided-road anchoring fades over 100 feet at joins to shared two-way roads, removing sudden sideways offsets without changing ordinary one-way lane widening. Yellow split/merge paint transitions on the divided approach; shared two-way sections retain their center divider. Pavement visual thickness is limited to the true perimeter, with coincident clipped edges deduplicated, so internal triangulation cuts cannot create fins. Driving collision remains the top pavement surface.
+
+Tunnels include a locally generated tiled concrete texture, a darker textured roof and a small ceiling fixture at every estimated point light. Housings have emissive undersides and no collision, and remain above the driving clearance. No game textures are copied or redistributed. The report records fixture counts. These are generic estimated interiors rather than reconstructions of actual tunnel fittings.
+
+A read-only replay of the supplied divided-road archive found 140 internal visual-fin triangles before the perimeter filter and zero after rebuilding. This verifies the generated mesh; fresh exports still need in-game visual and collision validation. Existing ZIPs are unchanged.

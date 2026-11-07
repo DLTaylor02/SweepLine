@@ -35,7 +35,7 @@ final class BeamLanePaint
         foreach($profiles as $i=>&$p){
             $paint=$base;
             foreach($changes as [$at,$before,$after,$split,$afterOneWay]){
-                $t=$split?max(0,min(1,($chain[$i]-$at+($afterOneWay?30.48:0))/30.48)):max(0,min(1,($chain[$i]-$at+30.48)/60.96));$t=$t*$t*(3-2*$t);
+                $t=$split?max(0,min(1,($chain[$i]-$at+($afterOneWay?0:30.48))/30.48)):max(0,min(1,($chain[$i]-$at+30.48)/60.96));$t=$t*$t*(3-2*$t);
                 foreach($ids as $id)foreach(['u','visible'] as $key)$paint[$id][$key]+=($after[$id][$key]-$before[$id][$key])*$t;
             }
             // At a split, opposing lanes belong to the other carriageway; do not

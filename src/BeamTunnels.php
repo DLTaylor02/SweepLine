@@ -82,10 +82,10 @@ final class BeamTunnels
         foreach($additional as $track){$work[]=['road'=>$track['road'],'profiles'=>$track['profiles'],'spans'=>$track['tunnels']];foreach($track['tunnels'] as $s)$reportedSpans[]=$s+['track'=>$track['name']];}
         if(count($reportedSpans)>4)throw new \RuntimeException('Combined carriageways exceed the four-tunnel export limit.');
         if(!$reportedSpans)return ['layers'=>$layers,'shell'=>null,'terrain'=>null,'objects'=>[],'report'=>['spans'=>[],'hole_cells'=>0]];
-        $n=$raster->size;$step=$raster->side/$n;$vertices=[];$faces=[];$uv=[];$cells=[];$volumes=[];$lights=[];$exclusions=[];
-        $quad=static function($a,$b,$c,$d)use(&$vertices,&$faces,&$uv){
+        $n=$raster->size;$step=$raster->side/$n;$vertices=[];$faces=[];$uv=[];$faceMaterials=[];$cells=[];$volumes=[];$lights=[];$exclusions=[];
+        $quad=static function($a,$b,$c,$d,bool $roof=false)use(&$vertices,&$faces,&$uv,&$faceMaterials,$material){
             $base=count($vertices);array_push($vertices,$a,$b,$c,$d);$faces[]=[$base,$base+1,$base+2];$faces[]=[$base,$base+2,$base+3];
-            $length=hypot($b[0]-$a[0],$b[1]-$a[1]);$uv[]=[[0,0],[$length/4,0],[$length/4,1]];$uv[]=[[0,0],[$length/4,1],[0,1]];
+            $length=hypot($b[0]-$a[0],hypot($b[1]-$a[1],$b[2]-$a[2]));$across=hypot($c[0]-$b[0],hypot($c[1]-$b[1],$c[2]-$b[2]))/4;$uv[]=[[0,0],[$length/4,0],[$length/4,$across]];$uv[]=[[0,0],[$length/4,$across],[0,$across]];$faceMaterials[]=$faceMaterials[]=$material.($roof?'_roof':'');
         };
         foreach($work as $trackIndex=>$track){$road=$track['road'];$profiles=$track['profiles'];
         foreach($track['spans'] as $number=>$span){
@@ -100,7 +100,7 @@ final class BeamTunnels
                 $profile=[[-$half-0.35,-0.3],[-$half,-0.3],[-$half,$h],[$half,$h],[$half,-0.3],[$half+0.35,-0.3],[$half+0.35,$h+0.35],[-$half-0.35,$h+0.35]];
                 $ring=[];foreach($profile as [$across,$z])$ring[]=[$p[0]+$dx*$across,$p[1]+$dy*$across,$p[2]+$z];$rings[]=$ring;
                 if($i){
-                    $previous=$rings[$i-1];for($j=0;$j<8;$j++){$k=($j+1)%8;$quad($previous[$j],$ring[$j],$ring[$k],$previous[$k]);}
+                    $previous=$rings[$i-1];for($j=0;$j<8;$j++){$k=($j+1)%8;$quad($previous[$j],$ring[$j],$ring[$k],$previous[$k],$j===2||$j===6);}
                     // Walkway bands meet the road edge without placing another floor under driving lanes.
                     $a=$points[$i-1];$b=$p;$oldHalf=$stations[$i-1]['width']/2;$newHalf=$s['width']/2;
                     foreach([-1,1] as $sign){$da=[$previous[3][0]-$previous[2][0],$previous[3][1]-$previous[2][1]];$dl=hypot(...$da);$da=[$da[0]/$dl,$da[1]/$dl];
@@ -109,12 +109,14 @@ final class BeamTunnels
                             [$b[0]+$dx*$half*$sign,$b[1]+$dy*$half*$sign,$b[2]-0.02],
                             [$a[0]+$da[0]*($oldHalf+0.75)*$sign,$a[1]+$da[1]*($oldHalf+0.75)*$sign,$a[2]-0.02]];if($sign>0)$band=array_reverse($band);$quad(...$band);}
                 }
-                if($i%20===10)$lights[]=['class'=>'PointLight','name'=>'tunnel_'.$trackIndex.'_'.$number.'_light_'.$i,'__parent'=>'MissionGroup','position'=>[$p[0],$p[1],$p[2]+$h-0.3],'radius'=>24,'brightness'=>0.8,'color'=>[0.9,0.86,0.78,1],'castShadows'=>false];
+                if($i%20===10){$lights[]=['class'=>'PointLight','name'=>'tunnel_'.$trackIndex.'_'.$number.'_light_'.$i,'__parent'=>'MissionGroup','position'=>[$p[0],$p[1],$p[2]+$h-0.3],'radius'=>24,'brightness'=>0.8,'color'=>[0.9,0.86,0.78,1],'castShadows'=>false];
+                    $lights[]=['class'=>'TSStatic','name'=>'tunnel_'.$trackIndex.'_'.$number.'_fixture_'.$i,'__parent'=>'MissionGroup','shapeName'=>'art/tunnels/light-fixture.dae','position'=>[$p[0],$p[1],$p[2]+$h-0.01],'rotationMatrix'=>[$dy,-$dx,0,$dx,$dy,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'None','decalType'=>'None','castShadows'=>true];
+                }
             }
             foreach([0,count($rings)-1] as $endIndex){
                 $p=$stations[$endIndex]['point'];$half=$stations[$endIndex]['width']/2+0.75;$h=$span['clearance_m'];
                 $profile=[[-$half-0.35,-0.3],[-$half,-0.3],[-$half,$h],[$half,$h],[$half,-0.3],[$half+0.35,-0.3],[$half+0.35,$h+0.35],[-$half-0.35,$h+0.35]];
-                foreach(BeamPolygon::triangles($profile) as $t){$base=count($vertices);foreach($t as $j)$vertices[]=$rings[$endIndex][$j];$faces[]=$endIndex===0?[$base,$base+1,$base+2]:[$base+2,$base+1,$base];$uv[]=[[0,0],[1,0],[1,1]];}
+                foreach(BeamPolygon::triangles($profile) as $t){$base=count($vertices);foreach($t as $j)$vertices[]=$rings[$endIndex][$j];$faces[]=$endIndex===0?[$base,$base+1,$base+2]:[$base+2,$base+1,$base];$uv[]=[[0,0],[1,0],[1,1]];$faceMaterials[]=$material;}
             }
             $exclusions[]=['points'=>array_slice($points,0,min(12,count($points))),'width_m'=>$stations[0]['width']+2*$step+3];
             $exclusions[]=['points'=>array_slice($points,-min(12,count($points))),'width_m'=>$stations[count($stations)-1]['width']+2*$step+3];
@@ -241,8 +243,8 @@ final class BeamTunnels
         $terrainSurface=BeamTunnelClearance::clear(['vertices'=>$terrainVertices,'faces'=>$terrainFaces,'uv'=>$terrainUv],$pavements,$progress,$clearance);
         unset($terrainVertices,$terrainFaces,$terrainUv,$pavements);
         if($deferTerrainMesh)unset($terrainSurface['uv']);
-        return ['terrain_surface'=>$terrainSurface,'layers'=>$layers,'shell'=>BeamAssets::mesh($vertices,$faces,$material,$uv),'terrain'=>$deferTerrainMesh?null:BeamAssets::mesh($terrainSurface['vertices'],$terrainSurface['faces'],$terrainMaterial,$terrainSurface['uv']),
-            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['spans'=>$reportedSpans,'hole_cells'=>count($cells),'exact_pavement_clearance'=>$terrainSurface['report'],'terrain_patch_triangles'=>count($terrainSurface['faces']),'excavated_floor_pieces'=>$floorPieces,'excavation_wall_triangles'=>$wallFaces,'floor_clearance_m'=>0.05,'estimated'=>true,
+        return ['terrain_surface'=>$terrainSurface,'layers'=>$layers,'shell'=>BeamAssets::mesh($vertices,$faces,$material,$uv,$faceMaterials),'terrain'=>$deferTerrainMesh?null:BeamAssets::mesh($terrainSurface['vertices'],$terrainSurface['faces'],$terrainMaterial,$terrainSurface['uv']),
+            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['light_fixtures'=>count(array_filter($lights,static fn($o)=>$o['class']==='TSStatic')),'spans'=>$reportedSpans,'hole_cells'=>count($cells),'exact_pavement_clearance'=>$terrainSurface['report'],'terrain_patch_triangles'=>count($terrainSurface['faces']),'excavated_floor_pieces'=>$floorPieces,'excavation_wall_triangles'=>$wallFaces,'floor_clearance_m'=>0.05,'estimated'=>true,
                 'method'=>'Approach-derived floor; generic concrete single bore and portals; native holes with clipped replacement terrain preserving overburden.','limitations'=>'Underground grade, clearance, portals and lighting are estimates. Not a surveyed tunnel model.']];
     }
 }

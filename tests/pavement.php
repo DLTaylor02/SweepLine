@@ -150,3 +150,13 @@ $heightFaces=[['v'=>[0,1,2],'uv'=>[[0,0],[1,0],[1,1]],'material'=>'test'],['v'=>
 check(count($unweldedFaces)>0&&max(array_map(static fn($p)=>abs($p[2]-52),$unweldedVertices))<1e-8,'Independent overlapping pavement preserves its original height at every new clip vertex');
 [$weldedVertices,$weldedFaces]=SweepLine\BeamJunctionBoundary::trim($heightVertices,$heightFaces,$heightMain,$heightProfiles);
 check(abs(min(array_column($weldedVertices,2))-50)<1e-8&&abs(max(array_column($weldedVertices,2))-52)<1e-8,'True-junction clipping retains its default primary-edge height welding');
+
+(function(): void {
+    $main=[[0,0,0],[100,0,0]];$p=\SweepLine\BeamLanes::infer(['lanes'=>'2'],'secondary',0);$p['width_m']=10.;
+    $branch=['points'=>[[0,6,0],[20,6,0],[40,6,0],[60,6,0],[80,6,0],[100,6,0]],'profiles'=>array_fill(0,6,$p)];
+    $mesh=\SweepLine\BeamPavement::build($branch,$main,[$p,$p],'fin_fixture',null,[['road'=>$main,'profiles'=>[$p,$p],'weld_boundary'=>false]]);
+    $doc=simplexml_load_string($mesh['fascia_xml']);$v=$doc->xpath('//*[local-name()="source" and @id="positions"]/*[local-name()="float_array"]');
+    $values=array_map('floatval',preg_split('/\s+/',trim((string)$v[0])));$valid=(bool)$values;
+    for($i=0;$i<count($values);$i+=3){$x=$values[$i]+$mesh['position'][0];$y=$values[$i+1]+$mesh['position'][1];$valid=$valid&&(abs($x)<1e-6||abs($x-100)<1e-6||abs($y-1)<1e-6||abs($y-11)<1e-6);}
+    check($valid,'Clipped road interiors never receive vertical visual fins');
+})();

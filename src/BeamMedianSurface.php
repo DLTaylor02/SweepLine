@@ -18,7 +18,7 @@ final class BeamMedianSurface
         };
         $step=$raster->side/$raster->size;$n=$raster->size;
         foreach($tracks as $track){
-            $pairs=BeamMedian::pairs($main,$profiles,$track,$spans);$previous=null;
+            $pairs=BeamMedian::pairs($main,$profiles,$track,$spans,0);$previous=null;
             foreach($pairs as $i=>$pair){
                 if($i%100===0)$progress(null);
                 if($previous===null||$i!==$previous[0]+1){$previous=[$i,$pair];continue;}
@@ -26,6 +26,7 @@ final class BeamMedianSurface
                 if(min($prev['gap'],$pair['gap'])<0||max($prev['gap'],$pair['gap'])>40||$prev['main_side']!==$pair['main_side']){$skipped++;continue;}
                 $lo=min($prev['main_along'],$pair['main_along']);$hi=max($prev['main_along'],$pair['main_along']);
                 if($hi-$lo>80){$skipped++;continue;}
+                $crossed=false;foreach($spans as $span)if($lo<$span['end_m']&&$hi>$span['start_m'])$crossed=true;foreach(array_merge($track['bridges'],$track['tunnels']) as $span)if($prev['along']<$span['end_m']&&$pair['along']>$span['start_m'])$crossed=true;if($crossed){$skipped++;continue;}
                 // Include EVERY primary edge station; otherwise a patch chord cuts a curved road edge.
                 $edge=[$prev['a']];$inside=[];
                 for($j=max(0,min($prev['main_segment'],$pair['main_segment'])-1);$j<=min(count($main)-1,max($prev['main_segment'],$pair['main_segment']));$j++)
@@ -77,6 +78,10 @@ final class BeamMedianSurface
                                 $weights=BeamTerrainContact::weights($p,$tri);$target=-self::EDGE_CLEARANCE_M;foreach($weights as $k=>$w)$target+=$w*$tri[$k][2];
                                 $t=$length2>1e-9?max(0,min(1,(($p[0]-$piece['a'][0])*$dx+($p[1]-$piece['a'][1])*$dy)/$length2)):0.;
                                 $at=$piece['start']+($piece['end']-$piece['start'])*$t;$fade=max(0,min(1,min($at-$runStart,$runEnd-$at)/20));$fade=$fade*$fade*(3-2*$fade);
+                                // Keep pavement-edge contact even while the interior fades at a run end.
+                                $edgeDistance=INF;foreach($piece['polygon'] as $k=>$edgePoint){$nextPoint=$piece['polygon'][($k+1)%count($piece['polygon'])];if($k>=count($piece['polygon'])-3)continue;$edgeDistance=min($edgeDistance,BeamLanes::distance($p,$edgePoint,$nextPoint)[0]);}
+                                $otherA=$piece['polygon'][count($piece['polygon'])-2];$otherB=$piece['polygon'][count($piece['polygon'])-1];$edgeDistance=min($edgeDistance,BeamLanes::distance($p,$otherA,$otherB)[0]);
+                                $edgeWeight=max(0,1-$edgeDistance/2);$edgeWeight=$edgeWeight*$edgeWeight*(3-2*$edgeWeight);$endBlend=max(0,min(1,min($at-$runStart,$runEnd-$at)/2));$edgeWeight*=$endBlend*$endBlend*(3-2*$endBlend);$fade=max($fade,$edgeWeight);
                                 $ground=self::nativeHeight($raster,$p[0],$p[1],$origin,$heightRange);$out[]=[$p[0],$p[1],$ground*(1-$fade)+$target*$fade];
                             }
                             if(abs(BeamPolygon::cross(...$out))<1e-8)continue;

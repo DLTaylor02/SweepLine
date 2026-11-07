@@ -39,20 +39,25 @@ final class BeamPavement
         if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles);
         foreach($obstacles as $obstacle)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true);
         $independentHeight=(bool)array_filter($obstacles,static fn($obstacle)=>($obstacle['weld_boundary']??true)===false);
-        return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge'),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
+        return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge',array_merge($rings?array_slice($rings,0,-1):[],$sections)),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
             'connector_end_seam_m'=>($connector?0.0:null),'boundary_height_welding'=>!$independentHeight,'method'=>$independentHeight?'Exact XY overlap clipping; independent carriageway elevations preserved.':'Exact ribbon boundary; overlapping side pavement removed; contact heights shared with primary surface.'];
     }
 
     /** Visible thickness only. Never add collision sidewalls at pavement seams. */
-    private static function fascia(array $vertices,array $triangles,array $origin,string $material): string
+    private static function fascia(array $vertices,array $triangles,array $origin,string $material,array $sections): string
     {
+        $boundary=new BeamRoadIndex([['points'=>array_column($sections,0)],['points'=>array_column($sections,1)],['points'=>$sections[0]],['points'=>$sections[count($sections)-1]]]);
         $edges=[];foreach($triangles as $triangle)foreach([[0,1],[1,2],[2,0]] as [$a,$b]){
-            $x=$triangle['v'][$a];$y=$triangle['v'][$b];$key=min($x,$y).':'.max($x,$y);
+            $x=$triangle['v'][$a];$y=$triangle['v'][$b];$keys=[];foreach([$vertices[$x],$vertices[$y]] as $point)$keys[]=implode(',',array_map(static fn($v)=>sprintf('%.7F',$v),$point));sort($keys);$key=implode('|',$keys);
             if(isset($edges[$key]))$edges[$key]['count']++;else $edges[$key]=['count'=>1,'a'=>$x,'b'=>$y];
         }
         $points=[];$faces=[];
         foreach($edges as $edge)if($edge['count']===1){
-            $a=$vertices[$edge['a']];$b=$vertices[$edge['b']];if(hypot($b[0]-$a[0],$b[1]-$a[1])<0.001)continue;$base=count($points);
+            $a=$vertices[$edge['a']];$b=$vertices[$edge['b']];$mid=[($a[0]+$b[0])/2,($a[1]+$b[1])/2];
+            // Clipping can duplicate/split internal triangle edges. Only the real
+            // pavement perimeter receives visual thickness, never those internal cuts.
+            $onBoundary=true;foreach([$a,$mid,$b] as $point){$hit=$boundary->nearest($point,0.01);if(!$hit||$hit['distance']>0.0001){$onBoundary=false;break;}}if(!$onBoundary)continue;
+            if(hypot($b[0]-$a[0],$b[1]-$a[1])<0.001)continue;$base=count($points);
             foreach([$a,[$a[0],$a[1],$a[2]-0.18],[$b[0],$b[1],$b[2]-0.18],$b] as $p)$points[]=[$p[0]-$origin[0],$p[1]-$origin[1],$p[2]-$origin[2]];
             $faces[]=[$base,$base+1,$base+2];$faces[]=[$base,$base+2,$base+3];
         }

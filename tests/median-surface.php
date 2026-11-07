@@ -35,3 +35,16 @@ check($native['lowered_vertices']>0,'Native terrain is cleared below refined med
 $reverseMain=array_reverse($groundMain);$reverseProfiles=array_reverse($groundProfiles);foreach($reverseProfiles as &$profile)$profile['legal_forward']=false;unset($profile);
 $reverseGround=BeamMedianSurface::build($reverseMain,$reverseProfiles,[$groundTrack],[],$groundRaster,str_repeat("\0",256),'',static fn($m)=>null);
 check($reverseGround['faces']&&$hasVertex($mainEdge,$reverseGround['vertices']),'Reversing selected-road orientation preserves the same physical median seam');
+
+(function(): void {
+    $main=[];$return=[];for($x=0;$x<=480;$x+=5)$main[]=[$x,50,10];for($x=480;$x>=0;$x-=5)$return[]=[$x,80,13];
+    $p=array_fill(0,count($main),['width_m'=>10.,'oneway'=>true,'legal_forward'=>true]);$r=new \SweepLine\BeamRaster(64,512,str_repeat(pack('g',0),4096),str_repeat(chr(100),12288));
+    $track=['name'=>'approach-fixture','road'=>$return,'profiles'=>$p,'chain'=>range(0,480,5),'bridges'=>[['start_m'=>220,'end_m'=>280]],'tunnels'=>[]];
+    $surface=\SweepLine\BeamMedianSurface::build($main,$p,[$track],[['start_m'=>200,'end_m'=>260]],$r,str_repeat("\0",4096),'',static fn($m)=>null);
+    $contact=false;$deckFilled=false;
+    foreach($surface['vertices'] as $v){if(abs($v[0]-190)<1e-7&&abs($v[1]-55)<1e-7&&abs($v[2]-9.95)<1e-7)$contact=true;if($v[0]>200.0001&&$v[0]<259.9999)$deckFilled=true;}
+    check($contact,'Median retains exact pavement contact ten metres before a bridge');
+    check(!$deckFilled,'Approach refinement never fills the actual bridge span');
+    $endContact=false;foreach($surface['vertices'] as $v)if(abs($v[0]-10)<1e-7&&abs($v[1]-55)<1e-7&&abs($v[2]-9.95)<1e-7)$endContact=true;
+    check($endContact,'Median road edges retain support while the centre fades toward native terrain');
+})();

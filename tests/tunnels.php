@@ -60,6 +60,10 @@ try{
  foreach($patchMaterials as $key=>$mat)if(str_contains($key,'_tunnel_ground_'))$hasSharedGround=$hasSharedGround||($mat['version']===1.5&&isset($mat['Stages'][0]['baseColorMap']));
  check($hasSharedGround,'Exported tunnel terrain shares the native-ground PBR material pipeline');
 
+
+ check($tZip->getFromName($tBase.'art/tunnels/concrete.color.png')!==false && $tZip->getFromName($tBase.'art/tunnels/light-fixture.dae')!==false,'Tunnel archive includes its concrete texture and visible fixture mesh');
+ $roofTextured=false;$lensLit=false;foreach($patchMaterials as $key=>$mat){if(str_ends_with($key,'_tunnel_roof'))$roofTextured=isset($mat['Stages'][0]['diffuseMap']);if(str_ends_with($key,'_fixture_lens'))$lensLit=$mat['Stages'][0]['emissive']??false;}
+ check($roofTextured&&$lensLit,'Tunnel roof is textured and fixture lenses are emissive');
  $tZip->close();
 }finally{@unlink($tFile);}
 
@@ -157,3 +161,10 @@ foreach([false,true] as $reverse){
  check($tWallIntrusions($built,$points,$profiles)===0,'All connecting faces stay outside a curved, sloped, varying-width driving corridor; reverse='.(int)$reverse);
  check($built['report']['excavation_wall_triangles']>0,'Curved tunnel retains exterior terrain connections; reverse='.(int)$reverse);
 }
+
+$fixtureObjects=array_values(array_filter($tBuilt['objects'],static fn($o)=>$o['class']==='TSStatic'));
+$lightObjects=array_values(array_filter($tBuilt['objects'],static fn($o)=>$o['class']==='PointLight'));
+check(count($fixtureObjects)===count($lightObjects)&&count($fixtureObjects)>0,'Every tunnel light has one visible fixture');
+$fixtureFits=true;foreach($fixtureObjects as $o)$fixtureFits=$fixtureFits&&$o['position'][2]-0.16>10+$tSpans[0]['clearance_m']-0.2&&$o['collisionType']==='None';
+check($fixtureFits,'Tunnel fixtures remain mounted above driving clearance without collision geometry');
+check(str_contains($tBuilt['shell'],'test_tunnel_roof'),'Tunnel ceiling uses its own textured material');
