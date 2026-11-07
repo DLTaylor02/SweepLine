@@ -10,12 +10,12 @@ final class BeamTunnelClearance
         $volumes=[];$grid=[];$edgeCounts=[];
         foreach($pavements as $entry){$tri=$entry['points']??$entry;foreach($tri as $i=>$a){$b=$tri[($i+1)%3];$keys=[sprintf('%.6F,%.6F',$a[0],$a[1]),sprintf('%.6F,%.6F',$b[0],$b[1])];sort($keys);$key=implode('|',$keys);$edgeCounts[$key]=($edgeCounts[$key]??0)+1;}}
         foreach($pavements as $entry){
-            $tri=$entry['points']??$entry;$raise=$entry['raise_floor']??false;$fill=$entry['fill_weights']??[1,1,1];
-            if(abs(BeamPolygon::cross(...$tri))<1e-9)continue;if(BeamPolygon::cross(...$tri)<0){$tri=array_reverse($tri);$fill=array_reverse($fill);}
+            $tri=$entry['points']??$entry;$raise=$entry['raise_floor']??false;$fill=$entry['fill_weights']??[1,1,1];$stitch=$entry['stitch_edges']??[true,true,true];
+            if(abs(BeamPolygon::cross(...$tri))<1e-9)continue;if(BeamPolygon::cross(...$tri)<0){$tri=array_reverse($tri);$fill=array_reverse($fill);$stitch=[$stitch[1],$stitch[0],$stitch[2]];}
             [$a,$b,$c]=$tri;$den=BeamPolygon::cross($a,$b,$c);
             $zx=(($b[2]-$a[2])*($c[1]-$a[1])-($c[2]-$a[2])*($b[1]-$a[1]))/$den;
             $zy=(($b[0]-$a[0])*($c[2]-$a[2])-($c[0]-$a[0])*($b[2]-$a[2]))/$den;$z0=$a[2]-$zx*$a[0]-$zy*$a[1];
-            $planes=[];$external=[];foreach($tri as $i=>$p){$end=$tri[($i+1)%3];$dx=$end[0]-$p[0];$dy=$end[1]-$p[1];$planes[]=[-$dy,$dx,0,$dy*$p[0]-$dx*$p[1]];$keys=[sprintf('%.6F,%.6F',$p[0],$p[1]),sprintf('%.6F,%.6F',$end[0],$end[1])];sort($keys);$external[]=($edgeCounts[implode('|',$keys)]??0)===1;}
+            $planes=[];$external=[];foreach($tri as $i=>$p){$end=$tri[($i+1)%3];$dx=$end[0]-$p[0];$dy=$end[1]-$p[1];$planes[]=[-$dy,$dx,0,$dy*$p[0]-$dx*$p[1]];$keys=[sprintf('%.6F,%.6F',$p[0],$p[1]),sprintf('%.6F,%.6F',$end[0],$end[1])];sort($keys);$external[]=$stitch[$i]&&($edgeCounts[implode('|',$keys)]??0)===1;}
             $planes[]=[$zx,$zy,-1,$z0+$clearance];if(!$raise)$planes[]=[-$zx,-$zy,1,-$z0+0.05];
             $id=count($volumes);$volumes[]=['planes'=>$planes,'floor'=>[$zx,$zy,$z0-0.05],'external'=>$external,'raise'=>$raise,'footprint'=>$tri,'fill'=>$fill];
             for($y=(int)floor(min(array_column($tri,1))/25);$y<=(int)floor(max(array_column($tri,1))/25);$y++)

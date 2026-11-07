@@ -6,6 +6,8 @@ namespace SweepLine;
 final class BeamTunnels
 {
     public const MAX_LENGTH_M=1500;
+    public const APPROACH_SUPPORT_M=60.;
+    public const APPROACH_LENGTH_M=80.;
     public const MAX_PATCH_CELLS=30000;
     public static function spans(array $road,array $sources): array
     {
@@ -87,7 +89,7 @@ final class BeamTunnels
             $base=count($vertices);array_push($vertices,$a,$b,$c,$d);$faces[]=[$base,$base+1,$base+2];$faces[]=[$base,$base+2,$base+3];
             $length=hypot($b[0]-$a[0],hypot($b[1]-$a[1],$b[2]-$a[2]));$across=hypot($c[0]-$b[0],hypot($c[1]-$b[1],$c[2]-$b[2]))/4;$uv[]=[[0,0],[$length/4,0],[$length/4,$across]];$uv[]=[[0,0],[$length/4,$across],[0,$across]];$faceMaterials[]=$faceMaterials[]=$material.($roof?'_roof':'');
         };
-        foreach($work as $trackIndex=>$track){$road=$track['road'];$profiles=$track['profiles'];
+        foreach($work as $trackIndex=>$track){$road=$track['road'];$profiles=$track['profiles'];$roadLength=0.;for($i=1;$i<count($road);$i++)$roadLength+=hypot($road[$i][0]-$road[$i-1][0],$road[$i][1]-$road[$i-1][1]);
         foreach($track['spans'] as $number=>$span){
             $progress(null);$start=$span['start_m']-2;$end=$span['end_m']+2;$stations=[];$at=$start;
             while($at<$end){$stations[]=self::station($road,$profiles,$at);$at+=2;}$stations[]=self::station($road,$profiles,$end);
@@ -121,13 +123,13 @@ final class BeamTunnels
             $exclusions[]=['points'=>array_slice($points,0,min(12,count($points))),'width_m'=>$stations[0]['width']+2*$step+3];
             $exclusions[]=['points'=>array_slice($points,-min(12,count($points))),'width_m'=>$stations[count($stations)-1]['width']+2*$step+3];
             // Extend excavation into the approaches so protected portal cells cannot block the entrance.
-            $cutDistances=[$span['start_m']-40,$span['end_m']+40];
-            for($at=$span['start_m']-40;$at<$span['end_m']+40;$at+=2)$cutDistances[]=$at;
+            $cutStart=max(0,$span['start_m']-self::APPROACH_LENGTH_M);$cutEnd=min($roadLength,$span['end_m']+self::APPROACH_LENGTH_M);$cutDistances=[$cutStart,$cutEnd];
+            for($at=$cutStart;$at<$cutEnd;$at+=2)$cutDistances[]=$at;
             // Keep exact pavement heading/grade breaks; a uniform 2 m chord can
             // cut across an original bend and leave ground above the road edge.
             $at=0.;foreach($road as $i=>$point){
                 if($i)$at+=hypot($point[0]-$road[$i-1][0],$point[1]-$road[$i-1][1]);
-                if($at>$span['start_m']-40&&$at<$span['end_m']+40)$cutDistances[]=$at;
+                if($at>$cutStart&&$at<$cutEnd)$cutDistances[]=$at;
             }
             sort($cutDistances,SORT_NUMERIC);$cutStations=[];$previous=-INF;
             foreach($cutDistances as $at){if($at-$previous<1e-7)continue;$cutStations[]=self::station($road,$profiles,$at);$previous=$at;}
@@ -233,10 +235,10 @@ final class BeamTunnels
         foreach($work as $track){
             $expanded=$track['profiles'];foreach($expanded as &$profile)$profile['width_m']+=1.5;unset($profile);
             $cross=BeamJunctionBoundary::sections($track['road'],$expanded);$chain=0.;
-            $support=static function($at)use($track){$weight=0.;foreach($track['spans'] as $span){$distance=max(0,$span['start_m']-$at,$at-$span['end_m']);$t=max(0,1-$distance/10);$weight=max($weight,$t*$t*(3-2*$t));}return $weight;};
+            $support=static function($at)use($track){$weight=0.;foreach($track['spans'] as $span){$distance=max(0,$span['start_m']-$at,$at-$span['end_m']);$t=max(0,min(1,(self::APPROACH_LENGTH_M-$distance)/(self::APPROACH_LENGTH_M-self::APPROACH_SUPPORT_M)));$weight=max($weight,$t*$t*(3-2*$t));}return $weight;};
             for($i=1;$i<count($cross);$i++){
                 $before=$chain;$chain+=hypot($track['road'][$i][0]-$track['road'][$i-1][0],$track['road'][$i][1]-$track['road'][$i-1][1]);$wa=$support($before);$wb=$support($chain);$raise=max($wa,$wb)>0;
-                [$a,$b]=$cross[$i-1];[$d,$c]=$cross[$i];$pavements[]=['points'=>[$a,$b,$c],'raise_floor'=>$raise,'fill_weights'=>[$wa,$wa,$wb]];$pavements[]=['points'=>[$a,$c,$d],'raise_floor'=>$raise,'fill_weights'=>[$wa,$wb,$wb]];
+                [$a,$b]=$cross[$i-1];[$d,$c]=$cross[$i];$pavements[]=['points'=>[$a,$b,$c],'raise_floor'=>$raise,'fill_weights'=>[$wa,$wa,$wb],'stitch_edges'=>[false,true,false]];$pavements[]=['points'=>[$a,$c,$d],'raise_floor'=>$raise,'fill_weights'=>[$wa,$wb,$wb],'stitch_edges'=>[false,false,true]];
             }
         }
         $clearance=max(1.,min(array_column($reportedSpans,'clearance_m'))-0.15);
@@ -244,7 +246,7 @@ final class BeamTunnels
         unset($terrainVertices,$terrainFaces,$terrainUv,$pavements);
         if($deferTerrainMesh)unset($terrainSurface['uv']);
         return ['terrain_surface'=>$terrainSurface,'layers'=>$layers,'shell'=>BeamAssets::mesh($vertices,$faces,$material,$uv,$faceMaterials),'terrain'=>$deferTerrainMesh?null:BeamAssets::mesh($terrainSurface['vertices'],$terrainSurface['faces'],$terrainMaterial,$terrainSurface['uv']),
-            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['light_fixtures'=>count(array_filter($lights,static fn($o)=>$o['class']==='TSStatic')),'spans'=>$reportedSpans,'hole_cells'=>count($cells),'exact_pavement_clearance'=>$terrainSurface['report'],'terrain_patch_triangles'=>count($terrainSurface['faces']),'excavated_floor_pieces'=>$floorPieces,'excavation_wall_triangles'=>$wallFaces,'floor_clearance_m'=>0.05,'estimated'=>true,
+            'objects'=>$lights,'portal_exclusions'=>$exclusions,'report'=>['approach_support_m'=>self::APPROACH_SUPPORT_M,'approach_extent_m'=>self::APPROACH_LENGTH_M,'light_fixtures'=>count(array_filter($lights,static fn($o)=>$o['class']==='TSStatic')),'spans'=>$reportedSpans,'hole_cells'=>count($cells),'exact_pavement_clearance'=>$terrainSurface['report'],'terrain_patch_triangles'=>count($terrainSurface['faces']),'excavated_floor_pieces'=>$floorPieces,'excavation_wall_triangles'=>$wallFaces,'floor_clearance_m'=>0.05,'estimated'=>true,
                 'method'=>'Approach-derived floor; generic concrete single bore and portals; native holes with clipped replacement terrain preserving overburden.','limitations'=>'Underground grade, clearance, portals and lighting are estimates. Not a surveyed tunnel model.']];
     }
 }

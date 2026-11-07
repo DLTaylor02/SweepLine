@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.125.0:** Align receiving-road width and paint with verified mapped carriageway merge nodes, preserving split behavior. Extend tunnel approach terrain support to 60 metres with a 20-metre fade, keeping established shoulders and structure protections; prevent transverse terrain caps at short approach endpoints.
+
 - **0.124.0:** Preserve full shared-road width at divided-road splits/merges and synchronize width with lane paint. Blend junction boundary elevations continuously around edge endpoints to eliminate narrow asphalt collision fins and reject backward-folding inner ribbon triangles; retain independent carriageway elevations and existing median/structure terrain treatment.
 
 - **0.123.0:** Switch to a manually maintained VERSION file. Installers validate and preserve the bundled release number rather than deriving it from Git history, so shallow checkouts and archives report the correct version.

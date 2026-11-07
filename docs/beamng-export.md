@@ -382,3 +382,12 @@ True-junction clipping blends height corrections over four metres from the neare
 The supplied Tahoe archive contained 244 and 206 steep asphalt triangles on two opposite-carriageway side-road surfaces. A read-only replay using their saved geometry with continuous edge/endpoint blending produced zero triangles above 50% grade on either surface. These are offline mesh checks, not in-game validation; regenerate the map to apply the correction. No source downloads were required for the audit and the supplied archive was not modified.
 
 Tight side-road bends can also fold an inner ribbon triangle backward. Those overlap triangles are omitted instead of reversing their normals into steep driving surfaces; pavement cutters, paint height lookup and terrain contact use the same orientation rule. The replay also checked all three primary-road junctions: the remaining 83.8-grade spike was removed, with no junction triangles over 50% grade afterward.
+
+
+## 0.125.0: mapped merge handoff and longer tunnel approaches
+
+At a verified shared OSM carriageway node, the incoming one-way source can win a nearest-source tie and delay receiving two-way attributes by one sample. The exporter now takes receiving attributes at that node when the two-way continuation is within twelve metres. Width and paint therefore finish the merge at the actual junction. Departing splits, unverified nearby points and distant attribute changes retain their existing behavior. Aligned samples are recorded in build.log and the report.
+
+Tunnel ground support now remains at the existing five-centimetre pavement clearance for sixty metres beyond each portal and fades to original ground over the following twenty metres. The replacement patch extent follows that eighty-metre envelope and clips to the selected road ends. Existing shoulder width, terrain textures, roof/overburden protection and bridge handling remain unchanged. Terrain stitching follows lateral edges; transverse end caps cannot form a wall across a short selected approach.
+
+Read-only replays of the supplied archives checked 56 road-edge samples around the highway portals: the original gaps reached 1.61 metres, while rebuilt gaps were 0.049–0.05 metres. The other archive's mapped merge changed from a two-lane receiving sample to its correct four-lane, 16.2192-metre paved width; split attributes were unchanged. No location-specific rules or fixtures are used. These are offline geometry measurements; fresh exports still require in-game validation.

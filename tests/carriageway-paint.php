@@ -44,3 +44,16 @@ foreach([false,true] as $reverse){
         check($minimum>=3.5-1e-7,'Both through lanes retain usable width throughout split and merge, orientation '.(int)$reverse);
     }
 })();
+
+(function(): void {
+    $points=[[0,0],[50,0],[58,0],[100,0],[108,0],[150,0]];
+    $shared=\SweepLine\BeamLanes::infer(['lanes'=>'4'],'trunk',0);$one=\SweepLine\BeamLanes::infer(['lanes'=>'2'],'trunk',1);$shared['legal_forward']=$one['legal_forward']=true;
+    $raw=[$shared,$shared,$one,$one,$shared,$shared];
+    $aligned=\SweepLine\BeamRoadSurface::alignMergeProfiles($points,$raw,[[50,0],[100,0]]);
+    $profiles=\SweepLine\BeamRoadSurface::shoulders(\SweepLine\BeamRoadSurface::taper($points,$aligned));
+    check($aligned[3]['lanes']===4&&abs($profiles[3]['width_m']-16.2192)<1e-7&&abs($profiles[3]['lane_paint']['center']['u']-0.5)<1e-7,'Mapped merge receives full shared-road width and markings at the junction itself');
+    check($aligned[1]===$raw[1]&&$aligned[2]===$raw[2],'Mapped merge alignment does not move the working split');
+    check(\SweepLine\BeamRoadSurface::alignMergeProfiles($points,$raw,[])===$raw&&\SweepLine\BeamRoadSurface::alignMergeProfiles($points,$raw,[[100,10]])===$raw,'Unverified or merely nearby locations cannot move lane attribute boundaries');
+    $far=[[0,0],[50,0],[58,0],[100,0],[120,0],[150,0]];
+    check(\SweepLine\BeamRoadSurface::alignMergeProfiles($far,$raw,[[100,0]])===$raw,'A distant two-way attribute change is not assumed to be the mapped merge');
+})();

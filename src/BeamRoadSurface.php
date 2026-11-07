@@ -13,6 +13,23 @@ final class BeamRoadSurface
             $profile['width_m']+=2*self::PAVED_SHOULDER_M;
         }unset($profile);return $profiles;
     }
+    /** An incoming one-way way wins distance ties at its end node. At a verified
+     * carriageway merge, use the receiving two-way attributes at that shared node. */
+    public static function alignMergeProfiles(array $points,array $profiles,array $mergeNodes): array
+    {
+        if(!$mergeNodes)return $profiles;
+        foreach($mergeNodes as $node)foreach($points as $i=>$p){
+            if(hypot($p[0]-$node[0],$p[1]-$node[1])>0.1||empty($profiles[$i]['oneway']))continue;
+            $distance=0.;for($j=$i+1;$j<count($points);$j++){
+                $distance+=hypot($points[$j][0]-$points[$j-1][0],$points[$j][1]-$points[$j-1][1]);if($distance>12)break;
+                if(empty($profiles[$j]['oneway'])){
+                    for($k=$i;$k<$j;$k++){$profiles[$k]=$profiles[$j];$profiles[$k]['mapped_merge_aligned']=true;}break;
+                }
+            }break;
+        }
+        return $profiles;
+    }
+
     /** Shared geometry/paint clock. Divided joins taper only on their one-way side. */
     public static function transitionProgress(float $along,float $at,?bool $afterOneWay=null): float
     {

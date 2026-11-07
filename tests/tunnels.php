@@ -168,3 +168,8 @@ check(count($fixtureObjects)===count($lightObjects)&&count($fixtureObjects)>0,'E
 $fixtureFits=true;foreach($fixtureObjects as $o)$fixtureFits=$fixtureFits&&$o['position'][2]-0.16>10+$tSpans[0]['clearance_m']-0.2&&$o['collisionType']==='None';
 check($fixtureFits,'Tunnel fixtures remain mounted above driving clearance without collision geometry');
 check(str_contains($tBuilt['shell'],'test_tunnel_roof'),'Tunnel ceiling uses its own textured material');
+
+$approachBefore=$tCoverage($tGroundValues,70,164.4);$approachAfter=$tCoverage($tGroundValues,250,155.6);
+check($approachBefore!==null&&$approachAfter!==null&&abs($approachBefore-10.2)<1e-6&&abs($approachAfter-10.2)<1e-6,'Tunnel terrain supports both road edges fifty metres beyond the portals');
+$fadeBefore=$tCoverage($tGroundValues,50,164.4);$fadeAfter=$tCoverage($tGroundValues,270,155.6);
+check($fadeBefore>10&&$fadeBefore<10.2&&$fadeAfter>10&&$fadeAfter<10.2,'Extended tunnel approach support blends back into original terrain at its outer ends');
