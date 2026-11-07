@@ -5,6 +5,7 @@ require dirname(__DIR__).'/src/bootstrap.php';
 $db=SweepLine\Database::connect();
 if (!$db->query('SELECT pg_try_advisory_lock(73019422)')->fetchColumn()) { exit("Another data worker is active\n"); }
 $worker=new SweepLine\DataWorker($db);$worker->heartbeat('Starting worker recovery');
+SweepLine\BeamFailure::install($db);
 $exports=new SweepLine\BeamJobs($db);$exports->recover();$exports->maintain();
 $worker->recover(); $worker->maintain();
 $cleanup=new SweepLine\ImportCleanup($db);

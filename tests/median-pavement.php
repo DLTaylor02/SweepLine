@@ -7,7 +7,7 @@ $medianSource=static fn($p)=>['points'=>$p,'direction'=>1,'highway'=>'motorway',
 $medianMapPlan=['name'=>'Generated Narrow Median','alternate_names'=>[],'points'=>$medianMapPoints,'sources'=>[$medianSource($medianMapPoints)],'bounds'=>[0,0,1200,1200],'resolution'=>64,'padding_miles'=>0.5,'epsg'=>32611,'center'=>[-90,40],'oneway'=>true,'terrain_style'=>'aerial',
  'carriageways'=>[['name'=>'carriageway_0','points'=>$medianOpposite,'sources'=>[$medianSource($medianOpposite)],'intersection_data'=>['branches'=>[]]]]];
 $medianHeights='';for($row=63;$row>=0;$row--)for($column=0;$column<64;$column++)$medianHeights.=pack('g',100+($row*1200/64-600)*0.1);
-$medianMapRaster=new BeamRaster(64,1200,$medianHeights,str_repeat(chr(100),12288));$medianMapFile=tempnam(sys_get_temp_dir(),'sl-median-pavement-');
+$medianMapRaster=new BeamRaster(64,1200,$medianHeights,str_repeat(chr(100),12288));$medianDirectory=sys_get_temp_dir().'/sl-median-'.bin2hex(random_bytes(4));mkdir($medianDirectory,0700);$medianMapFile=$medianDirectory.'/map.zip';
 try{
  $medianMapReport=BeamMap::build($medianMapPlan,$medianMapRaster,str_repeat('a',32),$medianMapFile,static function($m){});
  $medianZip=new ZipArchive();$medianZip->open($medianMapFile);$medianBase='levels/sweepline_aaaaaaaaaaaaaaaa/';
@@ -49,4 +49,11 @@ try{
  check(substr_count($medianLayerBytes,chr(255))===$medianMapReport['median']['refined_surface']['replacement_cells'],'Exported median replaces native collision cells instead of overlaying them');
 
  $medianZip->close();
-}finally{@unlink($medianMapFile);}
+ check(glob($medianDirectory.'/sl-mesh-*')===[],'Successful ZIP export removes private file-backed mesh sources');
+ $cancelled=false;
+ try{
+  BeamMap::build($medianMapPlan,clone $medianMapRaster,str_repeat('b',32),$medianDirectory.'/cancel.zip',static function($message){if($message==='Writing collision terrain and generic surface materials')throw new SweepLine\JobCancelled('Fixture cancellation');});
+ }catch(SweepLine\JobCancelled $e){$cancelled=true;}
+ check($cancelled&&glob($medianDirectory.'/sl-mesh-*')===[],'Cancelled export closes the partial ZIP and removes private mesh sources');
+
+}finally{foreach(glob($medianDirectory.'/*') as $file)if(is_file($file))unlink($file);rmdir($medianDirectory);}

@@ -48,7 +48,7 @@ final class BeamJobs
         $road=RoadNames::prefer($road,$input['preferred_name']??null);
         $plan=BeamPlan::project($this->db,$road,$options);$payload=json_encode($plan,JSON_THROW_ON_ERROR);
         if(strlen($payload)>2097152)throw new \InvalidArgumentException('This road contains too much geometry for BeamNG export. Choose a shorter stretch.');
-        $fingerprint=hash('sha256','beamng-v0.40-72'.$payload);
+        $fingerprint=hash('sha256','beamng-v0.40-73'.$payload);
         $this->db->beginTransaction();
         try {
             $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
@@ -101,7 +101,7 @@ final class BeamJobs
     }
     public function recover(): void
     {
-        $rows=$this->db->query("UPDATE beamng_exports SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'failed' END,progress='Worker restarted; generate a new export',error='Export generation was interrupted',updated_at=now() WHERE status='running' RETURNING id")->fetchAll(PDO::FETCH_COLUMN);
+        $rows=$this->db->query("UPDATE beamng_exports SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'failed' END,progress='Worker restarted; generate a new export',error='Export generation was interrupted during: '||left(progress,240)||'. Check the worker service journal for the exit reason.',updated_at=now() WHERE status='running' RETURNING id")->fetchAll(PDO::FETCH_COLUMN);
         foreach($rows as $id)$this->remove($id);
     }
     public function maintain(): void
@@ -124,9 +124,10 @@ final class BeamJobs
         $job=$this->db->query("SELECT * FROM beamng_exports WHERE status='queued' AND cancel_requested=false ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1")->fetch(PDO::FETCH_ASSOC);
         if($job)$this->db->prepare("UPDATE beamng_exports SET status='running',progress='Preparing map',updated_at=now() WHERE id=?")->execute([$job['id']]);
         $this->db->commit();if(!$job)return false;
-        $id=$job['id'];$dir=$this->directory($id);$lastHeartbeat=0;$buildLog=new BeamBuildLog();
+        $id=$job['id'];BeamFailure::begin($id);$dir=$this->directory($id);$lastHeartbeat=0;$buildLog=new BeamBuildLog();
         $progress=function(?string $message)use($id,&$lastHeartbeat,$buildLog): void {
             $buildLog->event($message);
+            if($message!==null){BeamFailure::stage($message);if(PHP_SAPI==='cli')error_log('SweepLine BeamNG '.$id.': '.substr(str_replace(["\r","\n"],' ',$message),0,240).' [heap '.round(memory_get_usage(true)/1048576).' MiB; peak '.round(memory_get_peak_usage(true)/1048576).' MiB]');}
             $q=$this->db->prepare('SELECT cancel_requested FROM beamng_exports WHERE id=?');$q->execute([$id]);$state=$q->fetch(PDO::FETCH_ASSOC);
             if(!$state || $state['cancel_requested'])throw new JobCancelled('Export cancelled.');
             if($message!==null)$this->db->prepare('UPDATE beamng_exports SET progress=?,updated_at=now() WHERE id=?')->execute([$message,$id]);
@@ -180,7 +181,7 @@ final class BeamJobs
             $cancel=$e instanceof JobCancelled;
             $this->db->prepare("UPDATE beamng_exports SET status=?,progress=?,error=?,payload='{}'::jsonb,updated_at=now() WHERE id=?")->execute([$cancel?'cancelled':'failed',$cancel?'Export cancelled':'Export failed',$cancel?null:substr($e->getMessage(),0,1000),$id]);
         }
-        return true;
+        BeamFailure::finish();return true;
     }
 }
 

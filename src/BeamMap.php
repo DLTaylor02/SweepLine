@@ -169,10 +169,18 @@ final class BeamMap
         foreach($carriageways as $track)$repairSurfaces[]=['name'=>$track['name'],'road'=>$track['road'],'profiles'=>$track['profiles'],'obstacles'=>[['road'=>$road,'profiles'=>$profiles,'weld_boundary'=>false]],'spans'=>array_merge($track['bridges'],$track['tunnels']),'render'=>BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']];
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
         $put=static function($file,$bytes)use($zip,$base){if(!$zip->addFromString($base.$file,$bytes))throw new \RuntimeException('Could not write BeamNG archive.');};
+        // libzip keeps addFromString buffers until close; large terrain meshes
+        // use private file-backed sources so memory does not grow with archive size.
+        $meshFiles=[];
+        $putMesh=static function($file,$bytes)use($zip,$base,$zipPath,&$meshFiles){
+            $tmp=tempnam(dirname($zipPath),'sl-mesh-');if($tmp===false)throw new \RuntimeException('Cannot allocate terrain mesh workspace.');
+            $meshFiles[]=$tmp;chmod($tmp,0600);
+            if(file_put_contents($tmp,$bytes)!==strlen($bytes)||!$zip->addFile($tmp,$base.$file))throw new \RuntimeException('Cannot write terrain mesh archive entry.');
+        };
         try {
             $groundLayers=$categories;
             $prefix='sl_'.substr($id,0,12);$materials=[];$terrainNames=[];$ground=['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
-            $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways,$maxHeight);
+            $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways,$maxHeight,true);
             $contactRepair=BeamTerrainContact::repairCorridors($repairSurfaces,$raster,$origin,$progress,$tunnelGeometry['layers']);
             // Native shaping remains the broad base; exact median ground no longer depends on grid fitting.
             $median['report']['contact_passes']=[];
@@ -181,9 +189,15 @@ final class BeamMap
             $contactRepair['tunnel_patch_rebuilt']=false;
             if($tunnelGeometry['shell']!==null&&(array_sum(array_column($contactRepair['roads'],'lowered_vertices'))>0||$contactRepair['median_contact_refined'])){
                 unset($tunnelGeometry);$progress('Updating tunnel seams after final terrain clearance checks');
-                $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways,$maxHeight);$contactRepair['tunnel_patch_rebuilt']=true;
+                $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways,$maxHeight,true);$contactRepair['tunnel_patch_rebuilt']=true;
             }
             $categories=$tunnelGeometry['layers'];unset($tunnelGeometry['layers']);
+            $tunnelGround=null;
+            if(isset($tunnelGeometry['terrain_surface'])){
+                $tunnelGround=BeamGroundMaterials::prepare($tunnelGeometry['terrain_surface'],$groundLayers,$raster,$terrainStyle,$prefix.'_tunnel_ground',$path,$progress);
+                unset($tunnelGeometry['terrain_surface'],$tunnelGeometry['terrain']);
+                $tunnelGeometry['terrain_files']=BeamGroundMaterials::write($tunnelGround,'art/tunnels/terrain-patch.dae',$putMesh);$tunnelGeometry['report']['mesh_parts']=count($tunnelGeometry['terrain_files']);$tunnelGeometry['report']['ground_materials']=$tunnelGround['report'];$tunnelGround=['materials'=>$tunnelGround['materials']];
+            }
             $progress('Building exact pavement-edge median terrain');
             $medianSurface=BeamMedianSurface::build($road,$profiles,$carriageways,$coveredSpans,$raster,$medianMask,$categories,$progress,$origin,$maxHeight);
             $medianSurface=BeamMedianSurface::replaceCells($medianSurface,$raster,$origin,$categories,$progress,$maxHeight);
@@ -192,13 +206,7 @@ final class BeamMap
             $medianGround=BeamGroundMaterials::prepare($medianSurface,$groundLayers,$raster,$terrainStyle,$prefix.'_median_ground',$path,$progress);unset($medianSurface);
             $median['report']['ground_materials']=$medianGround['report'];
             $median['report']['refined_surface']['collision_ground_types']=array_values(array_unique(array_column($medianGround['materials'],'groundType')));
-            $medianGround=['files'=>BeamGroundMaterials::write($medianGround,'art/terrains/median-ground.dae',$put),'materials'=>$medianGround['materials'],'has_faces'=>(bool)$medianGround['faces']];
-            $tunnelGround=null;
-            if(isset($tunnelGeometry['terrain_surface'])){
-                $tunnelGround=BeamGroundMaterials::prepare($tunnelGeometry['terrain_surface'],$groundLayers,$raster,$terrainStyle,$prefix.'_tunnel_ground',$path,$progress);
-                unset($tunnelGeometry['terrain_surface'],$tunnelGeometry['terrain']);
-                $tunnelGeometry['terrain_files']=BeamGroundMaterials::write($tunnelGround,'art/tunnels/terrain-patch.dae',$put);$tunnelGeometry['report']['mesh_parts']=count($tunnelGeometry['terrain_files']);$tunnelGeometry['report']['ground_materials']=$tunnelGround['report'];$tunnelGround=['materials'=>$tunnelGround['materials']];
-            }
+            $medianGround=['files'=>BeamGroundMaterials::write($medianGround,'art/terrains/median-ground.dae',$putMesh),'materials'=>$medianGround['materials'],'has_faces'=>(bool)$medianGround['faces']];
             $progress('Writing collision terrain and generic surface materials');
             // v0.40 terrain UVs are in layer/grid units, not world meters.
             for($i=0;$i<($terrainStyle==='stock'?count(BeamTerrain::PALETTE):5);$i++) {
@@ -438,7 +446,7 @@ final class BeamMap
             $generated=['primary'=>['points'=>$road,'profiles'=>array_map($summarize,$profiles),'chainage_m'=>$chain],'carriageways'=>$tracks,'intersections'=>$preparedIntersections,'raster_provenance'=>$raster->provenance,'spawn_start'=>$start,'spawn_finish'=>$end];
             $files=[];for($i=0;$i<$zip->numFiles;$i++){$stat=$zip->statIndex($i);$files[]=['name'=>$stat['name'],'uncompressed_bytes'=>$stat['size']];}
             if(!$zip->addFromString('build.log',$buildLog->render($plan,$report,$generated,$files)))throw new \RuntimeException('Could not write export build.log');
-        } finally {$zip->close();}
+        } finally {try{$zip->close();}finally{foreach($meshFiles as $tmp)if(is_file($tmp))unlink($tmp);}}
         return $report;
     }
 }

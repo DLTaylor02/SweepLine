@@ -57,10 +57,20 @@ final class BeamGroundMaterials
         return ['vertices'=>$vertices,'faces'=>$faces,'uv'=>$uv,'detail_uv'=>$detail,'face_materials'=>$names,'materials'=>$materials,
             'report'=>['triangles'=>count($faces),'layers'=>array_keys($materials),'method'=>'Native classification grid, shared palette/aerial tint, shared stock PBR detail with world-scale UVs']];
     }
+    public static function batchSize(?string $setting=null,?int $used=null): int
+    {
+        $raw=trim($setting??(string)ini_get('memory_limit'));
+        if($raw==='-1')return 10000;
+        if(!preg_match('/^([0-9]+)\\s*([KMG]?)$/i',$raw,$m))return 1000;
+        $factor=match(strtoupper($m[2]??'')){'G'=>1073741824,'M'=>1048576,'K'=>1024,default=>1};
+        $available=(int)$m[1]*$factor-($used??memory_get_usage(true))-32*1048576;
+        if($available<128*6000)throw new \RuntimeException('Not enough worker memory remains to serialize this terrain. Try a shorter road; the export has been stopped safely.');
+        return max(128,min(10000,(int)floor($available/6000)));
+    }
     public static function write(array $surface,string $file,callable $put): array
     {
         $files=[];$part=0;
-        foreach(array_chunk($surface['faces'],10000,true) as $faces){
+        foreach(array_chunk($surface['faces'],self::batchSize(),true) as $faces){
             $name=$part?substr($file,0,-4).'-'.$part.'.dae':$file;
             $put($name,BeamAssets::mesh($surface['vertices'],$faces,array_key_first($surface['materials'])??'terrain',$surface['uv'],$surface['face_materials'],$surface['detail_uv']));
             $files[]=$name;$part++;

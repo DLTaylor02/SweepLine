@@ -26,6 +26,11 @@ $tBefore=$tRaster->heights;
 $tBuilt=BeamTunnels::build($tMeshRoad,$tProfiles,$tSpans,$tRaster,90,str_repeat(chr(0),$tn*$tn),'test_tunnel','test_patch',static function($m){});
 check($tBuilt['report']['hole_cells']>0&&substr_count($tBuilt['layers'],chr(255))===$tBuilt['report']['hole_cells'],'Tunnel writes native collision-hole layer bytes');
 check($tRaster->heights===$tBefore,'Tunnel keeps original mountain elevation rather than digging an open trench');
+$tDeferred=BeamTunnels::build($tMeshRoad,$tProfiles,$tSpans,$tRaster,90,str_repeat(chr(0),$tn*$tn),'test_tunnel','test_patch',static function($m){},[],0,true);
+check($tDeferred['terrain']===null&&!isset($tDeferred['terrain_surface']['uv'])&&count($tDeferred['terrain_surface']['faces'])>0,'Map export defers redundant full tunnel XML and raw UV buffers');
+check($tDeferred['report']['terrain_patch_triangles']===$tBuilt['report']['terrain_patch_triangles'],'Deferred tunnel serialization retains the exact same collision geometry');
+unset($tDeferred);
+
 check(ord($tBuilt['layers'][0])===0,'Terrain outside tunnel patch remains unchanged');
 check(count($tBuilt['objects'])>0&&count($tBuilt['portal_exclusions'])===2,'Tunnel includes estimated lights and two portal scenery exclusions');
 $tXml=simplexml_load_string($tBuilt['terrain']);$tXml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
