@@ -2,6 +2,8 @@
 
 [Documentation index](README.md) | [Project overview](../README.md)
 
+See [Water in BeamNG exports](water-export.md) for automatic USGS/OSM lakes and river surfaces, caching and limitations.
+
 This reference retains implementation notes in their original order. Later corrections supersede earlier behavior. BeamNG source downloads are now cached for seven days.
 
 ## BeamNG.drive v0.40 export

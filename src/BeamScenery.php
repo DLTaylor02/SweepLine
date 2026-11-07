@@ -4,10 +4,10 @@ namespace SweepLine;
 final class BeamScenery
 {
     public const RANGE_M=60.96; // 200 feet from the road edge, including object footprint.
-    private array $segments=[],$index=[],$exclusions=[];
+    private array $segments=[],$index=[],$exclusions=[],$water=[];
     public function __construct(array $road,array $profiles,array $exclusions=[])
     {
-        foreach($exclusions as $branch)$this->exclusions[]=new self($branch['points'],array_fill(0,count($branch['points']),['width_m'=>$branch['width_m']]));
+        foreach($exclusions as $branch){if(isset($branch['rings'])){$this->water[]=$branch;continue;}$this->exclusions[]=new self($branch['points'],array_fill(0,count($branch['points']),['width_m'=>$branch['width_m']]));}
         for($i=1;$i<count($road);$i++){
             $a=$road[$i-1];$b=$road[$i];$half=max($profiles[$i-1]["width_m"],$profiles[$i]["width_m"])/2;
             $id=count($this->segments);$this->segments[]=[$a,$b,$half];
@@ -27,6 +27,7 @@ final class BeamScenery
     public function allows(float $x,float $y,float $radius): bool
     {
         foreach($this->exclusions as $branch)if($branch->edgeDistance($x,$y)<$radius)return false;
+        foreach($this->water as $water){[$x0,$y0,$x1,$y1]=$water['bounds'];if($x+$radius<$x0||$x-$radius>$x1||$y+$radius<$y0||$y-$radius>$y1)continue;if(BeamWaterGeometry::contains([$x,$y],$water['rings'])||BeamWaterGeometry::boundaryDistance([$x,$y],$water['rings'])<$radius)return false;}
         $distance=$this->edgeDistance($x,$y);
         return $distance+1e-8>=$radius && $distance+$radius<=self::RANGE_M+1e-8;
     }
@@ -45,6 +46,7 @@ final class BeamScenery
     }
     public function polygonReason(array $points): ?string
     {
+        foreach($this->water as $water){foreach($points as $p)if(BeamWaterGeometry::contains($p,$water['rings']))return 'mapped_water_overlap';foreach($water['rings'] as $ring)for($i=0;$i<count($ring);$i++)for($j=0;$j<count($points);$j++)if((BeamPolygon::cross($ring[$i],$ring[($i+1)%count($ring)],$points[$j])*BeamPolygon::cross($ring[$i],$ring[($i+1)%count($ring)],$points[($j+1)%count($points)])<0&&BeamPolygon::cross($points[$j],$points[($j+1)%count($points)],$ring[$i])*BeamPolygon::cross($points[$j],$points[($j+1)%count($points)],$ring[($i+1)%count($ring)])<0))return 'mapped_water_overlap';if(BeamPolygon::inside($water['rings'][0][0],$points))return 'mapped_water_overlap';}
         if($this->polygonHitsRoad($points))return 'pavement_overlap';
         foreach($this->exclusions as $road)if($road->polygonHitsRoad($points))return 'pavement_overlap';
         foreach($points as $p)if($this->edgeDistance($p[0],$p[1])>self::RANGE_M)return 'outside_roadside_range';

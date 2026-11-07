@@ -437,6 +437,7 @@ systemctl is-active --quiet nginx || die "Nginx is not running."
 [[ -z "$SCHEDULED_SCRIPT_RELATIVE" ]] || systemctl is-active --quiet cron || die "cron is not running."
 [[ -z "$WORKER_SCRIPT_RELATIVE" ]] || systemctl is-active --quiet "$APP_SLUG-worker.service" || die "Worker is not running."
 project_verify
+installed_version="$("${PHP_CLI[@]}" "$APP_DIR/bin/version.php")"
 
 server_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"; server_ip="${server_ip:-localhost}"
 printf '\n%s is deployed and ready.\n' "$APP_NAME"
@@ -444,3 +445,4 @@ printf 'Application: http://%s:%s/\nDeployment: %s\nConfiguration: %s\n' "$serve
 
 printf '\nSign in to the web UI as superadmin using the password chosen during installation.\n'
 printf 'ZIP coordinates are prepared automatically. Searches prepare missing road coverage in the background.\n'
+printf 'Installed version: %s v%s\n' "$APP_NAME" "$installed_version"

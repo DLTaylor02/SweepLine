@@ -48,7 +48,7 @@ final class BeamJobs
         $road=RoadNames::prefer($road,$input['preferred_name']??null);
         $plan=BeamPlan::project($this->db,$road,$options);$payload=json_encode($plan,JSON_THROW_ON_ERROR);
         if(strlen($payload)>2097152)throw new \InvalidArgumentException('This road contains too much geometry for BeamNG export. Choose a shorter stretch.');
-        $fingerprint=hash('sha256','beamng-v0.40-78-'.Version::number().$payload);
+        $fingerprint=hash('sha256','beamng-v0.40-79-'.Version::number().$payload);
         $this->db->beginTransaction();
         try {
             $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
@@ -75,6 +75,7 @@ final class BeamJobs
         if(!empty($row['report']['carriageways']['matching']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['carriageways']['matching']['warning']);
         if(!empty($row['report']['building_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['building_data']['warning']);
         if(!empty($row['report']['intersection_context']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['intersection_context']['warning']);
+        if(!empty($row['report']['water_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['water_data']['warning']);
         if(!empty($row['report']['guardrail_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['guardrail_data']['warning']);
         if($row['status']==='complete')$row['download_url']='/api/beamng/'.$id.'/download';
         return $row;
@@ -169,6 +170,7 @@ final class BeamJobs
                 $contextBudget-=count($context['branches']);$plan['carriageways'][$i]['intersection_data']=$context;
             }
             if(isset($plan['guardrail_data']['lines'])){$railIds=[];foreach($plan['guardrail_data']['lines'] as $line)foreach($line['osm_ids']??[] as $osmId)$railIds[$osmId]=true;$plan['guardrail_data']['source_ways']=count($railIds);}
+            if(!$this->rasterSource)$plan['water_data']=BeamWaterSources::fetch($this->db,$plan,$dir,$progress);
             foreach(scandir($dir) as $inputFile)if(preg_match('/\\.(tif|json|bin|hdr|xml)$/i',$inputFile))$buildLog->artifact($inputFile,$dir.'/'.$inputFile);
             $report=BeamMap::build($plan,$raster,$id,$dir.'/map.zip.part',$progress,null,$buildLog);$progress(null);
             $this->db->beginTransaction();

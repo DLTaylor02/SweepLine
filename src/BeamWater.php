@@ -1,0 +1,122 @@
+<?php
+declare(strict_types=1);
+namespace SweepLine;
+
+/** Native bounded water surfaces and modest estimated beds, never road elevation edits. */
+final class BeamWater
+{
+    public const MAX_OBJECTS=1024;
+    public static function downhill(array $values): array
+    {
+        $blocks=[];foreach($values as $i=>$z){$blocks[]=['sum'=>$z,'count'=>1,'start'=>$i];
+            while(count($blocks)>1){$n=count($blocks);$a=$blocks[$n-2];$b=$blocks[$n-1];if($a['sum']/$a['count']>=$b['sum']/$b['count'])break;array_pop($blocks);$blocks[$n-2]=['sum'=>$a['sum']+$b['sum'],'count'=>$a['count']+$b['count'],'start'=>$a['start']];}
+        }
+        $out=[];foreach($blocks as $b)for($i=0;$i<$b['count'];$i++)$out[]=$b['sum']/$b['count'];return $out;
+    }
+    public static function level(array $model,array $point): float
+    {
+        if(isset($model['level']))return $model['level'];$best=INF;$z=null;$p=$model['points'];
+        for($i=1;$i<count($p);$i++){$a=$p[$i-1];$b=$p[$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$l=$dx*$dx+$dy*$dy;if($l<1e-8)continue;$t=max(0,min(1,(($point[0]-$a[0])*$dx+($point[1]-$a[1])*$dy)/$l));$d=hypot($point[0]-$a[0]-$t*$dx,$point[1]-$a[1]-$t*$dy);
+            if($d<$best){$best=$d;$z=$a[2]+$t*($b[2]-$a[2]);}}
+        if($z===null||$best>2000)throw new \RuntimeException('River elevation profile does not cover this surface.');return $z;
+    }
+    private static function model(array $feature,array $lines,BeamRaster $raster,array $patches): array
+    {
+        $samples=[];$rgb=[0,0,0];$positions=[];
+        foreach($patches as $quad){$p=[array_sum(array_column($quad,0))/4,array_sum(array_column($quad,1))/4];$positions[]=$p;if(count($positions)>=64)break;}
+        [$x0,$y0,$x1,$y1]=BeamWaterGeometry::bounds($feature['rings']);
+        for($y=0;$y<12;$y++)for($x=0;$x<12;$x++){$p=[$x0+($x+0.5)/12*($x1-$x0),$y0+($y+0.5)/12*($y1-$y0)];if(BeamWaterGeometry::contains($p,$feature['rings']))$positions[]=$p;}
+        foreach($positions as $p){$samples[]=$raster->height(...$p);$color=$raster->rgb((int)($p[0]/$raster->side*$raster->size),(int)($p[1]/$raster->side*$raster->size));foreach($rgb as $i=>$_)$rgb[$i]+=$color[$i];}
+        if(count($samples)<1)throw new \RuntimeException('No elevation samples inside water boundary.');
+        $color=array_map(static fn($c)=>max(35,min(155,(int)round($c/count($samples)))),$rgb);sort($samples);$q=static fn($fraction)=>$samples[(int)floor((count($samples)-1)*$fraction)];
+        $spread=$q(0.9)-$q(0.1);$base=['color'=>[...$color,255],'sample_count'=>count($samples),'elevation_spread_m'=>$spread,'confidence'=>$spread<0.5?'moderate':'low','estimated'=>true];
+        if(in_array($feature['kind'],['river','canal'],true)){
+            $candidates=[];
+            foreach($lines as $line){$match=($line['body_key']??'')!==''&&($line['body_key']??'')===($feature['source_key']??'');$inside=0;$length=0.;foreach($line['points'] as $i=>$p){if(BeamWaterGeometry::contains($p,$feature['rings']))$inside++;if($i)$length+=hypot($p[0]-$line['points'][$i-1][0],$p[1]-$line['points'][$i-1][1]);}
+                if(($match||$inside>=max(1,count($line['points'])/2))&&$length>=10)$candidates[]=$line['points'];
+            }
+            $pathLength=static function($points){$length=0.;for($i=1;$i<count($points);$i++)$length+=hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);return $length;};
+            usort($candidates,static fn($a,$b)=>$pathLength($b)<=>$pathLength($a));
+            if($candidates){$path=array_shift($candidates);
+                for($pass=0;$pass<256;$pass++){$matches=[];foreach($candidates as $i=>$p)foreach([false,true] as $reverse){$v=$reverse?array_reverse($p):$p;if(hypot(end($path)[0]-$v[0][0],end($path)[1]-$v[0][1])<1)$matches[]=[$i,$reverse,false];if(hypot($path[0][0]-end($v)[0],$path[0][1]-end($v)[1])<1)$matches[]=[$i,$reverse,true];}
+                    $ends=[[],[]];foreach($matches as $match)$ends[$match[2]?1:0][]=$match;
+                    $choice=count($ends[0])===1?$ends[0][0]:(count($ends[1])===1?$ends[1][0]:null);if($choice===null)break;[$i,$reverse,$prepend]=$choice;$p=$reverse?array_reverse($candidates[$i]):$candidates[$i];array_splice($candidates,$i,1);$path=$prepend?array_merge(array_slice($p,0,-1),$path):array_merge($path,array_slice($p,1));
+                }
+                $chain=[0.];foreach($path as $i=>$p)if($i)$chain[]=$chain[$i-1]+hypot($p[0]-$path[$i-1][0],$p[1]-$path[$i-1][1]);$length=end($chain);$step=max(20,$length/128);$points=[];$heights=[];$atIndex=1;
+                for($at=0;$at<=$length+$step;$at+=$step){$s=min($length,$at);while($atIndex<count($path)-1&&$chain[$atIndex]<$s)$atIndex++;$t=($s-$chain[$atIndex-1])/max(1e-8,$chain[$atIndex]-$chain[$atIndex-1]);$p=[$path[$atIndex-1][0]+$t*($path[$atIndex][0]-$path[$atIndex-1][0]),$path[$atIndex-1][1]+$t*($path[$atIndex][1]-$path[$atIndex-1][1])];$points[]=$p;$heights[]=$raster->height(...$p);if($s===$length)break;}
+                if($heights[0]<end($heights)){$points=array_reverse($points);$heights=array_reverse($heights);}
+                $heights=self::downhill($heights);
+                foreach($points as $i=>&$p){$p[]=$heights[$i]+0.12;if($i&&abs($p[2]-$points[$i-1][2])/max(1,hypot($p[0]-$points[$i-1][0],$p[1]-$points[$i-1][1]))>0.05)throw new \RuntimeException('River grade exceeds the supported water profile.');}unset($p);
+                return $base+['points'=>$points,'method'=>'Terrain-derived downhill profile along mapped USGS flowline; flow speed not measured'];
+            }
+            if($spread>1)throw new \RuntimeException('Sloping river has no usable mapped elevation profile.');
+        }
+        if($q(0.25)-$q(0.1)>1)throw new \RuntimeException('Water elevation is not sufficiently consistent.');
+        return $base+['level'=>$q(0.2)+0.12,'method'=>'Robust low-interior DEM estimate; no surveyed water level or bathymetry'];
+    }
+    private static function roadConflict(array $feature,array $model,array $tracks,callable $progress): bool
+    {
+        $bounds=BeamWaterGeometry::bounds($feature['rings']);
+        foreach($tracks as $track){$road=$track['road'];$profiles=$track['profiles'];$chain=0.;
+            for($i=1;$i<count($road);$i++){if($i%128===0)$progress(null);$a=$road[$i-1];$b=$road[$i];$length=hypot($b[0]-$a[0],$b[1]-$a[1]);$half=max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2;
+                $start=$chain;$chain+=$length;if(max($a[0],$b[0])+$half<$bounds[0]||min($a[0],$b[0])-$half>$bounds[2]||max($a[1],$b[1])+$half<$bounds[1]||min($a[1],$b[1])-$half>$bounds[3])continue;
+                $steps=max(1,(int)ceil($length/4));for($j=0;$j<=$steps;$j++){$t=$j/$steps;$p=[$a[0]+($b[0]-$a[0])*$t,$a[1]+($b[1]-$a[1])*$t];if(!BeamWaterGeometry::contains($p,$feature['rings'])&&BeamWaterGeometry::boundaryDistance($p,$feature['rings'])>$half+0.25)continue;
+                    $at=$start+$length*$t;$tunnel=false;$bridge=false;foreach($track['tunnels']??[] as $span)if($at>=$span['start_m']-2&&$at<=$span['end_m']+2)$tunnel=true;
+                    foreach($track['bridges']??[] as $span)if($at>=$span['start_m']&&$at<=$span['end_m'])$bridge=true;
+                    if($tunnel||self::level($model,$p)>=$a[2]+($b[2]-$a[2])*$t-($bridge?0.5:0.25))return true;
+                }
+            }
+        }return false;
+    }
+    private static function object(array $quad,array $model,float $origin,int $number,bool $moving): array
+    {
+        [$a,$b,$c,$d]=$quad;$z=[];foreach($quad as $p)$z[]=self::level($model,$p)-$origin;
+        $lo=[($a[0]+$b[0])/2,$a[1],($z[0]+$z[1])/2];$hi=[($c[0]+$d[0])/2,$c[1],($z[2]+$z[3])/2];$width0=$b[0]-$a[0];$width1=$c[0]-$d[0];
+        $gx0=$width0>0.01?($z[1]-$z[0])/$width0:0.;$gx1=$width1>0.01?($z[2]-$z[3])/$width1:0.;$gy=($hi[2]-$lo[2]-($gx0+$gx1)/2*($hi[0]-$lo[0]))/max(0.01,$hi[1]-$lo[1]);
+        if(max(abs($gx0),abs($gx1),abs($gy))>0.08)throw new \RuntimeException('Local water surface slope is unsupported.');
+        $node=static function($p,$width,$gx)use($gy){$normal=[-$gx,-$gy,1.];$n=sqrt($gx*$gx+$gy*$gy+1);$normal=array_map(static fn($v)=>$v/$n,$normal);return [...$p,max(0.01,$width)*sqrt(1+$gx*$gx),1.5,...$normal];};
+        return ['class'=>'River','name'=>'mapped_water_'.$number,'__parent'=>'MissionGroup','position'=>$lo,'nodes'=>[$node($lo,$width0,$gx0),$node($hi,$width1,$gx1)],'segmentLength'=>max(4,($hi[1]-$lo[1])/8),'subdivideLength'=>max(4,max($width0,$width1)/16),'lowLODDistance'=>5000,'density'=>1000,'viscosity'=>0.001,'liquidType'=>'Water','flowMagnitudePhysics'=>0,'baseColor'=>$model['color'],'underwaterColor'=>[45,65,65,235],'rippleTex'=>'core/art/water/ripple.dds','foamTex'=>'core/art/water/foam.dds','depthGradientTex'=>'core/art/water/depthcolor_ramp.png','fullReflect'=>false,'overallWaveMagnitude'=>0,'overallRippleMagnitude'=>$moving?0.2:0.12,'overallFoamOpacity'=>0,'specularPower'=>120,'specularColor'=>[0.9,0.95,1,1],'waterFogDensity'=>0.12,'waterFogDensityOffset'=>0,'wetDepth'=>0.2,'wetDarkening'=>0.3,'Ripples (texture animation)'=>[['rippleDir'=>[0,1],'rippleSpeed'=>0.04,'rippleMagnitude'=>0.2,'rippleTexScale'=>[8,8]],['rippleDir'=>[0.7,0.7],'rippleSpeed'=>0.02,'rippleMagnitude'=>0.15,'rippleTexScale'=>[12,12]]]];
+    }
+    public static function build(array $data,BeamRaster $source,BeamRaster $terrain,float $origin,array $tracks,callable $progress): array
+    {
+        $objects=[];$areas=[];$rejections=[];$features=[];$changed=0;$budget=0;
+        $roads=[];foreach(($data['features']??[])?$tracks:[] as $t)$roads[]=['points'=>$t['road'],'profiles'=>$t['profiles'],'bridges'=>$t['bridges']??[],'tunnels'=>$t['tunnels']??[]];
+        $roadIndex=$roads?new BeamRoadIndex($roads):null;$step=$terrain->side/$terrain->size;
+        foreach($data['features']??[] as $feature){
+            $progress('Preparing mapped water surfaces');
+            try{
+                $rings=$feature['rings'];$bounds=BeamWaterGeometry::bounds($rings);
+                foreach($bounds as $v)if(!is_finite($v)||$v< -0.01||$v>$terrain->side+0.01)throw new \RuntimeException('Water boundary lies outside the exported square.');
+                $patches=BeamWaterGeometry::patches($rings,INF,INF,self::MAX_OBJECTS-count($objects));$model=self::model($feature,$data['flowlines']??[],$source,$patches);
+                if(isset($model['points']))$patches=BeamWaterGeometry::patches($rings,64,128,self::MAX_OBJECTS-count($objects));
+                $localTracks=[];foreach($tracks as $t){$copy=$t;foreach($copy['road'] as &$p)$p[2]+=$origin;unset($p);$localTracks[]=$copy;}
+                $patches=BeamWaterGeometry::rectangles($patches,self::MAX_OBJECTS-count($objects));
+                if(self::roadConflict($feature,$model,$localTracks,$progress))throw new \RuntimeException('Water level or boundary conflicts with protected road or tunnel geometry.');
+                $new=[];foreach($patches as $quad)$new[]=self::object($quad,$model,$origin,count($objects)+count($new),isset($model['points']));
+                if(!$new)continue;
+                // Validate profile coverage over the whole feature before mutating its bed.
+                foreach($rings as $ring)foreach($ring as $p)self::level($model,$p);
+                $bedTerrain=clone $terrain;
+                $featureChanged=0;$shoreLines=[];foreach($rings as $ring)$shoreLines[]=['points'=>array_merge($ring,[$ring[0]])];$shoreIndex=new BeamRoadIndex($shoreLines);
+                for($y=max(0,(int)floor($bounds[1]/$step));$y<=min($terrain->size-1,(int)ceil($bounds[3]/$step));$y++){
+                    if($y%16===0)$progress(null);$intervals=BeamWaterGeometry::intervals($rings,$y*$step);$interval=0;
+                    for($x=max(0,(int)floor($bounds[0]/$step));$x<=min($terrain->size-1,(int)ceil($bounds[2]/$step));$x++){
+                        if(++$budget>8000000)break 2;$p=[$x*$step,$y*$step];while(isset($intervals[$interval])&&$p[0]>=$intervals[$interval][1])$interval++;if(!isset($intervals[$interval])||$p[0]<=$intervals[$interval][0])continue;
+                        $hit=$roadIndex?->nearest($p,40+2*$step);if($hit){
+                            $t=$hit['line'];$j=$hit['segment'];$at=$hit['along'];$half=max($t['profiles'][$j-1]['width_m'],$t['profiles'][$j]['width_m'])/2;
+                            $bridge=false;$tunnel=false;foreach($t['bridges'] as $s)if($at>$s['start_m']+2&&$at<$s['end_m']-2)$bridge=true;foreach($t['tunnels'] as $s)if($at>=$s['start_m']-10&&$at<=$s['end_m']+10)$tunnel=true;
+                            if(($tunnel||!$bridge)&&$hit['distance']<$half+sqrt(2)*$step)continue;
+                        }
+                        $old=$bedTerrain->cell($x,$y);$bed=self::level($model,$p)-1.5;$fade=max(0,min(1,($shoreIndex->nearest($p,max(2,$step))['distance']??max(2,$step))/max(2,$step)));$fade=$fade*$fade*(3-2*$fade);
+                        $target=$old-max(0,min(3,$old-$bed))*$fade;if($old-$target>0.0001){$bedTerrain->put($x,$y,$target);$featureChanged++;}
+                    }
+                }
+                $terrain->heights=$bedTerrain->heights;unset($bedTerrain);array_push($objects,...$new);$areas[]=['rings'=>$rings,'bounds'=>$bounds];
+                $changed+=$featureChanged;$metadata=array_intersect_key($feature,array_flip(['id','name','source','source_key','kind','source_date']));
+                $features[]=$metadata+['patches'=>count($new),'level_method'=>$model['method'],'confidence'=>$model['confidence'],'estimated_depth_m'=>1.5,'elevation_spread_m'=>$model['elevation_spread_m'],'level_m'=>isset($model['level'])?$model['level']:null,'profile_points'=>$model['points']??null,'bed_vertices_changed'=>$featureChanged];
+            }catch(JobCancelled $e){throw $e;}catch(\Throwable $e){unset($bedTerrain);$reason=$e instanceof \RuntimeException?$e->getMessage():'Water geometry processing failed.';$rejections[$reason]=($rejections[$reason]??0)+1;}
+        }
+        $warning=trim((string)($data['warning']??''));if($rejections)$warning=trim($warning.' Some mapped water was omitted; see water_data.rejections in build.log.');if($budget>8000000)$warning=trim($warning.' Water-bed processing reached its bounded raster budget.');
+        return ['objects'=>$objects,'exclusions'=>$areas,'report'=>['providers'=>$data['providers']??[],'input_features'=>count($data['features']??[]),'rendered_features'=>count($features),'native_water_objects'=>count($objects),'features'=>$features,'rejections'=>$rejections,'duplicates_skipped'=>$data['duplicates_skipped']??0,'source_rejections'=>$data['source_rejections']??0,'truncated'=>$data['truncated']??false,'bed_vertices_changed'=>$changed,'warning'=>$warning,'attribution'=>$data['attribution']??'USGS 3DHP/NHD; OpenStreetMap contributors (ODbL)','method'=>'Inscribed native River rectangles preserve islands with up to 2 m shoreline inset; water elevations and shallow beds are estimates; no measured bathymetry or flow speed']];
+    }
+}

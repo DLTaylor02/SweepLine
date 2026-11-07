@@ -23,7 +23,7 @@ final class BeamBuildLog
     }
     public function render(array $plan,array $report,array $generated,array $files): string
     {
-        $inputs=array_intersect_key($plan,array_flip(['name','alternate_names','orientation','epsg','bounds','padding_miles','resolution','terrain_style','center','selection','points','sources','bridges','tunnels','carriageways','carriageway_data','building_data','guardrail_data','intersection_data']));
+        $inputs=array_intersect_key($plan,array_flip(['name','alternate_names','orientation','epsg','bounds','padding_miles','resolution','terrain_style','center','selection','points','sources','bridges','tunnels','carriageways','carriageway_data','building_data','guardrail_data','intersection_data','water_data']));
         $data=['sweepline_version'=>Version::number(),'build_utc'=>gmdate('c'),'duration_seconds'=>round(microtime(true)-$this->started,3),
             'coordinate_reference'=>'selection coordinates are longitude/latitude EPSG:4326; plan points and source geometry use plan EPSG in metres; generated roads use map-local metres with report elevation_origin_m.',
             'input_note'=>'Original custom clicks are recorded only when retained in the road snapshot. Older snapshots expose snapped/exported geometry only. Missing fields mean unavailable, not zero.',

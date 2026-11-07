@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.127.0:** Print the deployed application version as the final installer output line, using the installed VERSION through the existing version command. Add automatic full-square USGS/OSM water discovery to BeamNG exports, native bounded water with island preservation, estimated beds/profiles, road and tunnel protection, seven-day resource caching, provenance and regression coverage. Version intentionally held for this addition.
+
 - **0.126.0:** Coordinate both carriageways at shared-road splits and merges: align the returning lanes to their directional half of the receiving pavement, preserve markings over clipped overlap, and keep verified traffic links. Add combined-surface lane-width, coverage and marking regressions; preserve fully divided highway behavior and structure protection.
 
 - **0.125.0:** Align receiving-road width and paint with verified mapped carriageway merge nodes, preserving split behavior. Extend tunnel approach terrain support to 60 metres with a 20-metre fade, keeping established shoulders and structure protections; prevent transverse terrain caps at short approach endpoints.

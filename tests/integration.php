@@ -5,6 +5,7 @@ if (getenv('SWEEPLINE_TEST_DATABASE')!=='1') { throw new RuntimeException('Set S
 $db=Database::connect();
 if ($db->query("SELECT to_regclass('public.regions')")->fetchColumn()) { throw new RuntimeException('Integration database must be empty; refusing existing schema'); }
 Database::migrate($db); Database::migrate($db);
+require __DIR__.'/water-integration.php';
 check((int)$db->query('SELECT count(*) FROM schema_migrations')->fetchColumn()===count(glob(SWEEPLINE_ROOT.'/database/migrations/*.sql')),'Migrations apply once');
 $db->exec("INSERT INTO zip_codes(zip,place,state,location) VALUES ('12345','Synthetic place','ZZ',ST_GeogFromText('SRID=4326;POINT(-119.80 39.52)'))");
 $api=new Api($db); check(abs((float)$api->zip('12345')['lat']-39.52)<0.00001,'Database ZIP coordinate lookup');
