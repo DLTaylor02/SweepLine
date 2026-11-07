@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Retain the member's refreshed session/CSRF token after reset-password login in HTTP tests. Assert token rotation and stale-token rejection so password-validation tests exercise the intended checks.
+
 - Widen one-way roads toward travel-right, preserve structure matching, retain inner lanes through bounded inferred-overlap adjustments, and add estimated closed median dividers or native terrain joins between opposed carriageways. Include median provenance and generic regression coverage.
 
 - Fix the HTTP favorite-thumbnail assertion to select the saved favorite by ID instead of assuming an empty account after integration fixtures. Validate listed geometry explicitly and cover custom-favorite list geometry in PostGIS integration tests.

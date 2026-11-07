@@ -184,7 +184,10 @@ expect(callApi($member,'GET','/api/coverage'),401,'Disabled member session inval
 expect(callApi($admin,'POST','/api/admin/users/'.$id,['active'=>true,'password'=>'new-member-password-123'],$csrf),200,'Enable and reset password');
 expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),401,'Old password rejected');
 $memberSession=expect(callApi($member,'GET','/api/session'),200,'Reload member CSRF');
-expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'new-member-password-123'],$memberSession['csrf']),200,'New password accepted');
+$beforeLoginCsrf=$memberSession['csrf'];
+$memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'new-member-password-123'],$memberSession['csrf']),200,'New password accepted');
+if($memberSession['csrf']===$beforeLoginCsrf)throw new RuntimeException('Successful login did not rotate the CSRF token');
+expect(callApi($member,'POST','/api/password/change',[],$beforeLoginCsrf),403,'Previous login token cannot change password');
 
 $db->exec('DELETE FROM auth_attempts');
 expect(callApi($member,'POST','/api/admin/password-policy',['minimum_length'=>1,'strength'=>'basic','screen_compromised'=>false],$memberSession['csrf']),403,'User cannot change password policy');
