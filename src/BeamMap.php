@@ -161,7 +161,10 @@ final class BeamMap
         $terrainCorrection['exact_pavement']=BeamTerrainContact::clear($road,$profiles,$raster,$origin,$mainStructureMask|$companionMask,$progress,BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']);
         foreach($carriageways as &$track)$track['terrain_correction']['exact_pavement']=BeamTerrainContact::clear($track['road'],$track['profiles'],$raster,$origin,$mainStructureMask|$companionMask,$progress,BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']);
         unset($track);
-        $median=BeamMedian::build($road,$profiles,$carriageways,$coveredSpans,$raster,$origin,$bridgeMask,$progress);
+        $medianMask=$bridgeMask;
+        foreach($preparedIntersections['roads'] as $branch)$medianMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianMask);
+        foreach($carriageways as $track)foreach($track['context']['roads'] as $branch)$medianMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianMask);
+        $median=BeamMedian::build($road,$profiles,$carriageways,$coveredSpans,$raster,$origin,$medianMask,$progress);
         $repairSurfaces=[['name'=>'primary','road'=>$road,'profiles'=>$profiles,'spans'=>$coveredSpans,'render'=>BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']]];
         foreach($carriageways as $track)$repairSurfaces[]=['name'=>$track['name'],'road'=>$track['road'],'profiles'=>$track['profiles'],'obstacles'=>[['road'=>$road,'profiles'=>$profiles,'weld_boundary'=>false]],'spans'=>array_merge($track['bridges'],$track['tunnels']),'render'=>BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']];
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
@@ -169,9 +172,19 @@ final class BeamMap
         try {
             $prefix='sl_'.substr($id,0,12);$materials=[];$terrainNames=[];$ground=['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
             $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways);
-            $contactRepair=BeamTerrainContact::repairCorridors($repairSurfaces,$raster,$origin,$progress,$tunnelGeometry['layers']);unset($repairSurfaces);
+            $contactRepair=BeamTerrainContact::repairCorridors($repairSurfaces,$raster,$origin,$progress,$tunnelGeometry['layers']);
+            $median['report']['contact_passes']=[];
+            if($median['edge_targets'])$progress('Refining native terrain contact along median pavement edges');
+            for($pass=0;$pass<2&&$median['edge_targets'];$pass++){
+                $fit=BeamMedian::fitEdges($median['edge_targets'],$raster,$origin,$medianMask,$tunnelGeometry['layers'],$progress);
+                if(!$fit['raised_vertices'])break;
+                $recheck=BeamTerrainContact::repairCorridors($repairSurfaces,$raster,$origin,$progress,$tunnelGeometry['layers']);
+                $median['report']['contact_passes'][]=$fit+['clearance_recheck'=>$recheck];
+            }
+            unset($repairSurfaces,$median['edge_targets']);
+            $contactRepair['median_contact_refined']=!empty($median['report']['contact_passes']);
             $contactRepair['tunnel_patch_rebuilt']=false;
-            if($tunnelGeometry['shell']!==null&&array_sum(array_column($contactRepair['roads'],'lowered_vertices'))>0){
+            if($tunnelGeometry['shell']!==null&&(array_sum(array_column($contactRepair['roads'],'lowered_vertices'))>0||$contactRepair['median_contact_refined'])){
                 unset($tunnelGeometry);$progress('Updating tunnel seams after final terrain clearance checks');
                 $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways);$contactRepair['tunnel_patch_rebuilt']=true;
             }

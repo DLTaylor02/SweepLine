@@ -83,18 +83,50 @@ final class BeamMedian
         $track['median_alignment']=['adjusted_samples'=>$changed,'maximum_outward_shift_m'=>$maximum,'limited_samples'=>$limited,'estimated'=>true];
         return $track;
     }
+    /** Fit median-edge support on the native grid; caller rechecks exact pavement clearance. */
+    public static function fitEdges(array $targets,BeamRaster $raster,float $origin,string $protected,string $holes,callable $progress): array
+    {
+        $n=$raster->size;$step=$raster->side/$n;$changed=[];$maximum=0.;$skipped=0;
+        foreach($targets as $i=>$point){
+            if($i%100===0)$progress(null);
+            $gx=$point[0]/$step;$gy=$point[1]/$step;$x=(int)floor($gx);$y=(int)floor($gy);
+            if($x<0||$y<0||$x>=$n-1||$y>=$n-1||($holes[$y*$n+$x]??"\0")==="\xff"){$skipped++;continue;}
+            $tx=$gx-$x;$ty=$gy-$y;$weights=[(1-$tx)*(1-$ty),$tx*(1-$ty),(1-$tx)*$ty,$tx*$ty];
+            $corners=[[$x,$y],[$x+1,$y],[$x,$y+1],[$x+1,$y+1]];$norm=0.;
+            foreach($corners as $k=>[$cx,$cy])if(($protected[$cy*$n+$cx]??"\0")==="\0")$norm+=$weights[$k]**2;
+            $delta=$point[2]+$origin-0.05-$raster->height($point[0],$point[1]);
+            if($delta<=0.05)continue;if($norm<0.1){$skipped++;continue;}
+            foreach($corners as $k=>[$cx,$cy])if(($protected[$cy*$n+$cx]??"\0")==="\0"&&$weights[$k]>0){
+                $raise=min(0.5,$delta)*$weights[$k]/$norm;
+                $raster->put($cx,$cy,$raster->cell($cx,$cy)+$raise);$changed[$cy*$n+$cx]=true;$maximum=max($maximum,$raise);
+            }
+        }return ['raised_vertices'=>count($changed),'maximum_raise_m'=>$maximum,'protected_or_hole_contacts_skipped'=>$skipped];
+    }
+
     /** Smooth the native median and create closed divider walls for narrow median sections. */
     public static function build(array $main,array $profiles,array $tracks,array $spans,BeamRaster $raster,float $origin,string $mask,callable $progress): array
     {
-        $walls=[];$report=[];$step=$raster->side/$raster->size;$changed=[];
+        $walls=[];$report=[];$targets=[];$step=$raster->side/$raster->size;$changed=[];
         foreach($tracks as $track){
-            $pairs=self::pairs($main,$profiles,$track,$spans);$vertices=[];$faces=[];$previous=null;$wallSegments=0;
+            $pairs=self::pairs($main,$profiles,$track,$spans);foreach($pairs as $pair)if($pair['gap']>0.8&&$pair['gap']<=40){$targets[]=$pair['a'];$targets[]=$pair['b'];}$vertices=[];$faces=[];$previous=null;$wallSegments=0;
             foreach($pairs as $i=>$pair){
                 if($i%100===0)$progress(null);
                 if($previous!==null&&$i===$previous[0]+1){
                     $prev=$previous[1];
                     if(min($pair['gap'],$prev['gap'])>=0&&max($pair['gap'],$prev['gap'])<=40){
-                        $quad=[$prev['a'],$prev['b'],$pair['b'],$pair['a']];
+                        // Include the supporting cell corners beyond both paved edges. Merely
+                        // filling vertices inside the median leaves sub-cell strips unsupported.
+                        $support=[];
+                        foreach([$prev,$pair] as $ring){
+                            $a=$ring['a'];$b=$ring['b'];$width=hypot($b[0]-$a[0],$b[1]-$a[1]);
+                            $pad=sqrt(2)*$step;$factor=$pad/max(0.01,$width);
+                            $support[]=[
+                                [$a[0]-($b[0]-$a[0])*$factor,$a[1]-($b[1]-$a[1])*$factor,$a[2]],
+                                [$b[0]+($b[0]-$a[0])*$factor,$b[1]+($b[1]-$a[1])*$factor,$b[2]]
+                            ];
+                        }
+                        $quad=[$support[0][0],$support[0][1],$support[1][1],$support[1][0]];
+                        $core=[$prev['a'],$prev['b'],$pair['b'],$pair['a']];
                         foreach([[0,1,2],[0,2,3]] as $ids){
                             $tri=array_map(static fn($id)=>$quad[$id],$ids);$area=BeamPolygon::cross(...$tri);if(abs($area)<1e-8)continue;
                             $xs=array_column($tri,0);$ys=array_column($tri,1);
@@ -103,7 +135,19 @@ final class BeamMedian
                                 if(($mask[$y*$raster->size+$x]??"\0")!=="\0")continue;$p=[$x*$step,$y*$step];
                                 $w=[BeamPolygon::cross($tri[1],$tri[2],$p)/$area,BeamPolygon::cross($tri[2],$tri[0],$p)/$area,BeamPolygon::cross($tri[0],$tri[1],$p)/$area];
                                 if(min($w)<-1e-8)continue;
-                                $z=$origin-0.05;foreach($w as $k=>$weight)$z+=$weight*$tri[$k][2];
+                                // The extended strip supports a flat inner shoulder on each road;
+                                // interpolate only through the actual median, not the padded width.
+                                $near=BeamTerrainContact::weights($p,array_map(static fn($id)=>$core[$id],$ids));
+                                $z=$origin-0.05;
+                                if($near){
+                                    $left=$near[0]*($ids[0]===0||$ids[0]===3?1:0)+$near[1]*($ids[1]===0||$ids[1]===3?1:0)+$near[2]*($ids[2]===0||$ids[2]===3?1:0);
+                                    $across=max(0,min(1,1-$left));
+                                    $axisA=$prev['a'];$axisB=$pair['a'];$dx=$axisB[0]-$axisA[0];$dy=$axisB[1]-$axisA[1];$length2=$dx*$dx+$dy*$dy;
+                                    $along=$length2>1e-8?max(0,min(1,(($p[0]-$axisA[0])*$dx+($p[1]-$axisA[1])*$dy)/$length2)):0.;
+                                    $za=$prev['a'][2]*(1-$along)+$pair['a'][2]*$along;
+                                    $zb=$prev['b'][2]*(1-$along)+$pair['b'][2]*$along;
+                                    $z+=(1-$across)*$za+$across*$zb;
+                                }else foreach($w as $k=>$weight)$z+=$weight*$tri[$k][2];
                                 $raster->put($x,$y,$z);$changed[$y*$raster->size+$x]=true;
                             }
                         }
@@ -122,6 +166,6 @@ final class BeamMedian
             }
             if($faces)$walls[]=['key'=>$track['name'],'vertices'=>$vertices,'faces'=>$faces];
             $report[]=['track'=>$track['name'],'paired_samples'=>count($pairs),'divider_segments'=>$wallSegments,'alignment'=>$track['median_alignment']??null];
-        }return ['walls'=>$walls,'report'=>['tracks'=>$report,'terrain_vertices'=>count($changed),'divider_gap_threshold_m'=>0.8,'method'=>'Estimated facing-edge medians; closed concrete divider for narrow gaps, native terrain interpolation for open gaps; structures excluded']];
+        }return ['walls'=>$walls,'edge_targets'=>$targets,'report'=>['tracks'=>$report,'terrain_vertices'=>count($changed),'support_padding_m'=>sqrt(2)*$step,'divider_gap_threshold_m'=>0.8,'method'=>'Estimated facing-edge medians; closed concrete divider for narrow gaps, native terrain interpolation for open gaps; structures excluded']];
     }
 }

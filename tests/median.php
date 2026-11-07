@@ -40,3 +40,18 @@ check($mapped[0]['clearance_m']===4.8&&abs($mapped[0]['length_m']-$segment)<1e-8
 $edgeTrack=$track;$edgeTrack['bridges']=[['start_m'=>65.,'end_m'=>115.]];
 $protectedTrack=BeamMedian::separate($main,$mainProfiles,$edgeTrack);
 check($protectedTrack['road'][1]===$edgeTrack['road'][1],'Median alignment leaves mapped structure cores unchanged');
+
+$coarse=new BeamRaster(8,200,str_repeat(pack('g',0),64),str_repeat(chr(100),192));
+$coarseTrack=$open;foreach($coarseTrack['road'] as &$point)$point[2]=10;unset($point);
+$coarseMedian=BeamMedian::build($main,$mainProfiles,[$coarseTrack],[],$coarse,0,str_repeat("\0",64),static fn($m)=>null);
+check(abs($coarse->height(100,55)-9.95)<0.001&&abs($coarse->height(100,65)-9.95)<0.001,'Sub-cell median shapes supporting terrain corners even when no grid vertex lies inside the gap');
+check($coarse->height(100,175)===0.,'Median support padding leaves distant terrain unchanged');
+$fitRaster=new BeamRaster(8,200,str_repeat(pack('g',0),64),str_repeat(chr(100),192));
+$fit=BeamMedian::fitEdges([[100,60,1]],$fitRaster,0,str_repeat("\0",64),'',static fn($m)=>null);
+check($fit['raised_vertices']>0&&$fitRaster->height(100,60)>0,'Median edge fitting raises native support toward pavement');
+$beforeFit=$fitRaster->heights;
+$fit=BeamMedian::fitEdges([[100,60,10]],$fitRaster,0,str_repeat("\1",64),'',static fn($m)=>null);
+check($fit['raised_vertices']===0&&$fitRaster->heights===$beforeFit,'Median contact fitting respects protected structure vertices');
+$holes=str_repeat("\0",64);$holes[2*8+4]="\xff";
+$fit=BeamMedian::fitEdges([[100,60,10]],$fitRaster,0,str_repeat("\0",64),$holes,static fn($m)=>null);
+check($fit['raised_vertices']===0&&$fitRaster->heights===$beforeFit,'Median contact fitting never fills a tunnel hole');

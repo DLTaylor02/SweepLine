@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Improve native median terrain contact on coarse grids: shape supporting cell corners beyond the median edges and run two bounded edge-fitting/clearance passes. Protect structures, tunnel holes and side-road support; refresh tunnel seams after fitting. Add sub-cell and protected-contact regressions.
+
 - Retain the member's refreshed session/CSRF token after reset-password login in HTTP tests. Assert token rotation and stale-token rejection so password-validation tests exercise the intended checks.
 
 - Widen one-way roads toward travel-right, preserve structure matching, retain inner lanes through bounded inferred-overlap adjustments, and add estimated closed median dividers or native terrain joins between opposed carriageways. Include median provenance and generic regression coverage.
