@@ -182,11 +182,12 @@ final class BeamCarriageways
     /** Match merge elevations to the selected road without moving its geometry. */
     public static function conformMerges(array $track,array $main,array $profiles,array $bounds): array
     {
+        $track=BeamDividedJunctions::align($track,$main,$profiles,$bounds);
         $index=new BeamRoadIndex([['points'=>$main]]);$sections=BeamJunctionBoundary::sections($main,$profiles);
         $chain=$track['chain'];$total=end($chain);$mergeEndpoints=[];
         foreach([0,count($track['road'])-1] as $endpoint){
             $p=$track['road'][$endpoint];$world=[$p[0]+$bounds[0],$p[1]+$bounds[1]];
-            $mapped=false;foreach($track['merge_nodes']??[] as $node)if(hypot($world[0]-$node[0],$world[1]-$node[1])<0.1)$mapped=true;
+            $mapped=isset($track['shared_junctions'][$endpoint]);foreach($track['merge_nodes']??[] as $node)if(hypot($world[0]-$node[0],$world[1]-$node[1])<0.1)$mapped=true;
             if(!$mapped)continue;$mergeEndpoints[]=$endpoint;
             foreach($track['road'] as $i=>&$v){
                 $distance=$endpoint===0?$chain[$i]:$total-$chain[$i];if($distance>100)continue;
@@ -204,7 +205,7 @@ final class BeamCarriageways
                 $v[2]+=$weight*($target-$v[2]);
             }unset($v);
         }
-        $track['merge_junctions']=[];foreach($mergeEndpoints as $i){$p=$track['road'][$i];$track['merge_junctions'][]=['x'=>$p[0],'y'=>$p[1],'z'=>$p[2]];}
+        $track['merge_junctions']=[];foreach($mergeEndpoints as $i){$p=$track['road'][$i];$track['merge_junctions'][]=['x'=>$p[0],'y'=>$p[1],'z'=>$p[2]]+(isset($track['shared_junctions'][$i])?['primary_position'=>$track['shared_junctions'][$i]['primary_position']]:[]);}
         return $track;
     }
     /** Link networks only at mapped, prepared at-grade junctions, never by median proximity. */
@@ -217,14 +218,18 @@ final class BeamCarriageways
         }
         $count=0;$seen=[];
         foreach($tracks as $track)foreach(array_merge($track['context']['junctions'],$track['merge_junctions']??[]) as $join){
-            $cx=(int)floor($join['x']/4);$cy=(int)floor($join['y']/4);$own=null;$other=null;$dOwn=INF;$dOther=INF;
-            for($x=$cx-1;$x<=$cx+1;$x++)for($y=$cy-1;$y<=$cy+1;$y++)foreach($grid[$x.':'.$y]??[] as $id){
-                $o=$nodes[$id];$p=$o['position'];$d=hypot($p[0]-$join['x'],$p[1]-$join['y']);
-                if($d>1||abs($p[2]-$join['z'])>0.5)continue;
-                if(str_starts_with($o['name'],$track['name'].'_')){if($d<$dOwn){$own=$o;$dOwn=$d;}}
-                elseif($d<$dOther){$other=$o;$dOther=$d;}
+            $target=$join['primary_position']??[$join['x'],$join['y'],$join['z']];$own=null;$other=null;$dOwn=INF;$dOther=INF;$candidates=[];
+            foreach([[$join['x'],$join['y']],$target] as $center){$cx=(int)floor($center[0]/4);$cy=(int)floor($center[1]/4);
+                for($x=$cx-1;$x<=$cx+1;$x++)for($y=$cy-1;$y<=$cy+1;$y++)foreach($grid[$x.':'.$y]??[] as $id)$candidates[$id]=true;
             }
-            if(!$own||!$other||abs($own['position'][2]-$other['position'][2])>0.5||hypot($own['position'][0]-$other['position'][0],$own['position'][1]-$other['position'][1])>2)continue;
+            foreach($candidates as $id=>$_){
+                $o=$nodes[$id];$p=$o['position'];$isOwn=str_starts_with($o['name'],$track['name'].'_');
+                $center=$isOwn?[$join['x'],$join['y'],$join['z']]:$target;$d=hypot($p[0]-$center[0],$p[1]-$center[1]);
+                if($d>1||abs($p[2]-$center[2])>0.5)continue;
+                if($isOwn){if($d<$dOwn){$own=$o;$dOwn=$d;}}elseif($d<$dOther){$other=$o;$dOther=$d;}
+            }
+            $maxLink=isset($join['primary_position'])?BeamDividedJunctions::MAX_SHIFT_M+2:2;
+            if(!$own||!$other||abs($own['position'][2]-$other['position'][2])>0.5||hypot($own['position'][0]-$other['position'][0],$own['position'][1]-$other['position'][1])>$maxLink)continue;
             $pair=[$own['name'],$other['name']];sort($pair);$key=implode('|',$pair);if(isset($seen[$key]))continue;$seen[$key]=true;
             $segments['carriageway_junction_'.$count]=['nodes'=>[$other['name'],$own['name']],'drivability'=>1,'oneWay'=>false,'autoLanes'=>false,'lanesLeft'=>1,'lanesRight'=>1,'autoJunction'=>false,'hiddenInNavi'=>false];$count++;
         }return $count;

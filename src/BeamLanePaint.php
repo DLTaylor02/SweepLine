@@ -25,7 +25,6 @@ final class BeamLanePaint
     }
     public static function profiles(array $chain,array $profiles,array $original): array
     {
-        if(!array_filter($profiles,static fn($p)=>!empty($p['transition'])))return $profiles;
         $reverse=false;foreach($original as $p)if(!empty($p['oneway'])){$reverse=!($p['legal_forward']??true);break;}
         $maxF=0;$maxB=0;foreach($original as $p){[$f,$b,$oneway]=self::counts($p);if($reverse&&!$oneway)[$f,$b]=[$b,$f];$maxF=max($maxF,$f);$maxB=max($maxB,$b);}
         $ids=['center'];for($i=1;$i<$maxF;$i++)$ids[]='f'.$i;for($i=1;$i<$maxB;$i++)$ids[]='b'.$i;
@@ -48,6 +47,27 @@ final class BeamLanePaint
         }unset($p);
         return $profiles;
     }
+    /** Shared junction paint belongs to the combined pavement, even when its
+     * originating carriageway surface is hidden by primary-priority clipping. */
+    private static function trimPaint(array $vertices,array $triangles,array $other): array
+    {
+        if(empty($other['preserve_junction_paint']))return BeamJunctionBoundary::trim($vertices,$triangles,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true);
+        $normal=[];$overlay=[];$cutters=BeamJunctionBoundary::cutters($other['road'],$other['profiles'],$vertices,$other['sections']??null);
+        $grid=[];foreach($cutters as $id=>$cut)for($y=(int)floor(min(array_column($cut,1))/25);$y<=(int)floor(max(array_column($cut,1))/25);$y++)for($x=(int)floor(min(array_column($cut,0))/25);$x<=(int)floor(max(array_column($cut,0))/25);$x++)$grid[$x.':'.$y][]=$id;
+        foreach($triangles as $triangle){
+            if(empty($triangle['shared_junction'])){$normal[]=$triangle;continue;}
+            $points=array_map(static fn($id)=>$vertices[$id],$triangle['v']);
+            foreach($points as &$point)foreach($grid[(int)floor($point[0]/25).':'.(int)floor($point[1]/25)]??[] as $cutId){$cut=$cutters[$cutId];
+                $weights=BeamTerrainContact::weights($point,$cut);if(!$weights||min($weights)<-1e-7)continue;
+                $point[2]=0.;foreach($weights as $j=>$weight)$point[2]+=$weight*$cut[$j][2];break;
+            }unset($point);
+            $overlay[]=['points'=>$points,'uv'=>$triangle['uv'],'material'=>$triangle['material']];
+        }
+        [$out,$faces]=BeamJunctionBoundary::trim($vertices,$normal,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true);
+        foreach($overlay as $triangle){$base=count($out);array_push($out,...$triangle['points']);$faces[]=['v'=>[$base,$base+1,$base+2],'uv'=>$triangle['uv'],'material'=>$triangle['material']];}
+        return [$out,$faces];
+    }
+
     public static function materials(string $prefix): array
     {
         $out=[];foreach(['white'=>[0.88,0.88,0.84,1],'yellow'=>[0.92,0.75,0.14,1]] as $key=>$color){
@@ -85,14 +105,14 @@ final class BeamLanePaint
                         $quad[]=$surface($sections[$i-1],$sections[$i],min(1,$u+0.06/$width),$t);
                     }
                     $base=count($vertices);array_push($vertices,...$quad);$material=$prefix.'_paint_'.($end['yellow']?'yellow':'white');
-                    foreach([[0,1,3],[0,3,2]] as $face)$triangles[]=['v'=>array_map(static fn($v)=>$base+$v,$face),'uv'=>[[0,0],[1,0],[1,1]],'material'=>$material];
+                    foreach([[0,1,3],[0,3,2]] as $face)$triangles[]=['v'=>array_map(static fn($v)=>$base+$v,$face),'uv'=>[[0,0],[1,0],[1,1]],'material'=>$material,'shared_junction'=>!empty($profiles[$i]['shared_junction_paint'])||!empty($profiles[$i-1]['shared_junction_paint'])];
                     if(count($triangles)>200000)throw new \RuntimeException('Lane-paint geometry exceeds the export limit.');
                 }
             }
         }
         if(!$triangles)return null;
         if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles);
-        foreach($obstacles as $other)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true);
+        foreach($obstacles as $other)[$vertices,$triangles]=self::trimPaint($vertices,$triangles,$other);
         if(!$triangles)return null;
         foreach($vertices as &$v)$v[2]+=0.006;unset($v);
         return ['xml'=>BeamPavement::collada($vertices,$triangles,$points[0]),'position'=>$points[0],'triangles'=>count($triangles),'collision'=>'None','method'=>'The outermost right-hand driving lane opens/closes against the paved outer edge; surviving lane boundaries remain continuous.'];

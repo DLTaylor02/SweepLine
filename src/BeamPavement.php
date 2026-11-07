@@ -8,6 +8,7 @@ final class BeamPavement
     public static function key(array $p): string {return $p['lanes'].'_'.$p['backward'].'_'.(int)$p['oneway'].(!empty($p['oneway'])&&!($p['legal_forward']??true)?'_reverse':'').(!empty($p['unmarked'])?'_junction':'').(!empty($p['keep_edge_left'])?'_edgeL':'').(!empty($p['keep_edge_right'])?'_edgeR':'').(!empty($p['lane_paint_segment'])?'_taper':'').(isset($p['shoulder_m'])?'_s'.(int)round(255*$p['shoulder_m']/$p['width_m']):'');}
     public static function section(array $points,array $profiles,int $i): array
     {
+        if(isset($profiles[$i]['section_override']))return $profiles[$i]['section_override'];
         $a=$points[max(0,$i-1)];$b=$points[min(count($points)-1,$i+1)];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy)?:1;$half=$profiles[$i]['width_m']/2;$p=$points[$i];
         return [[$p[0]-$dy/$length*$half,$p[1]+$dx/$length*$half,$p[2]],[$p[0]+$dy/$length*$half,$p[1]-$dx/$length*$half,$p[2]]];
     }

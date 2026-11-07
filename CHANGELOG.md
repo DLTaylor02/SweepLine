@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.126.0:** Coordinate both carriageways at shared-road splits and merges: align the returning lanes to their directional half of the receiving pavement, preserve markings over clipped overlap, and keep verified traffic links. Add combined-surface lane-width, coverage and marking regressions; preserve fully divided highway behavior and structure protection.
+
 - **0.125.0:** Align receiving-road width and paint with verified mapped carriageway merge nodes, preserving split behavior. Extend tunnel approach terrain support to 60 metres with a 20-metre fade, keeping established shoulders and structure protections; prevent transverse terrain caps at short approach endpoints.
 
 - **0.124.0:** Preserve full shared-road width at divided-road splits/merges and synchronize width with lane paint. Blend junction boundary elevations continuously around edge endpoints to eliminate narrow asphalt collision fins and reject backward-folding inner ribbon triangles; retain independent carriageway elevations and existing median/structure terrain treatment.

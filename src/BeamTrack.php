@@ -53,7 +53,7 @@ final class BeamTrack
                 $file='art/roads/'.$m.'.color.png';$materials[$m]=['class'=>'Material','name'=>$prefix.'_road_'.$m,'mapTo'=>$prefix.'_road_'.$m,'version'=>1,'groundType'=>'ASPHALT','Stages'=>[['diffuseMap'=>$path.$file,'diffuseColor'=>[1,1,1,1],'specularPower'=>8,'useAnisotropic'=>true]]];$put($file,BeamPng::road($p));
             }
             $sections=$i===0?BeamJunctionBoundary::renderSections($road,$profiles,$surface['points']):null;
-            $obstacles=[['road'=>$main,'profiles'=>$mainProfiles,'weld_boundary'=>$i!==0]];if($i)foreach($otherContext as $other){
+            $obstacles=[['road'=>$main,'profiles'=>$mainProfiles,'weld_boundary'=>$i!==0,'preserve_junction_paint'=>$i===0&&!empty($track['shared_junctions'])]];if($i)foreach($otherContext as $other){
                 $obstacles[]=['road'=>$other['points'],'profiles'=>$other['profiles']];
                 $rings=BeamPavement::connectorRings($other,$main,$mainProfiles);
                 if(count($rings)>1){$contact=BeamPavement::contact($other,$main,$mainProfiles);$obstacles[]=['road'=>$contact['surface'],'profiles'=>$contact['profiles'],'sections'=>$rings];}
@@ -80,10 +80,11 @@ final class BeamTrack
             }
         }
         $warning=$track['intersection_data']['warning']??null;
+        if(!empty($track['divided_junction_alignment']['limited_samples']))$warning=trim(($warning??'').' Some divided-road junctions exceed the supported lateral alignment; lane joins may be incomplete.');
         if(!empty($context['final_clearance']['limited_branches']))$warning=trim(($warning??'').' Some opposite-carriageway side roads were shortened to preserve full-road terrain support.');
         $nav=BeamTraffic::graph($road,$profiles,$context);
         foreach($nav['objects'] as &$o)$o['name']=$key.'_'.$o['name'];unset($o);
         $segments=[];foreach($nav['segments'] as $name=>$s){$s['nodes']=array_map(static fn($n)=>$key.'_'.$n,$s['nodes']);$segments[$key.'_'.$name]=$s;}
-        return ['objects'=>array_merge($objects,$nav['objects']),'segments'=>$segments,'report'=>['name'=>$track['road_name']??$key,'key'=>$key,'ref'=>$track['road_ref']??null,'candidate_id'=>$track['candidate_id']??null,'network_path_id'=>$track['network_path_id']??null,'source_way_ids'=>$track['source_way_ids']??[],'pavement_overlap'=>$track['pavement_overlap']??null,'length_m'=>end($track['chain']),'lane_estimated_samples'=>count(array_filter($profiles,static fn($p)=>$p['estimated_lanes'])),'width_estimated_samples'=>count(array_filter($profiles,static fn($p)=>$p['estimated_width'])),'bridges'=>$track['bridges'],'tunnels'=>$track['tunnels'],'terrain_correction'=>$track['terrain_correction']??null,'intersection_context'=>['rendered_branches'=>count($context['roads']),'final_clearance'=>$context['final_clearance']??null,'warning'=>$warning],'surfaces'=>$report]];
+        return ['objects'=>array_merge($objects,$nav['objects']),'segments'=>$segments,'report'=>['name'=>$track['road_name']??$key,'key'=>$key,'ref'=>$track['road_ref']??null,'candidate_id'=>$track['candidate_id']??null,'network_path_id'=>$track['network_path_id']??null,'source_way_ids'=>$track['source_way_ids']??[],'pavement_overlap'=>$track['pavement_overlap']??null,'length_m'=>end($track['chain']),'lane_estimated_samples'=>count(array_filter($profiles,static fn($p)=>$p['estimated_lanes'])),'width_estimated_samples'=>count(array_filter($profiles,static fn($p)=>$p['estimated_width'])),'bridges'=>$track['bridges'],'tunnels'=>$track['tunnels'],'divided_junction_alignment'=>$track['divided_junction_alignment']??null,'terrain_correction'=>$track['terrain_correction']??null,'intersection_context'=>['rendered_branches'=>count($context['roads']),'final_clearance'=>$context['final_clearance']??null,'warning'=>$warning],'surfaces'=>$report]];
     }
 }
