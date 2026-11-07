@@ -47,7 +47,7 @@ final class BeamMedian
         $index=new BeamRoadIndex([['points'=>$main]]);$sections=BeamJunctionBoundary::sections($track['road'],$track['profiles']);
         $mainSections=BeamJunctionBoundary::sections($main,$profiles);$out=[];
         foreach($track['road'] as $i=>$p){
-            $hit=$index->nearest($p,80);if(!$hit||$hit['raw']<0||$hit['raw']>1)continue;
+            $hit=$index->nearest($p,80);if(!$hit||($hit['segment']===1&&$hit['raw']<0)||($hit['segment']===count($main)-1&&$hit['raw']>1))continue;
             $j=$hit['segment'];$t=$hit['fraction'];$profile=$track['profiles'][$i];
             if(empty($profile['oneway'])||empty($profiles[$j]['oneway'])||self::covered($hit['along'],$spans)||self::covered($track['chain'][$i],array_merge($track['bridges'],$track['tunnels'])))continue;
             $a=$track['road'][max(0,$i-1)];$b=$track['road'][min(count($track['road'])-1,$i+1)];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$l=hypot($dx,$dy)?:1;
@@ -60,7 +60,7 @@ final class BeamMedian
             $edge=[];foreach([0,1,2] as $axis)$edge[]=$mainSections[$j-1][$side][$axis]*(1-$t)+$mainSections[$j][$side][$axis]*$t;
             $otherSide=(($dx*($center[1]-$p[1])-$dy*($center[0]-$p[0]))>0)?0:1;
             $other=$sections[$i][$otherSide];$gap=($other[0]-$edge[0])*$nx+($other[1]-$edge[1])*$ny;
-            $out[$i]=['a'=>$edge,'b'=>$other,'gap'=>$gap,'normal'=>[$nx,$ny],'along'=>$track['chain'][$i]];
+            $out[$i]=['a'=>$edge,'b'=>$other,'gap'=>$gap,'normal'=>[$nx,$ny],'along'=>$track['chain'][$i],'main_along'=>$hit['along'],'main_segment'=>$j,'main_side'=>$side];
         }return $out;
     }
     /** Move only estimated overlapping companion pavement outward, never remove driving lanes.

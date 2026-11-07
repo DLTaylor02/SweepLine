@@ -748,3 +748,10 @@ Facing paved edges up to 0.8 metres apart receive a generic closed, collidable c
 
 
 Median terrain contact includes a supporting-cell halo of one grid diagonal beyond the facing edges, so a median narrower than a terrain cell still updates its support. Up to two bounded native-grid edge-fitting passes follow; each is followed by exact pavement clearance checks. Structure masks, tunnel holes and side-road support remain protected, and tunnel terrain seams refresh after fitting. The report records support padding and contact passes. This retains native terrain rather than introducing shoulder collision objects. Coarse cells shared by roads at different elevations can still leave residual gaps; it does not guarantee a surveyed or uniformly flush median.
+
+
+### Exact median terrain joins
+
+Median joins now include a locally refined, top-only terrain collision mesh constrained to the exact facing pavement edges, 5 cm below each road. All intermediate primary edge/grade stations are retained, so the join does not cut across bends. This supersedes the two native-grid fitting passes: a coarse heightfield alone cannot guarantee both edge heights. The broad native terrain remains and is cleared below the refined surface. Pavement geometry is unchanged, and there are no vertical collision sidewalls, caps or overlaps onto driving lanes. The surface uses geographically aligned aerial color and grass/dirt/rock/gravel ground types rather than asphalt or a custom shoulder collision material.
+
+The median mask includes actual structure protection and side-road support, not ordinary opposite-carriageway pavement. Earlier exports inherited an overbroad corridor-protection mask that suppressed median shaping; generated-ZIP tests now assert the terrain mesh and its materials are present. Mapped bridges/tunnels, actual tunnel holes and protected junction support remain excluded. Pieces with ambiguous or disconnected boundaries are skipped and reported; the existing 40 m median-width and bounded geometry limits remain. Build diagnostics include refined-surface triangle and skipped-piece counts. Fresh exports and in-game collision validation remain required.

@@ -34,5 +34,12 @@ try{
  $wallFile=$medianZip->getFromName($medianBase.'art/roads/carriageway_0-median.dae');
  check(is_string($wallFile)&&str_contains($wallFile,'COLLADA')&&($medianReport['tracks'][0]['divider_segments']??0)>0,'Generated ZIP contains closed collision median divider geometry');
 
+ $medianGround=array_values(array_filter($medianScene,static fn($o)=>($o['name']??'')==='median_ground'));
+ check(count($medianGround)===1&&$medianGround[0]['collisionType']==='Visible Mesh Final','Generated ZIP includes the exact median terrain collision surface');
+ $groundXml=$medianZip->getFromName($medianBase.'art/terrains/median-ground.dae');
+ check(is_string($groundXml)&&simplexml_load_string($groundXml)!==false&&$medianMapReport['median']['refined_surface']['triangles']>0,'Generated median geometry is valid COLLADA and recorded in build diagnostics');
+ $groundMaterials=json_decode($medianZip->getFromName($medianBase.'art/terrains/median.materials.json'),true,512,JSON_THROW_ON_ERROR);
+ check($groundMaterials&&count(array_filter($groundMaterials,static fn($m)=>in_array($m['groundType'],['GRASS','DIRT','ROCK','GRAVEL'],true)))===count($groundMaterials),'Median collision uses terrain ground types instead of roadway or custom sticky material');
+
  $medianZip->close();
 }finally{@unlink($medianMapFile);}

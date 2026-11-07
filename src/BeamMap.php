@@ -161,7 +161,7 @@ final class BeamMap
         $terrainCorrection['exact_pavement']=BeamTerrainContact::clear($road,$profiles,$raster,$origin,$mainStructureMask|$companionMask,$progress,BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']);
         foreach($carriageways as &$track)$track['terrain_correction']['exact_pavement']=BeamTerrainContact::clear($track['road'],$track['profiles'],$raster,$origin,$mainStructureMask|$companionMask,$progress,BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']);
         unset($track);
-        $medianMask=$bridgeMask;
+        $medianMask=$mainStructureMask|$companionMask;
         foreach($preparedIntersections['roads'] as $branch)$medianMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianMask);
         foreach($carriageways as $track)foreach($track['context']['roads'] as $branch)$medianMask=BeamRoadSurface::primaryContactMask($branch['points'],$branch['profiles'],$raster,$medianMask);
         $median=BeamMedian::build($road,$profiles,$carriageways,$coveredSpans,$raster,$origin,$medianMask,$progress);
@@ -173,22 +173,22 @@ final class BeamMap
             $prefix='sl_'.substr($id,0,12);$materials=[];$terrainNames=[];$ground=['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
             $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways);
             $contactRepair=BeamTerrainContact::repairCorridors($repairSurfaces,$raster,$origin,$progress,$tunnelGeometry['layers']);
+            // Native shaping remains the broad base; exact median ground no longer depends on grid fitting.
             $median['report']['contact_passes']=[];
-            if($median['edge_targets'])$progress('Refining native terrain contact along median pavement edges');
-            for($pass=0;$pass<2&&$median['edge_targets'];$pass++){
-                $fit=BeamMedian::fitEdges($median['edge_targets'],$raster,$origin,$medianMask,$tunnelGeometry['layers'],$progress);
-                if(!$fit['raised_vertices'])break;
-                $recheck=BeamTerrainContact::repairCorridors($repairSurfaces,$raster,$origin,$progress,$tunnelGeometry['layers']);
-                $median['report']['contact_passes'][]=$fit+['clearance_recheck'=>$recheck];
-            }
             unset($repairSurfaces,$median['edge_targets']);
-            $contactRepair['median_contact_refined']=!empty($median['report']['contact_passes']);
+            $contactRepair['median_contact_refined']=false;
             $contactRepair['tunnel_patch_rebuilt']=false;
             if($tunnelGeometry['shell']!==null&&(array_sum(array_column($contactRepair['roads'],'lowered_vertices'))>0||$contactRepair['median_contact_refined'])){
                 unset($tunnelGeometry);$progress('Updating tunnel seams after final terrain clearance checks');
                 $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways);$contactRepair['tunnel_patch_rebuilt']=true;
             }
             $categories=$tunnelGeometry['layers'];unset($tunnelGeometry['layers']);
+            $progress('Building exact pavement-edge median terrain');
+            $medianSurface=BeamMedianSurface::build($road,$profiles,$carriageways,$coveredSpans,$raster,$medianMask,$categories,$progress);
+            $median['report']['refined_surface']=$medianSurface['report'];
+            if($medianSurface['faces']){
+                $median['report']['refined_surface']['native_clearance']=BeamTerrainContact::triangles(BeamMedianSurface::triangles($medianSurface),$raster,$origin,$medianMask,$progress,true,$categories);
+            }
             $progress('Writing collision terrain and generic surface materials');
             // v0.40 terrain UVs are in layer/grid units, not world meters.
             for($i=0;$i<($terrainStyle==='stock'?count(BeamTerrain::PALETTE):5);$i++) {
@@ -221,6 +221,18 @@ final class BeamMap
                 foreach(['interior','terrain-patch'] as $part)$objects[]=['class'=>'TSStatic','name'=>'tunnel_'.$part,'__parent'=>'MissionGroup','shapeName'=>$path.'art/tunnels/'.$part.'.dae','position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None','castShadows'=>true];
                 $objects=array_merge($objects,$tunnelGeometry['objects']);unset($tunnelGeometry['shell'],$tunnelGeometry['terrain'],$tunnelGeometry['objects']);
             }
+            if($medianSurface['faces']){
+                $materialNames=array_map(static fn($kind)=>$prefix.'_median_ground_'.$kind,$medianSurface['kinds']);
+                $put('art/terrains/median-ground.dae',BeamAssets::mesh($medianSurface['vertices'],$medianSurface['faces'],$prefix.'_median_ground_dirt',$medianSurface['uv'],$materialNames));
+                $medianMaterials=[];
+                foreach(array_unique($medianSurface['kinds']) as $kind){
+                    $material=$prefix.'_median_ground_'.$kind;
+                    $medianMaterials[$material]=['class'=>'Material','name'=>$material,'mapTo'=>$material,'version'=>1,'doubleSided'=>true,'groundType'=>strtoupper($kind),'Stages'=>[['diffuseMap'=>$path.'art/terrains/aerial.color.png','diffuseColor'=>[1,1,1,1],'specularStrength'=>0,'useAnisotropic'=>true]]];
+                }
+                $put('art/terrains/median.materials.json',self::json($medianMaterials));
+                $objects[]=['class'=>'TSStatic','name'=>'median_ground','__parent'=>'MissionGroup','shapeName'=>$path.'art/terrains/median-ground.dae','position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'Visible Mesh Final','castShadows'=>true];
+            }
+            unset($medianSurface);
             $bridgeMaterial=$prefix.'_bridge';
             if($bridges){
                 $put('art/shapes/bridge-pier.dae',BeamAssets::shape($bridgeMaterial,'bridge-pier'));

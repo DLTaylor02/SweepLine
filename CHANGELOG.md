@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix median shaping being suppressed by an inherited ordinary-carriageway protection mask. Add exact-edge refined median terrain with terrain ground materials, top-only collision and underlying native clearance; preserve curved edge stations, structures, tunnel holes and junction support. Replace ineffective grid fitting passes and verify actual ZIP geometry/materials.
+
 - Improve native median terrain contact on coarse grids: shape supporting cell corners beyond the median edges and run two bounded edge-fitting/clearance passes. Protect structures, tunnel holes and side-road support; refresh tunnel seams after fitting. Add sub-cell and protected-contact regressions.
 
 - Retain the member's refreshed session/CSRF token after reset-password login in HTTP tests. Assert token rotation and stale-token rejection so password-validation tests exercise the intended checks.

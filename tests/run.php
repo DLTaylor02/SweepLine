@@ -427,6 +427,7 @@ require __DIR__.'/carriageways.php';
 require __DIR__.'/carriageway-network.php';
 require __DIR__.'/median-pavement.php';
 require __DIR__.'/median.php';
+require __DIR__.'/median-surface.php';
 require __DIR__.'/import-cleanup.php';
 require __DIR__.'/import-input.php';
 require __DIR__.'/terrain-contact.php';
