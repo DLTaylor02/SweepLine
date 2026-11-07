@@ -12,9 +12,10 @@ final class BeamTrack
         $anchors=array_map(static fn($b)=>$b['points'][0],$input['intersection_data']['branches']??[]);
         $world=BeamPlan::sample(BeamCurve::smooth($input['points'],$anchors,$structures),8,0.001);
         $profiles=BeamRoadSurface::shoulders(BeamRoadSurface::taper($world,BeamLanes::profiles($world,$input['sources'],$plan['bounds'])));
+        $sourceWorld=$world;$world=BeamMedian::anchor($world,$profiles);
         $points=[];$raw=[];$chain=[0.];
         foreach($world as $i=>$p){$local=[$p[0]-$plan['bounds'][0],$p[1]-$plan['bounds'][1]];$points[]=$local;$raw[]=$raster->roadHeight(...$local);if($i)$chain[]=$chain[$i-1]+hypot($local[0]-$points[$i-1][0],$local[1]-$points[$i-1][1]);}
-        $bridges=BeamStructures::spans($world,$input['sources'],true);$tunnels=BeamTunnels::spans($world,$input['sources']);
+        $bridges=BeamMedian::remapSpans(BeamStructures::spans($sourceWorld,$input['sources'],true),$sourceWorld,$world);$tunnels=BeamMedian::remapSpans(BeamTunnels::spans($sourceWorld,$input['sources']),$sourceWorld,$world);
         $raw=BeamTunnels::samples($points,$chain,$raw,$tunnels,$raster);$raw=BeamStructures::deckSamples($points,$chain,$raw,$bridges,$raster,'Opposite carriageway ('.($input['road_ref']??$input['road_name']??$input['name']??'unnamed').')');$road=[];
         foreach($points as $i=>$p){
             if($i%100===0)$progress(null);$sum=0.;$weights=0.;$left=$i;

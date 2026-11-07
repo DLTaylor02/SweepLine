@@ -1,0 +1,42 @@
+<?php
+use SweepLine\{BeamMedian,BeamJunctionBoundary,BeamRaster};
+$mp=array_fill(0,5,['width_m'=>8.,'oneway'=>true,'legal_forward'=>true]);
+$mp[2]['width_m']=11.5;$mp[3]['width_m']=11.5;
+$line=[[0,100,10],[50,100,10],[100,100,10],[150,100,10],[200,100,10]];
+$anchored=BeamMedian::anchor($line,$mp);$sections=BeamJunctionBoundary::sections($anchored,$mp);
+check(abs($anchored[2][1]-98.25)<1e-8,'One-way lane addition shifts pavement centre to travel-right');
+check(abs($sections[2][0][1]-104)<0.01&&abs($sections[2][1][1]-92.5)<0.01,'Travel-left edge stays fixed while the extra lane opens on the right');
+$reverseProfiles=$mp;foreach($reverseProfiles as &$profile)$profile['legal_forward']=false;unset($profile);
+$reversed=BeamMedian::anchor($line,$reverseProfiles);
+check(abs($reversed[2][1]-101.75)<1e-8,'Reverse-oriented export widens to legal travel-right');
+$twoWay=$mp;foreach($twoWay as &$profile)$profile['oneway']=false;unset($profile);
+check(BeamMedian::anchor($line,$twoWay)===$line,'Two-way road alignment remains unchanged');
+$main=[[10,50,10],[190,50,10]];$mainProfiles=array_fill(0,2,['width_m'=>10.,'oneway'=>true,'legal_forward'=>true]);
+$track=['name'=>'test','road'=>[[190,59,11],[100,59,11],[10,59,11]],'profiles'=>array_fill(0,3,['width_m'=>10.,'oneway'=>true,'legal_forward'=>true]),'chain'=>[0.,90.,180.],'bridges'=>[],'tunnels'=>[]];
+$separated=BeamMedian::separate($main,$mainProfiles,$track);
+$pairs=BeamMedian::pairs($main,$mainProfiles,$separated);
+check(count($pairs)===3&&min(array_column($pairs,'gap'))>=0.3999,'Narrow median separation preserves full lane widths instead of clipping the inner lane');
+check(array_column($separated['road'],2)===array_column($track['road'],2),'Median spacing preserves sampled road elevations');
+$raster=new BeamRaster(100,200,str_repeat(pack('g',0),10000),str_repeat(chr(100),30000));$mask=str_repeat("\0",10000);
+$median=BeamMedian::build($main,$mainProfiles,[$separated],[],$raster,0,$mask,static fn($m)=>null);
+check(count($median['walls'])===1&&count($median['walls'][0]['faces'])===24,'Near-touching carriageways receive closed divider collision geometry');
+$open=$track;foreach($open['road'] as &$point)$point[1]=70;unset($point);
+$openMedian=BeamMedian::build($main,$mainProfiles,[$open],[],$raster,0,$mask,static fn($m)=>null);
+check($openMedian['walls']===[]&&$openMedian['report']['terrain_vertices']>0,'Open median receives native terrain interpolation without divider walls');
+check(abs($raster->height(100,60)-10.45)<0.001,'Median terrain joins both pavement edge elevations smoothly');
+$protected=clone $raster;$before=$protected->heights;
+$blocked=BeamMedian::build($main,$mainProfiles,[$separated],[['start_m'=>0,'end_m'=>180]],$protected,0,$mask,static fn($m)=>null);
+check($blocked['walls']===[]&&$protected->heights===$before,'Bridge and tunnel spans do not receive median infill or inferred divider walls');
+$masked=new BeamRaster(100,200,str_repeat(pack('g',0),10000),str_repeat(chr(100),30000));
+BeamMedian::build($main,$mainProfiles,[$open],[],$masked,0,str_repeat("\1",10000),static fn($m)=>null);
+check($masked->height(100,60)===0.,'Median terrain interpolation respects frozen structure cells');
+
+// Structure identity is matched before XY lane adjustment, then stations follow corresponding samples.
+$before=[[0,0],[100,0],[200,0]];$after=[[0,0],[100,-10],[200,0]];
+$mapped=SweepLine\BeamMedian::remapSpans([['start_m'=>50.,'end_m'=>150.,'clearance_m'=>4.8]],$before,$after);
+$segment=hypot(100,10);
+check(abs($mapped[0]['start_m']-$segment/2)<1e-8&&abs($mapped[0]['end_m']-$segment*1.5)<1e-8,'Structure stations follow corresponding samples after lane anchoring');
+check($mapped[0]['clearance_m']===4.8&&abs($mapped[0]['length_m']-$segment)<1e-8,'Structure metadata and adjusted length survive chainage mapping');
+$edgeTrack=$track;$edgeTrack['bridges']=[['start_m'=>65.,'end_m'=>115.]];
+$protectedTrack=BeamMedian::separate($main,$mainProfiles,$edgeTrack);
+check($protectedTrack['road'][1]===$edgeTrack['road'][1],'Median alignment leaves mapped structure cores unchanged');

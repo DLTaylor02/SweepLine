@@ -29,5 +29,10 @@ try{
  check($returnError<1e-6,'Clipped returning pavement stays at its own elevation instead of forming ramps to the other carriageway');
  check($mainError<1e-6,'Independent counterpart clipping leaves selected-road elevations unchanged');
  check($medianMapReport['carriageways']['tracks'][0]['surfaces'][0]['boundary_height_welding']===false,'ZIP report records independent carriageway height clipping');
+ $medianReport=$medianMapReport['median'];
+ check(($medianReport['tracks'][0]['alignment']['adjusted_samples']??0)>0,'Generated overlapping carriageways are separated without removing their inner lanes');
+ $wallFile=$medianZip->getFromName($medianBase.'art/roads/carriageway_0-median.dae');
+ check(is_string($wallFile)&&str_contains($wallFile,'COLLADA')&&($medianReport['tracks'][0]['divider_segments']??0)>0,'Generated ZIP contains closed collision median divider geometry');
+
  $medianZip->close();
 }finally{@unlink($medianMapFile);}
