@@ -62,3 +62,15 @@ $flowFragments=[['points'=>[[80,55],[120,55]]],['points'=>[[40,55],[80,55]]],['p
 $gradedWater=BeamWater::build(['features'=>[$river],'flowlines'=>$flowFragments],$graded,$target,80,[],static fn($m)=>null);
 $profilePoints=$gradedWater['report']['features'][0]['profile_points']??[];
 check(count($profilePoints)>=7&&abs($profilePoints[0][0]-40)<0.001&&abs(end($profilePoints)[0]-160)<0.001&&$profilePoints[0][2]>end($profilePoints)[2],'River profiles join both unique ends of fragmented flowlines and descend with DEM elevation');
+
+$dense=[];for($i=0;$i<400;$i++){$angle=2*M_PI*$i/400;$dense[]=[500+300*cos($angle),500+300*sin($angle)];}
+$coverage=BeamWaterGeometry::cover([$dense],2,128);
+$area=abs(BeamPolygon::area($dense));
+check(count($coverage['patches'])<=128&&$coverage['covered_area_m2']/$area>0.85&&$coverage['shoreline_cell_m']>2,'Dense mapped shorelines adapt within a bounded patch count instead of dropping an entire lake');
+$withIsland=BeamWaterGeometry::cover($rings,1,64);
+$noFlood=true;foreach($withIsland['patches'] as $quad){$center=[($quad[0][0]+$quad[2][0])/2,($quad[0][1]+$quad[2][1])/2];$noFlood=$noFlood&&BeamWaterGeometry::contains($center,$rings);}
+check($noFlood&&abs($withIsland['covered_area_m2']-12800)<0.001,'Coalesced coverage retains exact axis-aligned island holes');
+
+$small=['id'=>'fixture:small','source'=>'test','kind'=>'lake','rings'=>[[[5,5],[15,5],[15,15],[5,15]]]];
+$ordered=BeamWater::build(['features'=>[$small,$feature]],$flat(),$flat(),80,[],static fn($m)=>null);
+check($ordered['report']['features'][0]['id']===$feature['id'],'Larger mapped water bodies receive coverage before small ponds regardless of provider order');

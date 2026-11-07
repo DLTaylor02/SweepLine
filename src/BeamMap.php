@@ -170,11 +170,12 @@ final class BeamMap
         $waterTracks=[['road'=>$road,'profiles'=>$profiles,'bridges'=>$bridges,'tunnels'=>$tunnels]];
         foreach($carriageways as $track)$waterTracks[]=$track;
         foreach(array_merge([$preparedIntersections],array_column($carriageways,'context')) as $context)foreach($context['roads'] as $branch)$waterTracks[]=['road'=>$branch['points'],'profiles'=>$branch['profiles']];
-        $water=BeamWater::build($plan['water_data']??[],$waterSource??$raster,$raster,$origin,$waterTracks,$progress);unset($waterSource,$waterTracks);
+        $water=BeamWater::build($plan['water_data']??[],$waterSource??$raster,$raster,$origin,$waterTracks,$progress);unset($waterSource,$waterTracks,$mainStructureMask,$companionMask,$bridgeMask,$medianMask,$other,$surfaces,$approach);
+        foreach($carriageways as &$track)unset($track['structure_mask']);unset($track);
         $repairSurfaces=[['name'=>'primary','road'=>$road,'profiles'=>$profiles,'spans'=>$coveredSpans,'render'=>BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']]];
         foreach($carriageways as $track)$repairSurfaces[]=['name'=>$track['name'],'road'=>$track['road'],'profiles'=>$track['profiles'],'obstacles'=>[['road'=>$road,'profiles'=>$profiles,'weld_boundary'=>false]],'spans'=>array_merge($track['bridges'],$track['tunnels']),'render'=>BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']];
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
-        $put=static function($file,$bytes)use($zip,$base){if(!$zip->addFromString($base.$file,$bytes))throw new \RuntimeException('Could not write BeamNG archive.');};
+
         // libzip keeps addFromString buffers until close; large terrain meshes
         // use private file-backed sources so memory does not grow with archive size.
         $meshFiles=[];
@@ -183,6 +184,7 @@ final class BeamMap
             $meshFiles[]=$tmp;chmod($tmp,0600);
             if(file_put_contents($tmp,$bytes)!==strlen($bytes)||!$zip->addFile($tmp,$base.$file))throw new \RuntimeException('Cannot write terrain mesh archive entry.');
         };
+        $put=$putMesh;
         try {
             $groundLayers=$categories;
             $prefix='sl_'.substr($id,0,12);$materials=[];$terrainNames=[];$ground=['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
@@ -231,6 +233,7 @@ final class BeamMap
             $materials[$prefix.'_terrain_set']=['class'=>'TerrainMaterialTextureSet','name'=>$prefix.'_terrain_set','baseTexSize'=>[$terrainStyle==='stock'?1024:$n,$terrainStyle==='stock'?1024:$n],'macroTexSize'=>[64,64],'detailTexSize'=>[$terrainStyle==='stock'?1024:64,$terrainStyle==='stock'?1024:64]];
             $put('art/terrains/main.materials.json',self::json($materials));
             BeamTextures::write($terrainRaster,$terrainStyle,$compute,$put,$progress);
+            unset($terrainRaster,$categories,$groundLayers,$medianSurfaceMask,$materials);
             $objects=[['class'=>'LevelInfo','name'=>'theLevelInfo','__parent'=>'MissionGroup','levelName'=>$plan['name'],'visibleDistance'=>16000,'fogDensity'=>0.000015,'fogAtmosphereHeight'=>2000],
                 ['class'=>'ScatterSky','name'=>'theSky','__parent'=>'MissionGroup','sunSize'=>1,'skyBrightness'=>40,'exposure'=>1,'elevation'=>50,'azimuth'=>180,'ambientScale'=>[1,1,1,1],'sunScale'=>[1,1,1,1],'ambientScaleGradientFile'=>'art/sky_gradients/default/gradient_ambient.png','sunScaleGradientFile'=>'art/sky_gradients/default/gradient_sunscale.png','colorizeGradientFile'=>'art/sky_gradients/default/gradient_colorize.png'],
                 ['class'=>'TimeOfDay','name'=>'timeOfDay','__parent'=>'MissionGroup','time'=>19/24,'startTime'=>19/24,'version'=>2,'play'=>false],
@@ -303,6 +306,7 @@ final class BeamMap
 
                 $objects[]=['class'=>'TSStatic','name'=>'road_surface','__parent'=>'MissionGroup','shapeName'=>$path.'art/roads/primary.dae','position'=>$primary['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'Visible Mesh Final'];
             }
+            unset($primary,$primarySections);
             if($bridges){
                 $bridgeSections=BeamJunctionBoundary::renderSections($road,$profiles,$mainRendering['points']);
                 $underdeck=BeamBridgeDeck::build($mainRendering['points'],$bridgeSections,$bridges,$bridgeMaterial,$explicitPavement?0.5:0.52);
@@ -437,7 +441,7 @@ final class BeamMap
             $put('art/shapes/main.materials.json',self::json((object)$sceneryMaterials));
             $items='';foreach($objects as $object)$items.=json_encode($object,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
             $put('main/items.level.json',json_encode(['class'=>'SimGroup','name'=>'MissionGroup','persistentId'=>substr($id,0,8).'-'.substr($id,8,4).'-4'.substr($id,13,3).'-8'.substr($id,17,3).'-'.substr($id,20,12)],JSON_THROW_ON_ERROR)."\n");
-            $put('main/MissionGroup/items.level.json',$items);
+            $put('main/MissionGroup/items.level.json',$items);unset($items,$objects,$object);
             $put('info.json',self::json(['title'=>$plan['name'].' - '.Version::label(),'description'=>'Generated real-scale road recreation. '.implode('; ',$plan['alternate_names']).' Target: BeamNG.drive v0.40. Scenery and missing lane attributes are estimates.','authors'=>'SweepLine; OpenStreetMap contributors; USGS; USDA','size'=>[$side,$side],'defaultSpawnPointName'=>'spawns_start','spawnPoints'=>[['translationId'=>'Start','objectname'=>'spawns_start','preview'=>'spawn-start.png','description'=>'Default road start'],['translationId'=>'End','objectname'=>'spawns_end','preview'=>'spawn-end.png','description'=>'Road end, facing back toward Start (simulation)']],'previews'=>['preview.png']]));
             $put('preview.png',BeamPreview::render($raster,$road,$plan['name']));
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
@@ -449,6 +453,7 @@ final class BeamMap
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Fixed beam/slab bridges and viaducts up to 2000 meters use estimated approach-derived decks. Complex bridges and unsupported tunnel types are refused. Simple tunnel profiles, clearance and portals are estimated from approaches; not surveyed. Unmapped structures may be inaccurate.','Navigation includes the primary road, side branches and supported synthetic return loops. Enable traffic in-game; maneuvers require in-game validation.','Requires in-game v0.40 validation.']];
             $report['sweepline_version']=Version::number();
             $report['build_log']='build.log';
+            $report['worker_memory']=['heap_before_diagnostics_bytes'=>memory_get_usage(true),'peak_heap_bytes'=>memory_get_peak_usage(true),'php_limit'=>ini_get('memory_limit')];
             $put('sweepline-report.json',self::json($report));
             $zip->addFromString('INSTALL.txt',Version::label()." BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." - SweepLine, then Start or End.\nStart is the default spawn. Detailed selection, sources, processing and geometry diagnostics: build.log at the root of this ZIP. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nUses installed BeamNG.drive 0.40 vegetation from Utah, West Coast USA, East Coast USA or Johnson Valley. Required references are listed in the report. No BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
             $progress('Finalizing the map ZIP');
@@ -457,8 +462,9 @@ final class BeamMap
             $tracks=[];foreach($carriageways as $track)$tracks[]=['name'=>$track['name'],'points'=>$track['road'],'profiles'=>array_map($summarize,$track['profiles']),'bridges'=>$track['bridges'],'tunnels'=>$track['tunnels'],'intersections'=>$track['context']];
             $generated=['primary'=>['points'=>$road,'profiles'=>array_map($summarize,$profiles),'chainage_m'=>$chain],'carriageways'=>$tracks,'intersections'=>$preparedIntersections,'raster_provenance'=>$raster->provenance,'spawn_start'=>$start,'spawn_finish'=>$end];
             $files=[];for($i=0;$i<$zip->numFiles;$i++){$stat=$zip->statIndex($i);$files[]=['name'=>$stat['name'],'uncompressed_bytes'=>$stat['size']];}
-            if(!$zip->addFromString('build.log',$buildLog->render($plan,$report,$generated,$files)))throw new \RuntimeException('Could not write export build.log');
-        } finally {try{$zip->close();}finally{foreach($meshFiles as $tmp)if(is_file($tmp))unlink($tmp);}}
+            $logFile=tempnam(dirname($zipPath),'sl-log-');if($logFile===false)throw new \RuntimeException('Cannot allocate export log workspace.');$meshFiles[]=$logFile;chmod($logFile,0600);
+            $buildLog->write($logFile,$plan,$report,$generated,$files);if(!$zip->addFile($logFile,'build.log'))throw new \RuntimeException('Could not write export build.log');
+        } finally {try{if(!$zip->close())throw new \RuntimeException('Could not finalize BeamNG ZIP.');}finally{foreach($meshFiles as $tmp)if(is_file($tmp))unlink($tmp);}}
         return $report;
     }
 }

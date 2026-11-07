@@ -82,15 +82,19 @@ final class BeamWater
         $objects=[];$areas=[];$rejections=[];$features=[];$changed=0;$budget=0;
         $roads=[];foreach(($data['features']??[])?$tracks:[] as $t)$roads[]=['points'=>$t['road'],'profiles'=>$t['profiles'],'bridges'=>$t['bridges']??[],'tunnels'=>$t['tunnels']??[]];
         $roadIndex=$roads?new BeamRoadIndex($roads):null;$step=$terrain->side/$terrain->size;
-        foreach($data['features']??[] as $feature){
+        $ordered=$data['features']??[];
+        $area=static function($feature){$rings=$feature['rings'];$area=abs(BeamPolygon::area($rings[0]));foreach(array_slice($rings,1) as $hole)$area-=abs(BeamPolygon::area($hole));return $area;};
+        usort($ordered,static fn($a,$b)=>$area($b)<=>$area($a));
+        foreach($ordered as $feature){
             $progress('Preparing mapped water surfaces');
             try{
                 $rings=$feature['rings'];$bounds=BeamWaterGeometry::bounds($rings);
                 foreach($bounds as $v)if(!is_finite($v)||$v< -0.01||$v>$terrain->side+0.01)throw new \RuntimeException('Water boundary lies outside the exported square.');
-                $patches=BeamWaterGeometry::patches($rings,INF,INF,self::MAX_OBJECTS-count($objects));$model=self::model($feature,$data['flowlines']??[],$source,$patches);
-                if(isset($model['points']))$patches=BeamWaterGeometry::patches($rings,64,128,self::MAX_OBJECTS-count($objects));
+                $moving=in_array($feature['kind'],['river','canal'],true);
+                $coverage=BeamWaterGeometry::cover($rings,max(1,min(4,$terrain->side/2048)),self::MAX_OBJECTS-count($objects),$moving,$progress);
+                $patches=$coverage['patches'];$model=self::model($feature,$data['flowlines']??[],$source,$patches);
                 $localTracks=[];foreach($tracks as $t){$copy=$t;foreach($copy['road'] as &$p)$p[2]+=$origin;unset($p);$localTracks[]=$copy;}
-                $patches=BeamWaterGeometry::rectangles($patches,self::MAX_OBJECTS-count($objects));
+
                 if(self::roadConflict($feature,$model,$localTracks,$progress))throw new \RuntimeException('Water level or boundary conflicts with protected road or tunnel geometry.');
                 $new=[];foreach($patches as $quad)$new[]=self::object($quad,$model,$origin,count($objects)+count($new),isset($model['points']));
                 if(!$new)continue;
@@ -113,10 +117,10 @@ final class BeamWater
                 }
                 $terrain->heights=$bedTerrain->heights;unset($bedTerrain);array_push($objects,...$new);$areas[]=['rings'=>$rings,'bounds'=>$bounds];
                 $changed+=$featureChanged;$metadata=array_intersect_key($feature,array_flip(['id','name','source','source_key','kind','source_date']));
-                $features[]=$metadata+['patches'=>count($new),'level_method'=>$model['method'],'confidence'=>$model['confidence'],'estimated_depth_m'=>1.5,'elevation_spread_m'=>$model['elevation_spread_m'],'level_m'=>isset($model['level'])?$model['level']:null,'profile_points'=>$model['points']??null,'bed_vertices_changed'=>$featureChanged];
+                $features[]=$metadata+['patches'=>count($new),'shoreline_cell_m'=>$coverage['shoreline_cell_m'],'covered_area_m2'=>$coverage['covered_area_m2'],'level_method'=>$model['method'],'confidence'=>$model['confidence'],'estimated_depth_m'=>1.5,'elevation_spread_m'=>$model['elevation_spread_m'],'level_m'=>isset($model['level'])?$model['level']:null,'profile_points'=>$model['points']??null,'bed_vertices_changed'=>$featureChanged];
             }catch(JobCancelled $e){throw $e;}catch(\Throwable $e){unset($bedTerrain);$reason=$e instanceof \RuntimeException?$e->getMessage():'Water geometry processing failed.';$rejections[$reason]=($rejections[$reason]??0)+1;}
         }
         $warning=trim((string)($data['warning']??''));if($rejections)$warning=trim($warning.' Some mapped water was omitted; see water_data.rejections in build.log.');if($budget>8000000)$warning=trim($warning.' Water-bed processing reached its bounded raster budget.');
-        return ['objects'=>$objects,'exclusions'=>$areas,'report'=>['providers'=>$data['providers']??[],'input_features'=>count($data['features']??[]),'rendered_features'=>count($features),'native_water_objects'=>count($objects),'features'=>$features,'rejections'=>$rejections,'duplicates_skipped'=>$data['duplicates_skipped']??0,'source_rejections'=>$data['source_rejections']??0,'truncated'=>$data['truncated']??false,'bed_vertices_changed'=>$changed,'warning'=>$warning,'attribution'=>$data['attribution']??'USGS 3DHP/NHD; OpenStreetMap contributors (ODbL)','method'=>'Inscribed native River rectangles preserve islands with up to 2 m shoreline inset; water elevations and shallow beds are estimates; no measured bathymetry or flow speed']];
+        return ['objects'=>$objects,'exclusions'=>$areas,'report'=>['providers'=>$data['providers']??[],'input_features'=>count($data['features']??[]),'rendered_features'=>count($features),'native_water_objects'=>count($objects),'features'=>$features,'rejections'=>$rejections,'duplicates_skipped'=>$data['duplicates_skipped']??0,'source_rejections'=>$data['source_rejections']??0,'truncated'=>$data['truncated']??false,'bed_vertices_changed'=>$changed,'warning'=>$warning,'attribution'=>$data['attribution']??'USGS 3DHP/NHD; OpenStreetMap contributors (ODbL)','method'=>'Coalesced inscribed native River rectangles preserve islands; adaptive shoreline cell size is recorded per feature; water elevations and shallow beds are estimates; no measured bathymetry or flow speed']];
     }
 }

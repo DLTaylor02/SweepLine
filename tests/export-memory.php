@@ -18,3 +18,19 @@ foreach(['memory','fatal'] as $mode){
   check(str_contains($saved[0]??'','Serializing terrain')&&str_contains($saved[0]??'',$mode==='memory'?'memory limit':'PHP fatal error'),'Fatal '.$mode.' exposes the stage and failure category without a generic restart message');
  }finally{unlink($file);}
 }
+
+$logPath=tempnam(sys_get_temp_dir(),'sl-stream-log-');$pipes=[];
+try{
+ $child=proc_open([PHP_BINARY,'-n','-d','memory_limit=16M',__DIR__.'/fixtures/build-log-memory.php',$logPath],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,null,null,['bypass_shell'=>true]);
+ if(!is_resource($child))throw new RuntimeException('Cannot start streaming log regression.');
+ fclose($pipes[0]);$out=stream_get_contents($pipes[1]);$err=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$status=proc_close($child);$measurement=json_decode($out,true);
+ check($status===0&&($measurement['bytes']??0)>32*1048576&&($measurement['extra_peak']??INF)<8*1048576,'Detailed build log larger than 32 MiB streams under a 16 MiB worker heap');
+ if($status!==0)fwrite(STDERR,$err);
+}finally{if(is_file($logPath))unlink($logPath);}
+$logPath=tempnam(sys_get_temp_dir(),'sl-stream-content-');
+try{
+ $log=new SweepLine\BeamBuildLog();$plan=['name'=>'Unicode test / punctuation','sources'=>[['tags'=>['name'=>'River & woods']]],'env'=>['password'=>'never-export']];
+ $log->write($logPath,$plan,['count'=>3],['points'=>[[1.5,2,null],[3,4,true]]],[]);
+ $text=file_get_contents($logPath);$data=json_decode(substr($text,strpos($text,'{')),true,512,JSON_THROW_ON_ERROR);
+ check($data['inputs']['sources']===$plan['sources']&&$data['generated_geometry']['points'][0][0]===1.5&&!str_contains($text,'never-export'),'Streamed diagnostics preserve structured geometry and the existing secret allowlist');
+}finally{unlink($logPath);}

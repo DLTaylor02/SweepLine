@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.128.0:** Reduce BeamNG export memory: file-backed ZIP entries, streamed build logs, and earlier release of terrain masks, imagery and serialized meshes. Add constrained-memory diagnostic tests and heap measurements to reports. Replace vertex-driven water patches with adaptive coalesced coverage so complex lakes and long rivers fit the existing object budget; replay supplied lake/river archive geometry without location-specific rules.
+
 - **0.127.0:** Print the deployed application version as the final installer output line, using the installed VERSION through the existing version command. Add automatic full-square USGS/OSM water discovery to BeamNG exports, native bounded water with island preservation, estimated beds/profiles, road and tunnel protection, seven-day resource caching, provenance and regression coverage. Version intentionally held for this addition.
 
 - **0.126.0:** Coordinate both carriageways at shared-road splits and merges: align the returning lanes to their directional half of the receiving pavement, preserve markings over clipped overlap, and keep verified traffic links. Add combined-surface lane-width, coverage and marking regressions; preserve fully divided highway behavior and structure protection.

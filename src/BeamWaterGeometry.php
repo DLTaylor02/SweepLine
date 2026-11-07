@@ -74,4 +74,52 @@ final class BeamWaterGeometry
         $xs=[];foreach($rings as $ring)foreach($ring as $i=>$a){$b=$ring[($i+1)%count($ring)];if(($a[1]>$y)!==($b[1]>$y))$xs[]=$a[0]+($b[0]-$a[0])*($y-$a[1])/($b[1]-$a[1]);}
         sort($xs);$out=[];for($i=1;$i<count($xs);$i+=2)$out[]=[$xs[$i-1],$xs[$i]];return $out;
     }
+
+    /** Coalesce conservative grid cells into rectangles, rather than one patch per vertex.
+     * Every band is intersected at all shoreline breakpoints, so islands cannot be bridged. */
+    public static function cover(array $rings,float $initialStep,int $budget=1024,bool $river=false,?callable $progress=null): array
+    {
+        if($budget<1)throw new \RuntimeException('Water coverage patch budget reached.');
+        [$x0,$y0,$x1,$y1]=self::bounds($rings);$vertices=array_merge(...$rings);$lastError='Water coverage patch budget reached.';
+        for($attempt=0;$attempt<6;$attempt++){
+            $step=$initialStep*2**$attempt;if($step>max(32,$initialStep*8))break;
+            $out=[];$active=[];$overflow=false;$first=(int)floor($y0/$step);$last=(int)ceil($y1/$step);
+            for($row=$first;$row<$last;$row++){
+                if($row%32===0&&$progress)$progress(null);
+                $bottom=max($y0,$row*$step);$top=min($y1,($row+1)*$step);$epsilon=min(1e-5,($top-$bottom)/1000);
+                $samples=[$bottom+$epsilon,$top-$epsilon];
+                foreach($vertices as $v)if($v[1]>$bottom+$epsilon&&$v[1]<$top-$epsilon){$samples[]=$v[1]-$epsilon;$samples[]=$v[1]+$epsilon;}
+                $intervals=null;
+                foreach($samples as $y){
+                    $next=self::intervals($rings,$y);
+                    if($intervals===null){$intervals=$next;continue;}
+                    $intersect=[];$i=0;$j=0;
+                    while(isset($intervals[$i],$next[$j])){
+                        $left=max($intervals[$i][0],$next[$j][0]);$right=min($intervals[$i][1],$next[$j][1]);
+                        if($right-$left>1e-6)$intersect[]=[$left,$right];
+                        if($intervals[$i][1]<$next[$j][1])$i++;else $j++;
+                    }
+                    $intervals=$intersect;if(!$intervals)break;
+                }
+                $current=[];
+                foreach($intervals??[] as [$left,$right]){
+                    $start=(int)ceil(($left-1e-7)/$step);$end=(int)floor(($right+1e-7)/$step);
+                    $chunk=$river?max(1,(int)floor(512/$step)):max(1,$end-$start);
+                    for($a=$start;$a<$end;$a+=$chunk){
+                        $b=min($end,$a+$chunk);$key=$a.':'.$b;
+                        if(isset($active[$key])&&(!$river||$top-$out[$active[$key]][0][1]<=256+1e-6)){
+                            $id=$active[$key];$out[$id][2][1]=$top;$out[$id][3][1]=$top;
+                        }else{
+                            if(count($out)>=$budget){$overflow=true;break 2;}
+                            $id=count($out);$out[]=[[$a*$step,$bottom],[$b*$step,$bottom],[$b*$step,$top],[$a*$step,$top]];
+                        }
+                        $current[$key]=$id;
+                    }
+                }
+                if($overflow)break;$active=$current;
+            }
+            if(!$overflow&&$out)return ['patches'=>$out,'shoreline_cell_m'=>$step,'covered_area_m2'=>array_sum(array_map(static fn($q)=>abs(BeamPolygon::area($q)),$out))];
+        }
+        throw new \RuntimeException($lastError);
+    }
 }
