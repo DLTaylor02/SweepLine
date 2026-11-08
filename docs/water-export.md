@@ -18,7 +18,7 @@ PostGIS repairs and clips polygons while retaining island holes. Permanent lakes
 
 Inscribed grid cells are coalesced into native rectangular patches. Shoreline cell size adapts from roughly 1-4 metres up to 32 metres to fit the existing 1,024-object budget; it is recorded per feature together with covered area. Dense shoreline vertices no longer directly determine object count. Narrow channels and shoreline slivers can still be omitted at coarser resolutions. This avoids a single rectangular water plane flooding land or islands. Lake levels use low interior DEM samples. Rivers use mapped USGS flowlines and a terrain-derived downhill profile when available; inconsistent slopes or unsupported geometry are omitted. Water colors come from interior aerial samples. Core game water textures are referenced without copying proprietary assets into the archive.
 
-Water level, depth and bed shape are estimates. A nominal 1.5-metre shallow bed is lowered by at most three metres, fading at shorelines. Raster work is bounded and road/tunnel buffers are protected. Native water physics are enabled, but no measured current or bathymetry is claimed. Rivers without a usable profile require sufficiently flat terrain. Source Z coordinates are not used without verified vertical datum information.
+Water level, depth and bed shape are estimates. Lake shaping lowers a nominal 1.5-metre shallow bed by at most three metres, fading at shorelines; river-bank shaping is described below. Raster work is bounded and road/tunnel buffers are protected. Native water physics are enabled, but no measured current or bathymetry is claimed. Rivers without a usable profile require sufficiently flat terrain. Source Z coordinates are not used without verified vertical datum information.
 
 Water conflicting with ordinary pavement or tunnel geometry, or lacking bridge-deck clearance, is skipped with a diagnostic. Exported road elevations are not changed by the water pass. Mapped water also excludes roadside scenery/buildings while dry islands remain available. Existing bridge, tunnel, median and shoulder processing remains responsible for road geometry.
 
@@ -31,3 +31,17 @@ Look for `water_data` in `build.log` and the approximation report: provider avai
 Offline tests cover island preservation, shore strips, OSM relation assembly, bridge/tunnel/road protection, river profiles, retries/cancellation, scenery exclusions and complete archive output. The disposable PostGIS integration suite covers clipping, projection, deduplication and the combined fetch workflow. Actual in-game appearance and physics still require BeamNG validation.
 
 Attribution: USGS 3DHP/NHD and OpenStreetMap contributors ([ODbL](https://www.openstreetmap.org/copyright)). Existing imagery/elevation attribution remains in each export.
+
+## Rivers and bank contact (0.129.0)
+
+River/canal profiles now include official USGS waterbody-connector flowlines (feature type 5), prioritized before ordinary river/canal lines in the bounded query. These mapped connectors provide geometry inside river waterbody polygons; a line alone still cannot establish water width. The query change creates a new resource-cache key automatically, so old responses excluding connectors are not reused for this request.
+
+Where mapped profiles are usable, native River ribbons follow perpendicular intersections with the mapped banks instead of a rectangular shoreline grid. Width is constrained by polygon boundaries and island holes. Separate mapped components remain separate; chords across dry land are rejected. Lakes retain their established polygon-grid rendering. Flat rivers with no usable mapped line retain the explicitly reported grid fallback.
+
+Elevation fitting samples more closely along each mapped component, filters isolated local DEM spikes over a bounded chainage window, and fits downhill profiles. Unsupported steep components are omitted independently. Surface elevation, channel bed and shoreline remain estimates, not surveyed water engineering.
+
+River terrain blends to about 5 cm above the estimated waterline at the bank, with a submerged nominal 1.5 m bed and an outer blend spanning at least 1.5 terrain cells. Per-vertex changes are limited to 8 m downward and 3 m upward. Ordinary road/tunnel support buffers remain protected, and only areas near supported ribbons are shaped. Lake bed shaping is unchanged.
+
+Reports/build.log identify each feature's surface method, native object names, profile paths, rejected profile-component count and bank-blend distance. Rejected whole features now include their source IDs and reasons. Inspect these fields when a river is missing or only partially represented.
+
+USGS documents [waterbody connectors in its flowline layer](https://hydro.nationalmap.gov/arcgis/rest/services/3DHP_all/MapServer/50). Shared source limits can still truncate coverage; native spline surfaces and bank contact require fresh in-game validation.

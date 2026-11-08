@@ -30,6 +30,8 @@ $plan=['terrain_style'=>'aerial','name'=>'SweepLine Export Validation Café','al
     ['points'=>[[1900,2400],[1900,2900]],'tags'=>['lanes'=>'3','lanes:forward'=>'2','lanes:backward'=>'1'],'highway'=>'secondary','direction'=>0]
 ],'center'=>[-119.8,39.5],'oneway'=>false];
 $plan['water_data']=['features'=>[['id'=>'fixture:lake','source'=>'test','kind'=>'lake','rings'=>[[[40,40],[160,40],[160,160],[40,160]],[[80,80],[120,80],[120,120],[80,120]]]]],'providers'=>['fixture'=>['status'=>'complete']]];
+$plan['water_data']['features'][]=['id'=>'fixture:river','source'=>'test','kind'=>'river','rings'=>[[[20,200],[300,200],[300,240],[20,240]]]];
+$plan['water_data']['flowlines']=[['points'=>[[40,220],[280,220]]]];
 $file=tempnam(sys_get_temp_dir(),'sweepline-beam-test-');$phases=[];
 try {
     $report=BeamMap::build($plan,$raster,str_repeat('a',32),$file,static function($message)use(&$phases){if($message!==null)$phases[]=$message;});
@@ -52,9 +54,9 @@ try {
     check($root['class']==='SimGroup' && $root['name']==='MissionGroup','Scene root matches installed v0.40 layout');
     $objects=array_map(static fn($line)=>json_decode($line,true,512,JSON_THROW_ON_ERROR),explode("\n",trim($archive->getFromName($base.'main/MissionGroup/items.level.json'))));
     $nativeWater=array_values(array_filter($objects,static fn($o)=>$o['class']==='River'));
-    check(count($nativeWater)===4&&$report['water_data']['rendered_features']===1,'Complete BeamNG archive includes bounded native water and provenance report');
+    check(count($nativeWater)===5&&$report['water_data']['rendered_features']===2,'Complete BeamNG archive includes bounded native water and provenance report');
     $waterLog=json_decode(substr($archive->getFromName('build.log'),strpos($archive->getFromName('build.log'),'{')),true,512,JSON_THROW_ON_ERROR);
-    check(isset($waterLog['inputs']['water_data'])&&$waterLog['analysis_and_rejections']['water_data']['native_water_objects']===4,'Water source inputs and decisions are included in build.log');
+    check(isset($waterLog['inputs']['water_data'])&&$waterLog['analysis_and_rejections']['water_data']['native_water_objects']===5,'Water source inputs and decisions are included in build.log');
 
     $clock=array_values(array_filter($objects,fn($o)=>$o['class']==='TimeOfDay'))[0];
     check(abs(fmod($clock['time']+0.5,1)*24-7)<0.000001 && abs(fmod($clock['startTime']+0.5,1)*24-7)<0.000001 && $clock['version']===2 && !$clock['play'],'Both initial and runtime BeamNG clock fields specify fixed 7 AM');

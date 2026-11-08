@@ -74,3 +74,15 @@ check($noFlood&&abs($withIsland['covered_area_m2']-12800)<0.001,'Coalesced cover
 $small=['id'=>'fixture:small','source'=>'test','kind'=>'lake','rings'=>[[[5,5],[15,5],[15,15],[5,15]]]];
 $ordered=BeamWater::build(['features'=>[$small,$feature]],$flat(),$flat(),80,[],static fn($m)=>null);
 check($ordered['report']['features'][0]['id']===$feature['id'],'Larger mapped water bodies receive coverage before small ponds regardless of provider order');
+
+$banks=SweepLine\BeamRiver::banks([100,55],[1,0],$river['rings']);
+check($banks!==null&&abs($banks['width']-30)<1e-6&&abs($banks['center'][1]-55)<1e-6,'River cross-sections use mapped banks rather than arbitrary grid widths');
+$riverTerrain=$flat();$ribbonWater=BeamWater::build(['features'=>[$river],'flowlines'=>[$line]],$flat(),$riverTerrain,80,[],static fn($m)=>null);
+check($ribbonWater['report']['features'][0]['surface_method']==='mapped-bank ribbons'&&count($ribbonWater['objects'])===1&&count($ribbonWater['objects'][0]['nodes'])>10,'Mapped river flowline becomes a continuous native ribbon rather than rectangular cells');
+check(abs($riverTerrain->height(100,40)-100.17)<0.15&&$riverTerrain->height(100,55)<99.5,'River-bank terrain reaches the water surface while the channel bed stays submerged');
+$bankRoad=['road'=>[[40,35,21],[160,35,21]],'profiles'=>$profile,'bridges'=>[],'tunnels'=>[]];
+$protected=$flat();BeamWater::build(['features'=>[$river],'flowlines'=>[$line]],$flat(),$protected,80,[$bankRoad],static fn($m)=>null);
+check(abs($protected->height(100,35)-100)<0.001,'River-bank blending preserves nearby ordinary road support');
+$splitLines=[['points'=>[[40,55],[85,55]]],['points'=>[[115,55],[160,55]]]];
+$split=BeamWater::build(['features'=>[$river],'flowlines'=>$splitLines],$flat(),$flat(),80,[],static fn($m)=>null);
+check(count($split['report']['features'][0]['profile_paths'])===2&&count($split['objects'])===2,'Disconnected mapped profile components render independently without inventing a connecting channel');

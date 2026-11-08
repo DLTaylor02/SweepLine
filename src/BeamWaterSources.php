@@ -71,7 +71,7 @@ final class BeamWaterSources
         foreach([60=>129,50=>257] as $layer=>$limit){
             try{
                 $fields=$layer===60?'id3dhp,gnisidlabel,featuretype,featuredate':'id3dhp,waterbodyid3dhp,featuretype,flowdirection';
-                $args=['f'=>'geojson','where'=>$layer===60?'featuretype IN (1,2,3,4)':'featuretype IN (1,2)','geometry'=>$geometry,'geometryType'=>'esriGeometryEnvelope','inSR'=>$plan['epsg'],'spatialRel'=>'esriSpatialRelIntersects','outSR'=>4326,'outFields'=>$fields,'returnGeometry'=>'true','returnZ'=>'false','returnM'=>'false','geometryPrecision'=>7,'maxAllowableOffset'=>0.00001,'resultRecordCount'=>$limit,'orderByFields'=>$layer===60?'areasqkm DESC':'lengthkm DESC'];
+                $args=['f'=>'geojson','where'=>$layer===60?'featuretype IN (1,2,3,4)':'featuretype IN (1,2,5)','geometry'=>$geometry,'geometryType'=>'esriGeometryEnvelope','inSR'=>$plan['epsg'],'spatialRel'=>'esriSpatialRelIntersects','outSR'=>4326,'outFields'=>$fields,'returnGeometry'=>'true','returnZ'=>'false','returnM'=>'false','geometryPrecision'=>7,'maxAllowableOffset'=>0.00001,'resultRecordCount'=>$limit,'orderByFields'=>$layer===60?'areasqkm DESC':'featuretype DESC,lengthkm DESC'];
                 $url=self::USGS.$layer.'/query?'.http_build_query($args);$result=self::request($url,$dir.'/water-usgs-'.$layer.'.json',null,$progress,$download,$sleep);
                 $features=$result['data']['features'];$partial=!empty($result['data']['exceededTransferLimit'])||count($features)>=$limit;$truncated=$truncated||$partial;
                 $providers['USGS-'.$layer]=['status'=>'complete','features'=>count($features),'truncated'=>$partial]+$result['provenance'];

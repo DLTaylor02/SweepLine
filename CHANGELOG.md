@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.129.0:** Include USGS waterbody connectors in river profiles; fit disconnected components with robust local elevation filtering. Render supported rivers as mapped-bank native ribbons and blend adjacent terrain to the waterline, preserving road/tunnel support and existing lake rendering. Add per-feature rejection/object diagnostics and river/shore regressions.
+
 - **0.128.0:** Reduce BeamNG export memory: file-backed ZIP entries, streamed build logs, and earlier release of terrain masks, imagery and serialized meshes. Add constrained-memory diagnostic tests and heap measurements to reports. Replace vertex-driven water patches with adaptive coalesced coverage so complex lakes and long rivers fit the existing object budget; replay supplied lake/river archive geometry without location-specific rules.
 
 - **0.127.0:** Print the deployed application version as the final installer output line, using the installed VERSION through the existing version command. Add automatic full-square USGS/OSM water discovery to BeamNG exports, native bounded water with island preservation, estimated beds/profiles, road and tunnel protection, seven-day resource caching, provenance and regression coverage. Version intentionally held for this addition.

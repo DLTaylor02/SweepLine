@@ -22,4 +22,7 @@ try{
  },static fn()=>null);
  check(count($requests)===3&&count($fetched['features'])===1&&$fetched['providers']['USGS-60']['status']==='complete','Worker fetch combines bounded USGS and OSM requests through native PDO normalization');
  check(str_contains($requests[0],'spatialRel=esriSpatialRelIntersects')&&str_contains($requests[0],'inSR=32617'),'Water requests cover the exact projected export square, including enclosing lakes');
+
+ parse_str(parse_url($requests[1],PHP_URL_QUERY),$hydroArgs);
+ check(str_contains($hydroArgs['where'],'5')&&str_contains($hydroArgs['orderByFields'],'featuretype DESC'),'Hydrography fetch includes and prioritizes mapped waterbody connectors for river profiles');
 }finally{foreach(glob($waterDir.'/*') as $file)unlink($file);rmdir($waterDir);}
