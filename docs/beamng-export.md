@@ -420,3 +420,26 @@ These stages indicate work phases, not elapsed-time percentages. The worker stor
 Cancelled and failed jobs keep a static stopped bar and the last activity instead of replacing it with a generic failure/cancellation message. This also applies to worker-restart recovery and fatal shutdowns. The discovery export control remembers the stopped notice and stage when a road is reopened in the same browser session; the job API retains them independently of browser storage. Older terminal jobs whose activity was already overwritten cannot reconstruct missing history.
 
 River depth is an explicit 3 m simulation estimate; lake depth treatment remains unchanged. New river fitting addresses local DEM steps without dropping whole stretches at a fixed 5% grade. Source gaps, unsupported profiles and native spline/bank contact still require in-game validation.
+
+## Native arch time trials (0.131.0)
+
+Fresh exports include two BeamNG.drive v0.40 time-trial missions:
+
+- **Forward:** activate at the Start arch and finish at the Finish arch.
+- **Reverse:** activate at the Finish arch and finish at the Start arch.
+
+Install the ZIP normally, load its Free Roam map, and approach the mission marker at the desired arch (or choose it from the game's map). Use BeamNG's mission Start action. The current player vehicle starts at the arch with a standing countdown; the native mission system handles timing, completion, retries and best-time tracking.
+
+Both events follow the final exported primary road between the exact arch positions. Ordered checkpoints are added along straights and bends; recovery positions face the event's direction and use lane-centred placement. Reverse follows the same selected carriageway in the opposite simulation direction, including on one-way/divided stretches. Side branches are scenery/context and are not part of the timed course.
+
+Mission names include the preferred road name, direction and SweepLine version; descriptions preserve alternate names. Event cards reference the generated Start/End previews. The game retains its own per-mission results locally; SweepLine does not collect them. Regenerated exports have new level/mission IDs, so best times are specific to the installed export.
+
+Events use one point-to-point pass, unlimited checkpoint recoveries without an added recovery penalty, and a completion star. No fabricated bronze/silver/gold target times or career rewards are assigned. Checkpoints guide the course; this is not a competitive anti-cheat boundary system.
+
+Generated files live under `gameplay/missions/<export-level>/timeTrial/sweepline-forward/` and `sweepline-reverse/`, with native `info.json` and `race.race.json`. They reference the installed game timeTrial mission type and level previews; no proprietary mission scripts, vehicles or assets are copied. Generation needs no new packages, data downloads or database migrations. Entries use the existing private file-backed ZIP writer.
+
+Reports and build.log include `time_trials`, mission paths, exact start/finish positions, course length and checkpoint counts. Very short or crossed arch spans that do not enclose five metres are omitted with an explicit warning while the map still exports. Existing road/arch geometry is preserved.
+
+Schema, reference and orientation checks use the installed v0.40 readers as a format reference. Offline tests also inspect both missions inside a complete generated ZIP. Activation, countdown, vehicle placement and completion still require fresh in-game validation.
+
+Native-format references: [BeamNG mission types](https://www.docs.beamng.com/modding/gamemodes/missions/premadetypes/) and [level gameplay data](https://documentation.beamng.com/modding/levels/gameplay_data/). Installed v0.40 files take precedence over newer online formats.

@@ -1,6 +1,6 @@
 'use strict';
 (() => {
-  const steps=['Queued','Road network','Elevation','Aerial imagery','Geographic context','Terrain analysis','Road shaping','Water','Structures and median','Terrain materials','Road surfaces and traffic','Scenery','Packaging'];
+  const steps=['Queued','Road network','Elevation','Aerial imagery','Geographic context','Terrain analysis','Road shaping','Water','Structures and median','Terrain materials','Roads, traffic and events','Scenery','Packaging'];
   function stageFor(job){
     if(job.status==='complete')return steps.length;
     if(Number.isInteger(job.stage)&&job.stage>=0&&job.stage<=steps.length)return job.stage;

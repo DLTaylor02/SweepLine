@@ -30,6 +30,7 @@ final class BeamMap
     /** Follow road chainage from a spawn, not a straight offset across bends. */
     public static function archAnchor(array $road,array $profiles,array $spawn,bool $end,float $distance=30.48): array
     {
+        $chain=[0.];for($i=1;$i<count($road);$i++)$chain[]=$chain[$i-1]+hypot($road[$i][0]-$road[$i-1][0],$road[$i][1]-$road[$i-1][1]);
         $best=INF;$index=0;
         foreach($road as $i=>$point){$d=hypot($point[0]-$spawn['position'][0],$point[1]-$spawn['position'][1]);if($d<$best){$best=$d;$index=$i;}}
         $direction=$end?-1:1;$remaining=$distance;
@@ -38,14 +39,14 @@ final class BeamMap
             if($length>0.000001&&$remaining<=$length){
                 $t=$remaining/$length;
                 return ['point'=>[$a[0]+($b[0]-$a[0])*$t,$a[1]+($b[1]-$a[1])*$t,$a[2]+($b[2]-$a[2])*$t],
-                    'width'=>$profiles[$index]['width_m']*(1-$t)+$profiles[$next]['width_m']*$t,
+                    'chainage_m'=>$chain[$index]+($chain[$next]-$chain[$index])*$t,'width'=>$profiles[$index]['width_m']*(1-$t)+$profiles[$next]['width_m']*$t,
                     'dx'=>($b[0]-$a[0])/$length,'dy'=>($b[1]-$a[1])/$length];
             }
             $remaining-=$length;$index=$next;
         }
         // Short stretches stop at their endpoint rather than placing an arch off-road.
         $other=max(0,min(count($road)-1,$index-$direction));$dx=$road[$index][0]-$road[$other][0];$dy=$road[$index][1]-$road[$other][1];$length=hypot($dx,$dy)?:1;
-        return ['point'=>$road[$index],'width'=>$profiles[$index]['width_m'],'dx'=>$dx/$length,'dy'=>$dy/$length];
+        return ['point'=>$road[$index],'chainage_m'=>$chain[$index],'width'=>$profiles[$index]['width_m'],'dx'=>$dx/$length,'dy'=>$dy/$length];
     }
 
     public static function build(array $plan,BeamRaster $raster,string $id,string $zipPath,callable $progress,?BeamCompute $compute=null,?BeamBuildLog $buildLog=null): array
@@ -179,10 +180,10 @@ final class BeamMap
         // libzip keeps addFromString buffers until close; large terrain meshes
         // use private file-backed sources so memory does not grow with archive size.
         $meshFiles=[];
-        $putMesh=static function($file,$bytes)use($zip,$base,$zipPath,&$meshFiles){
+        $putMesh=static function($file,$bytes,bool $root=false)use($zip,$base,$zipPath,&$meshFiles){
             $tmp=tempnam(dirname($zipPath),'sl-mesh-');if($tmp===false)throw new \RuntimeException('Cannot allocate terrain mesh workspace.');
             $meshFiles[]=$tmp;chmod($tmp,0600);
-            if(file_put_contents($tmp,$bytes)!==strlen($bytes)||!$zip->addFile($tmp,$base.$file))throw new \RuntimeException('Cannot write terrain mesh archive entry.');
+            if(file_put_contents($tmp,$bytes)!==strlen($bytes)||!$zip->addFile($tmp,($root?'':$base).$file))throw new \RuntimeException('Cannot write terrain mesh archive entry.');
         };
         $put=$putMesh;
         try {
@@ -369,9 +370,9 @@ final class BeamMap
             $edgeMaterial=$prefix.'_road_edge';$roadMaterials['edge']=['class'=>'Material','name'=>$edgeMaterial,'mapTo'=>$edgeMaterial,'version'=>1,'doubleSided'=>true,'Stages'=>[['diffuseColor'=>[0.18,0.18,0.19,1]]]];
             $put('art/roads/main.materials.json',self::json(array_combine(array_column($roadMaterials,'name'),array_values($roadMaterials))));
             $start=self::spawn($road,$profiles,false,$plan['oneway']);$end=self::spawn($road,$profiles,true,$plan['oneway']);$objects[]=$start;$objects[]=$end;
-            $archMaterials=[];
+            $archMaterials=[];$archAnchors=[];
             foreach([['start',$start,'START',[0.08,0.35,0.8,1]],['finish',$end,'FINISH',[0.15,0.18,0.23,1]]] as [$archName,$spawn,$label,$color]){
-                $anchor=self::archAnchor($road,$profiles,$spawn,$archName==='finish');
+                $anchor=self::archAnchor($road,$profiles,$spawn,$archName==='finish');$archAnchors[$archName]=$anchor;
                 $point=$anchor['point'];$span=$anchor['width']+4;$dx=$anchor['dx'];$dy=$anchor['dy'];
                 foreach(['arch','arch-label'] as $kind){
                     $mat=$prefix.'_'.$archName.'_'.$kind;$file='art/shapes/'.$archName.'-'.$kind.'.dae';
@@ -381,6 +382,9 @@ final class BeamMap
                 }
             }
             $put('art/shapes/arches.materials.json',self::json($archMaterials));
+            $progress('Building road surfaces and forward/reverse time trial events');
+            $timeTrials=BeamTimeTrials::build($name,$plan,$road,$profiles,$archAnchors['start'],$archAnchors['finish']);
+            foreach($timeTrials['files'] as $missionFile=>$missionData)$putMesh($missionFile,self::json($missionData),true);unset($timeTrials['files'],$missionData);
             $navigation=BeamTraffic::graph($road,$profiles,$preparedIntersections);$objects=array_merge($objects,$navigation['objects']);
             $navigation['segments']+=$carriagewayNavigation;
             $carriagewayLinks=BeamCarriageways::connectNavigation($objects,$carriageways,$navigation['segments']);
@@ -453,11 +457,12 @@ final class BeamMap
             $report=['mapped_merge_profile_samples'=>count(array_filter($profiles,static fn($p)=>!empty($p['mapped_merge_aligned']))),'median'=>$median['report'],'lane_widening'=>'Fixed travel-left edge; additional width expands to travel-right','terrain_contact_repair'=>$contactRepair,'lane_transition_paint'=>$paintReport,'carriageways'=>['tracks'=>$carriagewayReports,'mapped_junction_links'=>$carriagewayLinks,'matching'=>$plan['carriageway_data']??null],'bridge_deck_shell'=>$underdeck??null,'tunnels'=>$tunnels,'tunnel_data'=>$tunnelGeometry['report'],'cpu_processing'=>$compute->report(),'paved_shoulder_each_side_ft'=>2,'curve_smoothing'=>['method'=>'Bounded quadratic corner rounds; endpoints, junctions, structures and sharp turns protected','max_deviation_m'=>BeamCurve::MAX_DEVIATION_M,'rounded'=>$rounded!==$plan['points'],'explicit_pavement'=>$explicitPavement],'water_data'=>$water['report'],'guardrail_data'=>$guardrails['report'],'shadow_correction'=>$shadowCorrection,'intersection_context'=>$intersectionData,'target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes only for trees, bushes and rocks; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,'shoulder_transition'=>$shoulders,'bridge_approach_correction'=>$bridgeApproachCorrection,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Fixed beam/slab bridges and viaducts up to 2000 meters use estimated approach-derived decks. Complex bridges and unsupported tunnel types are refused. Simple tunnel profiles, clearance and portals are estimated from approaches; not surveyed. Unmapped structures may be inaccurate.','Navigation includes the primary road, side branches and supported synthetic return loops. Enable traffic in-game; maneuvers require in-game validation.','Requires in-game v0.40 validation.']];
+            $report['time_trials']=$timeTrials['report'];
             $report['sweepline_version']=Version::number();
             $report['build_log']='build.log';
             $report['worker_memory']=['heap_before_diagnostics_bytes'=>memory_get_usage(true),'peak_heap_bytes'=>memory_get_peak_usage(true),'php_limit'=>ini_get('memory_limit')];
             $put('sweepline-report.json',self::json($report));
-            $zip->addFromString('INSTALL.txt',Version::label()." BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." - SweepLine, then Start or End.\nStart is the default spawn. Detailed selection, sources, processing and geometry diagnostics: build.log at the root of this ZIP. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nUses installed BeamNG.drive 0.40 vegetation from Utah, West Coast USA, East Coast USA or Johnson Valley. Required references are listed in the report. No BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
+            $zip->addFromString('INSTALL.txt',Version::label()." BeamNG.drive v0.40 map\nCopy this ZIP into the mods folder opened from BeamNG Launcher > Manage User Folder. Do not unpack. Open Free Roam, choose ".$plan['name']." - SweepLine, then Start or End.\nStart is the default spawn. Two time-trial events are available at the Start and Finish arches in Free Roam. Each uses your current vehicle, follows the selected road between the arches, and records its own best time. Reverse follows the same selected carriageway in the opposite simulation direction. Detailed selection, sources, processing and geometry diagnostics: build.log at the root of this ZIP. Source attribution and approximation details: ".$base."sweepline-report.json\nOpenStreetMap data: https://www.openstreetmap.org/copyright\nUses installed BeamNG.drive 0.40 vegetation from Utah, West Coast USA, East Coast USA or Johnson Valley. Required references are listed in the report. No BeamNG game assets are redistributed. Package structure tested; in-game compatibility must be verified in v0.40.\n");
             $progress('Finalizing the map ZIP');
             $profileFields=array_flip(['lanes','forward','backward','oneway','legal_forward','width_m','carriageway_width_m','shoulder_m','estimated_lanes','estimated_width','transition','unmarked','mapped_merge_aligned','shared_junction_paint','section_override']);
             $summarize=static fn($p)=>array_intersect_key($p,$profileFields);

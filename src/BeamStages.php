@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace SweepLine;
 final class BeamStages
 {
-    public const LABELS=['Queued','Road network','Elevation','Aerial imagery','Geographic context','Terrain analysis','Road shaping','Water','Structures and median','Terrain materials','Road surfaces and traffic','Scenery','Packaging'];
+    public const LABELS=['Queued','Road network','Elevation','Aerial imagery','Geographic context','Terrain analysis','Road shaping','Water','Structures and median','Terrain materials','Roads, traffic and events','Scenery','Packaging'];
     public static function index(string $message,int $previous=0): int
     {
         $patterns=[12=>'Finalizing.*ZIP',11=>'Placing regional scenery',10=>'Building road surfaces',

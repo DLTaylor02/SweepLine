@@ -7,7 +7,7 @@ Start with the [project overview and quick installation](../README.md).
 | [Installation and deployment](installation.md) | Dependencies, installer settings, service accounts and SuperAdmin recovery |
 | [Discovery and road tools](user-guide.md) | Searches, filters, custom roads, history, favorites and standard exports |
 | [Administration and operations](administration.md) | Roles, passwords, sessions, jobs, storage, logs and updates |
-| [BeamNG.drive exports](beamng-export.md) | Export workflow, terrain, scenery, structures, lane geometry and diagnostics |
+| [BeamNG.drive exports](beamng-export.md) | Export workflow, terrain, scenery, structures, lane geometry, arch time trials and diagnostics |
 | [Water in BeamNG exports](water-export.md) | Automatic water sources, native surfaces, safety limits and diagnostics |
 | [API reference](api.md) | Session/CSRF conventions, endpoints, request examples and response codes |
 | [Development and verification](development.md) | Project layout, tests and integration setup |

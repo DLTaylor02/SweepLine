@@ -50,6 +50,17 @@ try {
     foreach($info['spawnPoints'] as $spawnPoint)check($archive->locateName($base.$spawnPoint['preview'])!==false,'Spawn picker references an included thumbnail');
     $nav=json_decode($archive->getFromName($base.'map.json'),true,512,JSON_THROW_ON_ERROR);
     check(count($nav['segments'])>1,'Selected road includes minimap navigation edges');
+
+    $missionPaths=['gameplay/missions/sweepline_aaaaaaaaaaaaaaaa/timeTrial/sweepline-forward/','gameplay/missions/sweepline_aaaaaaaaaaaaaaaa/timeTrial/sweepline-reverse/'];
+    $trialFiles=true;$trialEnds=[];
+    foreach($missionPaths as $missionPath){
+        $mission=json_decode($archive->getFromName($missionPath.'info.json'),true,512,JSON_THROW_ON_ERROR);
+        $race=json_decode($archive->getFromName($missionPath.'race.race.json'),true,512,JSON_THROW_ON_ERROR);
+        $trialFiles=$trialFiles&&$mission['missionType']==='timeTrial'&&$mission['startTrigger']['level']==='sweepline_aaaaaaaaaaaaaaaa'&&$archive->locateName(ltrim($mission['previewFile'],'/'))!==false;
+        $trialEnds[]=[$race['pathnodes'][0]['pos'],end($race['pathnodes'])['pos']];
+    }
+    check($trialFiles&&count($report['time_trials']['events'])===2,'ZIP includes two discoverable native missions with valid preview references');
+    check($trialEnds[0][0]===$trialEnds[1][1]&&$trialEnds[0][1]===$trialEnds[1][0],'Packaged reverse time trial swaps the exact forward start and finish');
     $root=json_decode(trim($archive->getFromName($base.'main/items.level.json')),true,512,JSON_THROW_ON_ERROR);
     check($root['class']==='SimGroup' && $root['name']==='MissionGroup','Scene root matches installed v0.40 layout');
     $objects=array_map(static fn($line)=>json_decode($line,true,512,JSON_THROW_ON_ERROR),explode("\n",trim($archive->getFromName($base.'main/MissionGroup/items.level.json'))));
