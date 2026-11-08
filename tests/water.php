@@ -86,3 +86,11 @@ check(abs($protected->height(100,35)-100)<0.001,'River-bank blending preserves n
 $splitLines=[['points'=>[[40,55],[85,55]]],['points'=>[[115,55],[160,55]]]];
 $split=BeamWater::build(['features'=>[$river],'flowlines'=>$splitLines],$flat(),$flat(),80,[],static fn($m)=>null);
 check(count($split['report']['features'][0]['profile_paths'])===2&&count($split['objects'])===2,'Disconnected mapped profile components render independently without inventing a connecting channel');
+
+$fitPoints=[[0,0],[10,0],[20,0],[30,0]];
+$fit=BeamWater::fitProfile($fitPoints,[100,100,94,94]);
+$valid=$fit!==null;for($i=1;$i<count($fit??[]);$i++)$valid=$valid&&$fit[$i-1]>=$fit[$i]&&$fit[$i-1]-$fit[$i]<=2.001;
+check($valid,'Local DEM steps receive bounded downhill slope fitting instead of dropping the river component');
+check(BeamWater::fitProfile([[0,0],[1,0]],[1000,0])===null,'Unrecoverable profile errors still exceed the explicit correction bound');
+check($ribbonWater['objects'][0]['nodes'][0][4]===3.0&&$ribbonWater['report']['features'][0]['estimated_depth_m']===3.0,'River physics and reports agree on the deeper estimated three-metre channel');
+check(SweepLine\BeamStages::index('Preparing mapped water surfaces')===7&&SweepLine\BeamStages::index('Building bridges, tunnels and median terrain')===8&&SweepLine\BeamStages::index('Fetching mapped water',9)===9,'Worker stage mapping follows water and structure ordering without regressing on repeated context work');

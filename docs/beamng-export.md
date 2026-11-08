@@ -410,3 +410,13 @@ ZIP entries are backed by private temporary files instead of retained libzip str
 Terrain masks, imagery copies and serialized road meshes are released after their final consumer. Reports include `worker_memory` measurements before diagnostic finalization, while the worker journal continues to report per-stage heap/peak usage. These are PHP allocator measurements; total process/systemd memory also includes native allocations and helper processes.
 
 Water coverage uses adaptive coalesced cells within the existing object budget; per-feature `shoreline_cell_m` and `covered_area_m2` explain approximation detail. See [water export details](water-export.md). Dense shorelines previously exhausted this budget even when all providers returned data successfully.
+
+## Current progress stages (0.130.0)
+
+The BeamNG bar follows the current worker order: Queued, Road network, Elevation, Aerial imagery, Geographic context, Terrain analysis, Road shaping, Water, Structures and median, Terrain materials, Road surfaces and traffic, Scenery, Packaging.
+
+These stages indicate work phases, not elapsed-time percentages. The worker stores the furthest stage in existing job report metadata and keeps the detailed last activity in the progress field. Repeated substeps cannot move the bar backward. No new database migration is required.
+
+Cancelled and failed jobs keep a static stopped bar and the last activity instead of replacing it with a generic failure/cancellation message. This also applies to worker-restart recovery and fatal shutdowns. The discovery export control remembers the stopped notice and stage when a road is reopened in the same browser session; the job API retains them independently of browser storage. Older terminal jobs whose activity was already overwritten cannot reconstruct missing history.
+
+River depth is an explicit 3 m simulation estimate; lake depth treatment remains unchanged. New river fitting addresses local DEM steps without dropping whole stretches at a fixed 5% grade. Source gaps, unsupported profiles and native spline/bank contact still require in-game validation.

@@ -97,3 +97,5 @@
 .road-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0;padding:10px 0;border-block:1px solid var(--line)}.road-overview-item span{display:block;font-size:10px;color:var(--muted);margin-bottom:4px}.road-overview-item strong{display:block;font-size:13px;overflow-wrap:anywhere}
 
 .brand .app-version{display:inline-block;margin-left:7px;padding:3px 6px;border:1px solid var(--accent);border-radius:4px;color:var(--accent);background:var(--soft);font-size:10px;letter-spacing:.4px;white-space:nowrap}
+
+.beam-step-track .is-stopped{background:#b45309;box-shadow:inset 0 0 0 1px #92400e}

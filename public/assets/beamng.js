@@ -1,16 +1,18 @@
 'use strict';
 (() => {
-  const steps=['Queued','Elevation','Aerial imagery','Preparation','Terrain analysis','Road shaping','Materials','Scenery','Packaging'];
+  const steps=['Queued','Road network','Elevation','Aerial imagery','Geographic context','Terrain analysis','Road shaping','Water','Structures and median','Terrain materials','Road surfaces and traffic','Scenery','Packaging'];
   function stageFor(job){
     if(job.status==='complete')return steps.length;
+    if(Number.isInteger(job.stage)&&job.stage>=0&&job.stage<=steps.length)return job.stage;
     const message=job.progress||'';
     const stages=[
-      [/Finalizing.*ZIP/i,8],[/Placing regional scenery/i,7],
-      [/Writing collision|Blending bounded aerial/i,6],
-      [/Shaping the road|Checking and removing terrain/i,5],
-      [/Classifying grass/i,4],
-      [/Preparing terrain|Validating elevation|mapped water|water boundaries|building|guardrail|intersecting road|aerial shadows/i,3],
-      [/NAIP|aerial|Aligning aerial/i,2],[/USGS elevation|Aligning dem/i,1]
+      [/Finalizing.*ZIP/i,12],[/Placing regional scenery/i,11],[/Building road surfaces/i,10],
+      [/Writing collision|Blending bounded aerial|Writing terrain materials/i,9],
+      [/Building bridges|Updating tunnel seams|Building exact pavement-edge median/i,8],
+      [/Preparing mapped water surfaces/i,7],[/Shaping the road|Checking and removing terrain/i,6],
+      [/Validating elevation|Classifying grass|aerial shadows/i,5],
+      [/Preparing geographic context|Preparing terrain|Fetching mapped water|water boundaries|building|guardrail|intersecting road/i,4],
+      [/NAIP|aerial|Aligning aerial/i,3],[/USGS elevation|Aligning dem/i,2],[/Matching.*(carriageway|road network)/i,1]
     ];
     return stages.find(([pattern])=>pattern.test(message))?.[1]??null;
   }
@@ -44,20 +46,22 @@
       action.classList.toggle('beam-ready',ready);action.setAttribute('aria-disabled',String(busy));
       action.href=ready?job.download_url:'#';
       if(ready)action.setAttribute('download','');else action.removeAttribute('download');
-      const failed=job.status==='failed';
+      const failed=job.status==='failed',cancelled=job.status==='cancelled',stopped=failed||cancelled;
       section.hidden=false;section.classList.toggle('beam-error',failed);
       cancel.hidden=!busy;spinner.hidden=!busy;
-      progress.hidden=!busy&&!ready;
-      const stage=Math.max(lastStage,stageFor(job)??lastStage),complete=stage===steps.length;lastStage=stage;
+      progress.hidden=!busy&&!ready&&!stopped;
+      const stage=Number.isInteger(job.stage)?stageFor(job):Math.max(lastStage,stageFor(job)??lastStage),complete=stage===steps.length;lastStage=stage;
       if(busy&&jobId){try{window.sessionStorage?.setItem(storageKey,JSON.stringify({id:jobId,stage:lastStage}));}catch(_){}}
-      stepLabel.textContent=complete?'All export steps complete':`Step ${stage+1} of ${steps.length} · ${steps[stage]}`;
+      stepLabel.textContent=complete?'All export steps complete':`${stopped?(cancelled?'Cancelled at step ':'Stopped at step '):'Step '}${stage+1} of ${steps.length} · ${steps[stage]}`;
       track.setAttribute('aria-label',stepLabel.textContent+'. Steps indicate stages, not elapsed time or percentage.');
-      segments.forEach((segment,index)=>{segment.classList.toggle('is-complete',complete||index<stage);segment.classList.toggle('is-current',!complete&&index===stage);});
+      segments.forEach((segment,index)=>{segment.classList.toggle('is-complete',complete||index<stage);segment.classList.toggle('is-current',!complete&&!stopped&&index===stage);segment.classList.toggle('is-stopped',stopped&&index===stage);});
 
       status.setAttribute('role',failed?'alert':'status');status.setAttribute('aria-live',failed?'assertive':'polite');
-      status.textContent=failed?'BeamNG export could not be generated. '+(job.error||job.progress||'No reason was returned. Please retry; if it persists, ask a SuperAdmin to check Manage.'):(job.progress||'');
+      status.textContent=failed?'BeamNG export could not be generated. '+(job.error||job.progress||'No reason was returned. Please retry; if it persists, ask a SuperAdmin to check Manage.'):(cancelled?'Export cancelled. Last activity: '+(job.progress||steps[stage]):(job.progress||''));
+      if(failed&&job.progress)status.textContent+=' Last activity: '+job.progress;
+      if(busy&&job.cancel_requested)status.textContent='Cancellation requested. Last activity: '+(job.progress||steps[stage]);
       if(!failed&&job.warning)status.textContent+=' '+job.warning;
-      if(failed){try{window.sessionStorage?.setItem(noticeKey,job.error||job.progress||'No reason was returned. Please retry.');}catch(_){}section.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
+      if(stopped){try{window.sessionStorage?.setItem(noticeKey,JSON.stringify({status:job.status,error:job.error,progress:job.progress,stage:lastStage}));}catch(_){}section.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
       else if(busy||ready){try{window.sessionStorage?.removeItem(noticeKey);}catch(_){}}
       if(ready&&expires)timer=setTimeout(poll,Math.max(1000,expires-Date.now()+100));
       return busy;
@@ -65,7 +69,7 @@
     const fail=e=>{busy=false;ready=false;paint({status:'failed',error:e?.message||'The export request failed. Check your connection and try again.'});};
     const poll=async(resuming=false)=>{
       if(current!==view||!jobId)return;
-      try{const job=await window.sweeplineRequest('/api/beamng/'+jobId);if(current!==view)return;if(resuming&&!['queued','running','failed'].includes(job.status)){try{window.sessionStorage?.removeItem(storageKey);}catch(_){}return;}if(paint(job))timer=setTimeout(poll,3000);}
+      try{const job=await window.sweeplineRequest('/api/beamng/'+jobId);if(current!==view)return;if(resuming&&!['queued','running','failed','cancelled'].includes(job.status)){try{window.sessionStorage?.removeItem(storageKey);}catch(_){}return;}if(paint(job))timer=setTimeout(poll,3000);}
       catch(e){if(current===view)fail(e);}
     };
     action.onclick=async event=>{
@@ -87,7 +91,7 @@
       try{await window.sweeplineRequest('/api/beamng/'+jobId+'/cancel',{method:'POST',body:'{}'});await poll();}
       catch(e){if(current===view)status.textContent=e.message;}finally{cancel.disabled=false;}
     };
-    try{const notice=window.sessionStorage?.getItem(noticeKey);if(notice)paint({status:'failed',error:notice});}catch(_){}
+    try{const notice=window.sessionStorage?.getItem(noticeKey);if(notice){let saved;try{saved=JSON.parse(notice);}catch(_){saved={status:'failed',error:notice};}paint(saved&&typeof saved==='object'?saved:{status:'failed',error:notice});}}catch(_){}
     try{const saved=JSON.parse(window.sessionStorage?.getItem(storageKey)||'null');if(saved&&/^[a-f0-9]{32}$/.test(saved.id)){jobId=saved.id;lastStage=Number.isInteger(saved.stage)&&saved.stage>=0&&saved.stage<steps.length?saved.stage:0;poll(true);}}catch(_){}
   };
 })();

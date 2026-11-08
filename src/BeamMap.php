@@ -186,6 +186,7 @@ final class BeamMap
         };
         $put=$putMesh;
         try {
+            $progress('Building bridges, tunnels and median terrain');
             $groundLayers=$categories;
             $prefix='sl_'.substr($id,0,12);$materials=[];$terrainNames=[];$ground=['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
             $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways,$maxHeight,true);
@@ -257,6 +258,7 @@ final class BeamMap
                 foreach($medianGround['files'] as $i=>$file)$objects[]=['class'=>'TSStatic','name'=>'median_ground'.($i?'_'.$i:''),'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'Visible Mesh Final','castShadows'=>true];
             }
             unset($medianGround,$tunnelGround);
+            $progress('Building road surfaces, intersections and traffic links');
             $bridgeMaterial=$prefix.'_bridge';
             if($bridges){
                 $put('art/shapes/bridge-pier.dae',BeamAssets::shape($bridgeMaterial,'bridge-pier'));

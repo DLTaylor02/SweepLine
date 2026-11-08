@@ -13,6 +13,23 @@ final class BeamWater
         }
         $out=[];foreach($blocks as $b)for($i=0;$i<$b['count'];$i++)$out[]=$b['sum']/$b['count'];return $out;
     }
+
+    /** Bounded correction of local DEM steps; sustained unsupported profiles remain rejected. */
+    public static function fitProfile(array $points,array $heights,float $grade=0.2,float $maxCorrection=12): ?array
+    {
+        $z=self::downhill($heights);$limits=[];
+        for($i=1;$i<count($points);$i++)$limits[$i]=$grade*hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);
+        for($pass=0;$pass<256;$pass++){
+            $largest=0.;
+            foreach([false,true] as $reverse)for($j=1;$j<count($z);$j++){
+                $i=$reverse?count($z)-$j:$j;$excess=$z[$i-1]-$z[$i]-$limits[$i];
+                if($excess>0){$z[$i-1]-=$excess/2;$z[$i]+=$excess/2;$largest=max($largest,$excess);}
+            }
+            if($largest<1e-5)break;
+        }
+        foreach($z as $i=>$v)if(abs($v-$heights[$i])>$maxCorrection||($i&&$z[$i-1]-$v>$limits[$i]+1e-3))return null;
+        return $z;
+    }
     public static function level(array $model,array $point): float
     {
         if(isset($model['level']))return $model['level'];
@@ -50,8 +67,9 @@ final class BeamWater
                 $raw=$heights;$radius=min(40,max(8,$length/10));
                 foreach($heights as $i=>$_){$near=[];$window=(int)floor($radius/$step);for($j=max(0,$i-$window);$j<=min(count($raw)-1,$i+$window);$j++)$near[]=$raw[$j];sort($near);$heights[$i]=$near[(int)floor((count($near)-1)*0.25)];}
                 $heights=self::downhill($heights);
-                $validProfile=true;foreach($points as $i=>&$p){$p[]=$heights[$i]+0.12;if($i&&abs($p[2]-$points[$i-1][2])/max(1,hypot($p[0]-$points[$i-1][0],$p[1]-$points[$i-1][1]))>0.05){$validProfile=false;break;}}unset($p);
-                if($validProfile)$paths[]=$points;else $rejectedProfiles++;
+                $fitted=self::fitProfile($points,$heights);
+                if($fitted===null){$rejectedProfiles++;continue;}
+                foreach($points as $i=>&$p)$p[]=$fitted[$i]+0.12;unset($p);$paths[]=$points;
                 }
                 if(!$paths)throw new \RuntimeException('Mapped river profiles exceed the supported grade after robust filtering.');
                 $index=new BeamRoadIndex(array_map(static fn($p)=>['points'=>$p],$paths));
@@ -115,7 +133,7 @@ final class BeamWater
                     if(count($objects)+count($new)>=self::MAX_OBJECTS)throw new \RuntimeException('Water coverage patch budget reached.');
                     $p=$ribbon[0]['center'];$flat=['level'=>$ribbon[0]['z'],'color'=>$model['color']];
                     $object=self::object([[$p[0]-1,$p[1]],[$p[0]+1,$p[1]],[$p[0]+1,$p[1]+1],[$p[0]-1,$p[1]+1]],$flat,$origin,count($objects)+count($new),true);
-                    $object['nodes']=array_map(static fn($b)=>[$b['center'][0],$b['center'][1],$b['z']-$origin,$b['width'],1.5,0,0,1],$ribbon);$object['position']=array_slice($object['nodes'][0],0,3);$object['segmentLength']=4;$object['subdivideLength']=8;$new[]=$object;
+                    $object['nodes']=array_map(static fn($b)=>[$b['center'][0],$b['center'][1],$b['z']-$origin,$b['width'],3.0,0,0,1],$ribbon);$object['position']=array_slice($object['nodes'][0],0,3);$object['segmentLength']=4;$object['subdivideLength']=8;$new[]=$object;
                     for($i=1;$i<count($ribbon);$i++)$coverage['covered_area_m2']+=abs(BeamPolygon::area([$ribbon[$i-1]['left'],$ribbon[$i-1]['right'],$ribbon[$i]['right'],$ribbon[$i]['left']]));
                 }
                 if(!$new)continue;
@@ -136,13 +154,13 @@ final class BeamWater
                         }
                         $old=$bedTerrain->cell($x,$y);$level=self::level($model,$p);$bed=$level-1.5;$fade=max(0,min(1,($shoreIndex->nearest($p,max(2,$step))['distance']??max(2,$step))/max(2,$step)));$fade=$fade*$fade*(3-2*$fade);
                         $target=$old-max(0,min(3,$old-$bed))*$fade;
-                        if($ribbons){$t=max(0,min(1,($shore['distance']??$shoreBlend)/$shoreBlend));$t=$t*$t*(3-2*$t);$target=$inside?$level+0.05-(1.55*$t):$level+0.05+($old-$level-0.05)*$t;$target=max($old-8,min($old+3,$target));}
+                        if($ribbons){$t=max(0,min(1,($shore['distance']??$shoreBlend)/$shoreBlend));$t=$t*$t*(3-2*$t);$target=$inside?$level+0.05-(3.05*$t):$level+0.05+($old-$level-0.05)*$t;$target=max($old-12,min($old+3,$target));}
                         if(abs($old-$target)>0.0001){$bedTerrain->put($x,$y,$target);$featureChanged++;}
                     }
                 }
                 $terrain->heights=$bedTerrain->heights;unset($bedTerrain);array_push($objects,...$new);$areas[]=['rings'=>$rings,'bounds'=>$bounds];
                 $changed+=$featureChanged;$metadata=array_intersect_key($feature,array_flip(['id','name','source','source_key','kind','source_date']));
-                $features[]=$metadata+['patches'=>count($new),'object_names'=>array_column($new,'name'),'rejected_profile_components'=>$model['rejected_profiles']??0,'shoreline_cell_m'=>$coverage['shoreline_cell_m'],'surface_method'=>$ribbons?'mapped-bank ribbons':'polygon grid','covered_area_m2'=>$coverage['covered_area_m2'],'level_method'=>$model['method'],'confidence'=>$model['confidence'],'estimated_depth_m'=>1.5,'elevation_spread_m'=>$model['elevation_spread_m'],'level_m'=>isset($model['level'])?$model['level']:null,'profile_points'=>$model['points']??null,'profile_paths'=>$model['paths']??null,'bed_vertices_changed'=>$featureChanged,'shore_blend_m'=>$shoreBlend];
+                $features[]=$metadata+['patches'=>count($new),'object_names'=>array_column($new,'name'),'rejected_profile_components'=>$model['rejected_profiles']??0,'shoreline_cell_m'=>$coverage['shoreline_cell_m'],'surface_method'=>$ribbons?'mapped-bank ribbons':'polygon grid','covered_area_m2'=>$coverage['covered_area_m2'],'level_method'=>$model['method'],'confidence'=>$model['confidence'],'estimated_depth_m'=>($ribbons?3.0:1.5),'elevation_spread_m'=>$model['elevation_spread_m'],'level_m'=>isset($model['level'])?$model['level']:null,'profile_points'=>$model['points']??null,'profile_paths'=>$model['paths']??null,'bed_vertices_changed'=>$featureChanged,'shore_blend_m'=>$shoreBlend];
             }catch(JobCancelled $e){throw $e;}catch(\Throwable $e){unset($bedTerrain);$reason=$e instanceof \RuntimeException?$e->getMessage():'Water geometry processing failed.';$rejections[$reason]=($rejections[$reason]??0)+1;$omitted[]=['id'=>$feature['id']??null,'name'=>$feature['name']??'','reason'=>$reason];}
         }
         $warning=trim((string)($data['warning']??''));if($rejections)$warning=trim($warning.' Some mapped water was omitted; see water_data.rejections in build.log.');if($budget>8000000)$warning=trim($warning.' Water-bed processing reached its bounded raster budget.');

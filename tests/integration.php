@@ -233,3 +233,17 @@ foreach($intersectionContext['branches'] as $arm){$length=0;for($i=1;$i<count($a
 require __DIR__.'/divided-roads-integration.php';
 
 require __DIR__.'/import-cleanup-integration.php';
+
+$stageRoot=sys_get_temp_dir().'/sl-stages-'.bin2hex(random_bytes(4));mkdir($stageRoot,0700);
+$stageJobs=new SweepLine\BeamJobs($db,null,$stageRoot);$stageIds=[str_repeat('c',32),str_repeat('d',32)];
+try{
+ $insertStage=$db->prepare("INSERT INTO beamng_exports(id,user_id,fingerprint,name,payload,status,progress,report) VALUES (?,?,?,'Stage test','{}'::jsonb,'running',?,?::jsonb)");
+ $insertStage->execute([$stageIds[0],$administrator['id'],'stage-cancel','Preparing mapped water surfaces','{"progress_stage":7}']);
+ $insertStage->execute([$stageIds[1],$administrator['id'],'stage-fail','Writing terrain materials','{"progress_stage":9}']);
+ $stageJobs->cancel($stageIds[0],(int)$administrator['id']);
+ $cancelStage=$stageJobs->status((int)$administrator['id'],$stageIds[0]);
+ check($cancelStage['stage']===7&&$cancelStage['progress']==='Preparing mapped water surfaces','Cancellation request preserves server-side stage and activity');
+ $stageJobs->recover();
+ $cancelStage=$stageJobs->status((int)$administrator['id'],$stageIds[0]);$failedStage=$stageJobs->status((int)$administrator['id'],$stageIds[1]);
+ check($cancelStage['status']==='cancelled'&&$cancelStage['stage']===7&&$failedStage['status']==='failed'&&$failedStage['stage']===9&&$failedStage['progress']==='Writing terrain materials','Interrupted cancelled and failed jobs retain their last stage and detailed activity');
+}finally{$q=$db->prepare('DELETE FROM beamng_exports WHERE id IN (?,?)');$q->execute($stageIds);rmdir($stageRoot);}

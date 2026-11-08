@@ -20,7 +20,7 @@ final class BeamFailure
             error_log('SweepLine BeamNG '.$active['id'].': '.$message);
             try{
                 if(self::$db->inTransaction())self::$db->rollBack();
-                $q=self::$db->prepare("UPDATE beamng_exports SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'failed' END,progress='Export worker stopped',error=CASE WHEN cancel_requested THEN NULL ELSE ? END,payload='{}'::jsonb,updated_at=now() WHERE id=? AND status='running'");
+                $q=self::$db->prepare("UPDATE beamng_exports SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'failed' END,error=CASE WHEN cancel_requested THEN NULL ELSE ? END,payload='{}'::jsonb,updated_at=now() WHERE id=? AND status='running'");
                 $q->execute([$message,$active['id']]);
             }catch(\Throwable $e){error_log('SweepLine could not persist the fatal export status; inspect the worker journal.');}
         });
