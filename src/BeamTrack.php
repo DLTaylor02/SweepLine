@@ -50,7 +50,7 @@ final class BeamTrack
         $surfaces=array_merge([['name'=>$key]+$render],$context['roads']);$report=[];
         foreach($surfaces as $i=>$surface){
             foreach($surface['profiles'] as $p){$m=BeamPavement::key($p);if(isset($materials[$m]))continue;
-                $file='art/roads/'.$m.'.color.png';$materials[$m]=['class'=>'Material','name'=>$prefix.'_road_'.$m,'mapTo'=>$prefix.'_road_'.$m,'version'=>1,'groundType'=>'ASPHALT','Stages'=>[['diffuseMap'=>$path.$file,'diffuseColor'=>[1,1,1,1],'specularPower'=>8,'useAnisotropic'=>true]]];$put($file,BeamPng::road($p));
+                $file='art/roads/'.$m.'.color.png';$materials[$m]=BeamRoadMaterials::material($prefix.'_road_'.$m,$path.$file,$p);$put($file,BeamPng::road($p));
             }
             $sections=$i===0?BeamJunctionBoundary::renderSections($road,$profiles,$surface['points']):null;
             $obstacles=[['road'=>$main,'profiles'=>$mainProfiles,'weld_boundary'=>$i!==0,'preserve_junction_paint'=>$i===0&&!empty($track['shared_junctions'])]];if($i)foreach($otherContext as $other){

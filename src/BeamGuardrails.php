@@ -124,6 +124,28 @@ final class BeamGuardrails
         return ['runs'=>$out,'report'=>$report];
     }
 
+
+    /** Native East Coast rail sections follow the already validated mapped run. */
+    public static function stockObjects(array $runs): array
+    {
+        $objects=[];
+        foreach($runs as $r=>$run)for($i=1;$i<count($run['points']);$i++){
+            $a=$run['points'][$i-1];$b=$run['points'][$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$dz=$b[2]-$a[2];$h=hypot($dx,$dy);$d=sqrt($h*$h+$dz*$dz);if($h<0.01)continue;
+            $x=[$dx/$d,$dy/$d,$dz/$d];$y=[-$dy/$h,$dx/$h,0];$z=[-$dz*$dx/($d*$h),-$dz*$dy/($d*$h),$h/$d];
+            // Measured stock visible local-X span 2.045396 m; top Z includes node offset.
+            $objects[]=['class'=>'TSStatic','name'=>'mapped_guardrail_'.$r.'_'.$i,'__parent'=>'MissionGroup',
+                'shapeName'=>'/levels/east_coast_usa/art/shapes/buildings/eca_guardrail1.dae',
+                'position'=>[($a[0]+$b[0])/2-$z[0]*0.156067,($a[1]+$b[1])/2-$z[1]*0.156067,($a[2]+$b[2])/2-$z[2]*0.156067],
+                'rotationMatrix'=>array_merge($x,$y,$z),'scale'=>[($d+0.01)/2.045396,0.5,1],
+                'collisionType'=>'Collision Mesh','decalType'=>'None'];
+        }
+        foreach($runs as $r=>$run)foreach($run['points'] as $i=>$p){
+            $a=$run['points'][max(0,$i-1)];$b=$run['points'][min(count($run['points'])-1,$i+1)];$d=hypot($b[0]-$a[0],$b[1]-$a[1])?:1;$x=($b[0]-$a[0])/$d;$y=($b[1]-$a[1])/$d;
+            $objects[]=['class'=>'TSStatic','name'=>'mapped_guardrail_post_'.$r.'_'.$i,'__parent'=>'MissionGroup','shapeName'=>'/levels/east_coast_usa/art/shapes/buildings/eca_guardrailpost.dae','position'=>[$p[0],$p[1],$p[3]-0.1],'rotationMatrix'=>[$x,$y,0,-$y,$x,0,0,0,1],'scale'=>[1,0.5,($p[2]-$p[3]+0.1)/1.103475],'collisionType'=>'Collision Mesh','decalType'=>'None'];
+        }
+        return $objects;
+    }
+
     public static function mesh(array $points,string $material): array
     {
         $origin=array_slice($points[0],0,3);$vertices=[];$triangles=[];

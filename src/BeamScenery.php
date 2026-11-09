@@ -63,7 +63,7 @@ final class BeamScenery
         $geometry=new self($road,$profiles,$exclusions);$chain=[0.0];
         for($i=1;$i<count($road);$i++)$chain[]=$chain[$i-1]+hypot($road[$i][0]-$road[$i-1][0],$road[$i][1]-$road[$i-1][1]);
         $objectBudget=max(2,min(24000,$objectBudget));
-        $length=$chain[count($chain)-1];$target=min((int)floor($objectBudget/2),12000,max(400,(int)ceil($length/1000*250)));$baseTarget=$target;$extraTreeTarget=0;$limit=min(400000,$target*50);
+        $length=$chain[count($chain)-1];$target=min((int)floor($objectBudget/2),12000,max(400,(int)ceil($length/1000*750)));$baseTarget=$target;$extraTreeTarget=0;$limit=min(400000,$target*50);
         $random=static function()use(&$seed): float {$seed=($seed*1664525+1013904223)&0xFFFFFFFF;return $seed/4294967296;};
         $out=[];$occupied=[];$types=["tree"=>0,"bush"=>0,"rock"=>0,"building"=>0];$zones=[];$variants=[];$skipped=["water"=>0,"footprint"=>0,"slope"=>0,"spacing"=>0,"bounds"=>0];
         foreach($reserved as $building){
@@ -95,13 +95,13 @@ final class BeamScenery
             foreach([[$radius,0],[-$radius,0],[0,$radius],[0,-$radius]] as [$dx,$dy])$slope=max($slope,abs($raster->height($x+$dx,$y+$dy)-$h)/$radius);
             if($slope>($kind==="building"?0.15:0.7)){$skipped["slope"]++;continue;}
             $cx=(int)floor($x/20);$cy=(int)floor($y/20);$overlap=false;
-            for($ix=$cx-2;$ix<=$cx+2;$ix++)for($iy=$cy-2;$iy<=$cy+2;$iy++)foreach($occupied[$ix.":".$iy]??[] as $other)if(hypot($x-$other[0],$y-$other[1])<($radius+$other[2])*(($extra&&$kind==='tree'&&($other[3]??'')==='tree')?0.7:1))$overlap=true;
+            for($ix=$cx-2;$ix<=$cx+2;$ix++)for($iy=$cy-2;$iy<=$cy+2;$iy++)foreach($occupied[$ix.":".$iy]??[] as $other)if(hypot($x-$other[0],$y-$other[1])<($radius+$other[2])*(($kind==='tree'&&($other[3]??'')==='tree'&&$biome['canopy_evidence']>=0.6)?0.45:1))$overlap=true;
             if($overlap){$skipped["spacing"]++;continue;}
             $occupied[$cx.":".$cy][]=[$x,$y,$radius,$kind];$types[$kind]++;
             $zones[$biome['zone']]=($zones[$biome['zone']]??0)+1;if($asset!==null)$variants[$asset]=($variants[$asset]??0)+1;
-            $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale,"asset"=>$asset];
-            if(count($out)===$baseTarget){$extraTreeTarget=$types['tree'];$target=min($objectBudget,$baseTarget+$extraTreeTarget);}
+            $out[]=["kind"=>$kind,"position"=>[$x,$y,$h],"scale"=>$scale,"asset"=>$asset]+($kind==='rock'?['ground_rgb'=>$raster->rgb((int)($x/$raster->side*$raster->size),(int)($y/$raster->side*$raster->size))]:[]);
+            if(count($out)===$baseTarget){$extraTreeTarget=$types['tree'];$target=min($objectBudget,$baseTarget+2*$extraTreeTarget);}
         }
-        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"forest_asset_policy"=>"Eastern dense-canopy interiors use stock beech forest/group LOD assets; road edges retain individual trees.","tree_density_multiplier"=>2,"additional_tree_target"=>$extraTreeTarget,"additional_trees_placed"=>max(0,count($out)-$baseTarget),"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"biome_counts"=>$zones,"asset_counts"=>$variants,"biome_method"=>"Regional elevation prior plus nine raw aerial-color samples; heuristic, not surveyed land cover.","building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
+        return ["objects"=>$out,"counts"=>$types,"skipped"=>$skipped,"forest_asset_policy"=>"Dense-canopy interiors allow overlapping crowns with stock Forest LOD assets; full mesh footprints still clear roads and water.","tree_density_multiplier"=>3,"additional_tree_target"=>$extraTreeTarget,"additional_trees_placed"=>max(0,count($out)-$baseTarget),"target"=>$target,"attempts"=>$attempt,"range_from_road_edge_ft"=>200,"biome_counts"=>$zones,"asset_counts"=>$variants,"biome_method"=>"Regional elevation prior plus nine raw aerial-color samples; heuristic, not surveyed land cover.","building_policy"=>"No buildings inferred from aerial colors; mapped footprint evidence is required."];
     }
 }

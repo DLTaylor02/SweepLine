@@ -6,6 +6,8 @@ final class BeamVegetation
     public const SHAPES=["rock"=>"/levels/Utah/art/shapes/rocks/utah_boulder_1.dae","tree"=>"/levels/Utah/art/shapes/trees/Juniper/Juniper_tree_01.dae","bush"=>"/levels/Utah/art/shapes/trees/Juniper/Juniper_bush_small_01.dae"];
     public const MATERIALS="/levels/Utah/art/shapes/trees/Juniper/main.materials.json";
     public const CATALOG=[
+        "green_grass"=>["kind"=>"grass","map"=>"east_coast_usa","shape"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/s_grass_green_short_01.dae","materials"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/main.materials.json","radius"=>0.65],
+        "dry_grass"=>["kind"=>"grass","map"=>"west_coast_usa","shape"=>"/levels/west_coast_usa/art/shapes/trees/grassclump_large.dae","materials"=>"/levels/west_coast_usa/art/shapes/trees/main.materials.json","radius"=>1.4],
         "utah_rock"=>["kind"=>"rock","map"=>"Utah","shape"=>self::SHAPES["rock"],"materials"=>"/levels/Utah/art/shapes/rocks/main.materials.json","radius"=>1.7],
         "juniper_tree"=>["kind"=>"tree","map"=>"Utah","shape"=>self::SHAPES["tree"],"materials"=>self::MATERIALS,"radius"=>7.0],
         "juniper_bush"=>["kind"=>"bush","map"=>"Utah","shape"=>self::SHAPES["bush"],"materials"=>self::MATERIALS,"radius"=>1.2],
@@ -46,12 +48,12 @@ final class BeamVegetation
         foreach($assets as $asset)$paths[$asset['materials']]=true;
         return array_keys($paths);
     }
-    public static function write(array $placements,string $prefix,float $origin,callable $put,array $terrainTextures=[]): int
+    public static function write(array $placements,string $prefix,float $origin,callable $put,array $terrainTextures=[],array $libraries=[]): int
     {
-        $definitions=[];$count=0;$used=self::used($placements);$materials=array_fill_keys(self::materialLibraries($used),true);
+        $definitions=[];$count=0;$used=self::used($placements);$materials=array_fill_keys(array_merge(self::materialLibraries($used),$libraries),true);
         foreach($used as $id=>$asset){
             $type=$prefix."_".$id;$materials[$asset["materials"]]=true;
-            $definitions[$type]=["name"=>$type,"internalName"=>$type,"class"=>"TSForestItemData","shapeFile"=>$asset["shape"],"windScale"=>0.4];$lines="";
+            $definitions[$type]=["name"=>$type,"internalName"=>$type,"class"=>"TSForestItemData","shapeFile"=>$asset["shape"],"windScale"=>$asset["kind"]==="grass"?0.7:0.4,"collidable"=>$asset["kind"]!=="grass"];$lines="";
             foreach($placements as $i=>$object){$objectAsset=$object["asset"]??match($object["kind"]){"tree"=>"juniper_tree","bush"=>"juniper_bush","rock"=>"utah_rock",default=>null};if($objectAsset!==$id)continue;
                 $p=$object["position"];$angle=fmod($i*2.399963,2*M_PI);$c=cos($angle);$s=sin($angle);
                 $lines.=json_encode(["ctxid"=>0,"type"=>$type,"pos"=>[$p[0],$p[1],$p[2]-$origin],"rotationMatrix"=>[$c,$s,0,-$s,$c,0,0,0,1],"scale"=>$object["scale"]],JSON_THROW_ON_ERROR)."\n";$count++;}
@@ -60,7 +62,9 @@ final class BeamVegetation
         $put("art/forest/managedItemData.json",json_encode((object)$definitions,JSON_THROW_ON_ERROR|JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));
         $paths=implode(",\n",array_map(static fn($s)=>json_encode($s,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES),array_keys($materials)));
         $shapes=implode(",\n",array_map(static fn($path)=>json_encode($path,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES),array_merge(array_column(array_values($used),"shape"),$terrainTextures)));
-        $put("mainLevel.lua","local M = {}\nfunction M.onClientPreStartMission()\n  local sources = {".$paths."}\n  local shapes = {".$shapes."}\n  local missing = false\n  for _, materials in ipairs(sources) do\n    if FS:fileExists(materials) then loadJsonMaterialsFile(materials) else missing = true; log(\"E\", \"SweepLine\", \"Missing stock materials: \" .. materials) end\n  end\n  for _, shape in ipairs(shapes) do\n    if not FS:fileExists(shape) then missing = true; log(\"E\", \"SweepLine\", \"Missing stock vegetation: \" .. shape) end\n  end\n  if missing then guihooks.trigger(\"toastrMsg\", {type=\"error\", title=\"SweepLine vegetation\", msg=\"Required stock meshes or materials are missing. Check the game log and export report.\"}) end\nend\nreturn M\n");
+        $rockColors=[];foreach($placements as $p)if(($p['asset']??null)==='utah_rock'&&isset($p['ground_rgb']))$rockColors[]=$p['ground_rgb'];
+        $rockLua=isset($used['utah_rock'])?BeamRockPalette::lua(BeamRockPalette::factor($rockColors)):"";
+        $put("mainLevel.lua","local M = {}\nfunction M.onClientPreStartMission()\n  local sources = {".$paths."}\n  local shapes = {".$shapes."}\n  local missing = false\n  for _, materials in ipairs(sources) do\n    if FS:fileExists(materials) then loadJsonMaterialsFile(materials) else missing = true; log(\"E\", \"SweepLine\", \"Missing stock materials: \" .. materials) end\n  end\n  for _, shape in ipairs(shapes) do\n    if not FS:fileExists(shape) then missing = true; log(\"E\", \"SweepLine\", \"Missing stock vegetation: \" .. shape) end\n  end\n  if missing then guihooks.trigger(\"toastrMsg\", {type=\"error\", title=\"SweepLine vegetation\", msg=\"Required stock meshes or materials are missing. Check the game log and export report.\"}) end\nend\n".$rockLua."return M\n");
         return $count;
     }
 }

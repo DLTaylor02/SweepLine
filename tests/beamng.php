@@ -85,7 +85,7 @@ try {
         if($forestLines!=='')foreach(explode("\n",$forestLines) as $line){$instance=json_decode($line,true,512,JSON_THROW_ON_ERROR);if($instance['type']!==$type)throw new RuntimeException('Forest type mismatch');$forestCount++;}
         check($archive->locateName(ltrim($definition['shapeFile'],'/'))===false,'Stock mesh is referenced without redistributing game assets');
     }
-    check($forestCount===$report['scenery_placement']['counts']['tree']+$report['scenery_placement']['counts']['bush']+$report['scenery_placement']['counts']['rock'],'All trees, bushes and rocks are serialized into native forest files');
+    check($forestCount===$report['scenery_placement']['counts']['tree']+$report['scenery_placement']['counts']['bush']+$report['scenery_placement']['counts']['rock']+$report['scenery_placement']['counts']['grass'],'All trees, bushes, rocks and grass are serialized into native forest files');
     check(str_contains($archive->getFromName($base.'mainLevel.lua'),SweepLine\BeamVegetation::MATERIALS),'Map pre-start hook loads installed vegetation material definitions');
 
     $roads=array_values(array_filter($objects,static fn($o)=>$o['class']==='MeshRoad'&&str_starts_with($o['name'],'road_')));
@@ -134,7 +134,7 @@ try {
     for($i=0;$i<$count;$i++){$length=ord($terrain[$offset++]);$material=substr($terrain,$offset,$length);$offset+=$length;check(isset($terrainMaterials[$material]),'Terrain byte-length material name resolves');}
     check($offset===strlen($terrain),'Terrain binary has no missing or extra payload');
     $textures=json_decode($archive->getFromName($base.'art/roads/main.materials.json'),true,512,JSON_THROW_ON_ERROR);
-    foreach($roads as $road){$material=$textures[$road['topMaterial']];check($archive->locateName(ltrim($material['Stages'][0]['diffuseMap'],'/'))!==false,'Road texture is bundled locally');}
+    foreach($roads as $road){$material=$textures[$road['topMaterial']];check($archive->locateName(ltrim($material['Stages'][0]['baseColorMap'],'/'))!==false,'Road texture is bundled locally');}
     foreach($objects as $o)if($o['class']==='TSStatic') {
         check(simplexml_load_string($archive->getFromName(ltrim($o['shapeName'],'/')),SimpleXMLElement::class,LIBXML_NONET)!==false,'Procedural scenery mesh is valid COLLADA');
         break;
@@ -268,7 +268,7 @@ $flatSceneryRaster=new BeamRaster($n,$side,str_repeat(pack('g',100),$n*$n),$colo
 $sceneryCheckpoints=0;$placements=SweepLine\BeamScenery::place($testRoad,$testProfiles,$flatSceneryRaster,12345,function($m)use(&$sceneryCheckpoints){$sceneryCheckpoints++;});
 $allAllowed=true;foreach($placements['objects'] as $object){[$x,$y]=$object['position'];if(!$sceneryGeometry->allows($x,$y,SweepLine\BeamScenery::radius($object['kind'],$object['scale'],$object['asset']??null)))$allAllowed=false;}
 check($placements['additional_tree_target']>0&&$placements['additional_trees_placed']>0,'Tree-bearing corridors receive an additional tree-only placement pass');
-check($placements['counts']['tree']>=$placements['additional_tree_target']&&$placements['counts']['tree']<=$placements['additional_tree_target']*2,'Additional pass aims for double trees with a bounded placement budget');
+check($placements['counts']['tree']>=$placements['additional_tree_target']&&$placements['counts']['tree']<=$placements['additional_tree_target']*3,'Additional pass aims for triple trees with a bounded placement budget');
 check(count($placements['objects'])>100 && $allAllowed,'Generated vegetation stays beside road without footprint overlap or distant objects');
 check($placements['counts']['tree']>0 && $placements['counts']['bush']>0,'Vegetated corridor includes trees and bushes');
 check(array_sum($placements['counts'])===count($placements['objects']) && $sceneryCheckpoints>0,'Scenery reports category counts and checks cancellation during placement');
@@ -372,7 +372,7 @@ try{
     check(isset($facadeMaterial['normal'],$facadeMaterial['specular']),'Export report records the actual facade texture and shading channels');
     $contextScene=$stockZip->getFromName($stockBase.'main/MissionGroup/items.level.json');
     check($stockReport['guardrail_data']['placed_runs']===1&&$stockReport['guardrail_data']['terminals']===2,'Generated ZIP report includes mapped guardrail placement and rigid terminals');
-    check($stockZip->locateName($stockBase.'art/guardrails/rail-0.dae')!==false&&str_contains($contextScene,'"name":"mapped_guardrail_0"'),'Generated BeamNG scene references its mapped guardrail collision mesh');
+    check($stockZip->locateName($stockBase.'art/guardrails/main.materials.json')!==false&&str_contains($contextScene,'"name":"mapped_guardrail_0_1"')&&str_contains($contextScene,'eca_guardrail1.dae'),'Generated BeamNG scene references stock mapped guardrail collision sections and its texture binding');
     $guardMaterials=json_decode($stockZip->getFromName($stockBase.'art/guardrails/main.materials.json'),true);
     check(array_values($guardMaterials)[0]['groundType']==='METAL','Guardrail collision material uses the metal ground type');
 

@@ -286,7 +286,7 @@ final class BeamMap
                     $profile=$renderProfiles[$i];$key=BeamPavement::key($profile);
                     if(!isset($roadMaterials[$key])){
                         $mat=$prefix.'_road_'.$key;$texture='art/roads/'.$key.'.color.png';
-                        $roadMaterials[$key]=['class'=>'Material','name'=>$mat,'mapTo'=>$mat,'version'=>1,'groundType'=>'ASPHALT','Stages'=>[['diffuseMap'=>$path.$texture,'diffuseColor'=>[1,1,1,1],'specularPower'=>8,'useAnisotropic'=>true]]];
+                        $roadMaterials[$key]=BeamRoadMaterials::material($mat,$path.$texture,$profile);
                         $put($texture,BeamPng::road($profile));
                     }
                     if($last!==$key){$chunks[]=['key'=>$key,'nodes'=>$i>0?[array_merge($renderPoints[$i-1],[$renderProfiles[$i-1]['width_m'],0.5,0,0,1])]:[]];$last=$key;}
@@ -348,13 +348,17 @@ final class BeamMap
                 }
                 $guardrails['report']['placed_runs']=count($guardrails['runs']);$guardrails['report']['length_m']=round($railLength,2);$guardrails['report']['terminals']=2*count($guardrails['runs']);
             }
+            $guardrailLibraries=[];
             if($guardrails['runs']){
-                $guardMaterial=$prefix.'_guardrail';
-                $put('art/guardrails/main.materials.json',self::json([$guardMaterial=>['class'=>'Material','name'=>$guardMaterial,'mapTo'=>$guardMaterial,'version'=>1,'groundType'=>'METAL','Stages'=>[['diffuseColor'=>[0.53,0.56,0.59,1],'specularPower'=>32]]]]));
-                foreach($guardrails['runs'] as $i=>$run){
-                    $mesh=BeamGuardrails::mesh($run['points'],$guardMaterial);$file='art/guardrails/rail-'.$i.'.dae';$put($file,$mesh['xml']);
-                    $objects[]=['class'=>'TSStatic','name'=>'mapped_guardrail_'.$i,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>$mesh['position'],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
-                }
+                $objects=array_merge($objects,BeamGuardrails::stockObjects($guardrails['runs']));
+                $guardMaterial=$prefix.'_stock_guardrail';
+                $put('art/guardrails/main.materials.json',self::json([$guardMaterial=>['class'=>'Material','name'=>$guardMaterial,'mapTo'=>'guardrail','version'=>1.5,'groundType'=>'METAL','Stages'=>[[
+                    'baseColorMap'=>'/assets/materials/trim/metal/m_italy_guardrails/t_italy_guardrails_b.color.dds','normalMap'=>'/assets/materials/trim/metal/m_italy_guardrails/t_italy_guardrails_nm.normal.dds',
+                    'roughnessMap'=>'/assets/materials/trim/metal/m_italy_guardrails/t_italy_guardrails_r.data.dds','metallicMap'=>'/assets/materials/trim/metal/m_italy_guardrails/t_italy_guardrails_m.data.dds'
+                ]]]]));
+                $guardrailLibraries[]=$path.'art/guardrails/main.materials.json';
+                $guardrails['report']['appearance']='Native East Coast steel guardrail sections fitted to mapped runs; stock collision geometry; rigid ends, not crash-energy absorbers.';
+                $guardrails['report']['stock_shape']='/levels/east_coast_usa/art/shapes/buildings/eca_guardrail1.dae';
             }
             $carriagewayReports=[];$carriagewayNavigation=[];
             foreach($carriageways as $track){
@@ -424,7 +428,7 @@ final class BeamMap
             if($carriageways){
                 $packs=[$scenery];$avoid=array_merge($intersectionExclusions,[['points'=>$road,'width_m'=>max(array_column($profiles,'width_m'))]]);
                 foreach($carriageways as $i=>$track)$packs[]=BeamScenery::place($track['road'],$track['profiles'],$raster,$seed+$i+1,$progress,$plan['center'],$mappedBuildings['objects'],$avoid,(int)floor(24000/count($exportRoads)));
-                $scenery['objects']=[];$scenery['counts']=['tree'=>0,'bush'=>0,'rock'=>0,'building'=>0];$scenery['asset_counts']=[];$scenery['biome_counts']=[];
+                $scenery['objects']=[];$scenery['counts']=['tree'=>0,'bush'=>0,'rock'=>0,'building'=>0,'grass'=>0];$scenery['asset_counts']=[];$scenery['biome_counts']=[];
                 foreach($packs as $owner=>$pack)foreach($pack['objects'] as $o){
                     if(BeamCarriageways::owner($o['position'],$roadGeometries)!==$owner)continue;
                     $scenery['objects'][]=$o;$scenery['counts'][$o['kind']]++;
@@ -432,14 +436,24 @@ final class BeamMap
                 }
                 $scenery['corridors']=count($exportRoads);$scenery['shared_object_budget']=24000;$scenery['target']=array_sum(array_column($packs,'target'));$scenery['attempts']=array_sum(array_column($packs,'attempts'));
                 foreach($packs as $pack)foreach($pack['biome_counts'] as $zone=>$count)$scenery['biome_counts'][$zone]=($scenery['biome_counts'][$zone]??0)+$count;
-                $scenery['biome_count_scope']='Candidate placements before shared-corridor ownership filtering';
+                $scenery['biome_count_scope']='Candidate placements before shared-corridor ownership filtering';unset($packs,$pack);
             }
+            $grassObjects=[];$grassReports=[];
+            foreach($exportRoads as $owner=>$grassRoad){
+                $grassPack=BeamGrass::place($grassRoad['road'],$grassRoad['profiles'],$raster,$seed+100+$owner,$progress,$plan['center'],$mappedBuildings['objects'],$intersectionExclusions,(int)floor(8000/count($exportRoads)));
+                foreach($grassPack['objects'] as $clump)if(BeamCarriageways::owner($clump['position'],$roadGeometries)===$owner)$grassObjects[]=$clump;
+                unset($grassPack['objects']);$grassReports[]=$grassPack;
+            }
+            $scenery['objects']=array_merge($scenery['objects'],$grassObjects);$scenery['counts']['grass']=count($grassObjects);foreach($grassObjects as $clump)$scenery['asset_counts'][$clump['asset']]=($scenery['asset_counts'][$clump['asset']]??0)+1;
+            $rockColors=[];foreach($scenery['objects'] as $o)if(($o['asset']??null)==='utah_rock'&&isset($o['ground_rgb']))$rockColors[]=$o['ground_rgb'];
+            $scenery['rock_palette']=['factor'=>BeamRockPalette::factor($rockColors),'samples'=>count($rockColors),'method'=>'Bounded Utah rock material tint from nearby aerial palette; restored on map exit.'];unset($rockColors);
+            $scenery['groundcover']=['placed'=>count($grassObjects),'shared_budget'=>8000,'total_scenery_budget'=>32000,'corridors'=>$grassReports];unset($grassObjects);
             $scenery['counts']['building']=$buildingData['placed'];$scenery['building_policy']='Only mapped simple building footprints; polygon clearance and estimated foundations/heights.';
 
-            $nativeVegetation=BeamVegetation::write($scenery['objects'],$prefix,$origin,$put,$terrainStyle==='stock'?BeamTerrain::paths():[]);
+            $nativeVegetation=BeamVegetation::write($scenery['objects'],$prefix,$origin,$put,$terrainStyle==='stock'?BeamTerrain::paths():[],$guardrailLibraries);
             $objects[]=['class'=>'Forest','name'=>'theForest','__parent'=>'MissionGroup'];
             $count=$nativeVegetation+$buildingData['placed'];
-            foreach($scenery['objects'] as $object){$kind=$object['kind'];if(isset(BeamVegetation::SHAPES[$kind]))continue;$p=$object['position'];$scale=$object['scale'];
+            foreach($scenery['objects'] as $object){$kind=$object['kind'];if(isset(BeamVegetation::SHAPES[$kind])||$kind==='grass')continue;$p=$object['position'];$scale=$object['scale'];
                 $objects[]=['class'=>'TSStatic','name'=>'scenery_'.$count++,'__parent'=>'MissionGroup','shapeName'=>$path.'art/shapes/'.$kind.'.dae','position'=>[$p[0],$p[1],$p[2]-$origin],'scale'=>[$scale,$scale,$scale],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
             }
             $vegetationAssets=BeamVegetation::used($scenery['objects']);
@@ -454,7 +468,7 @@ final class BeamMap
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
             if(!empty($preparedIntersections['final_clearance']['limited_branches']))$intersectionData['warning']=trim(($intersectionData['warning']??'').' Some side-road stretches were shortened or omitted where coarse terrain could not meet pavement without disturbing primary-road support.');
             unset($intersectionData['branches']);$intersectionData['rendered_branches']=count(array_filter($preparedIntersections['roads'],static fn($r)=>!isset($r['turnaround_for'])));$intersectionData['skipped_branches']=$preparedIntersections['skipped'];$intersectionData['surface_method']='Shared explicit primary ribbon and clipped side-road surfaces; original sampled centreline, elevations and widths preserved';$intersectionData['pavement_meshes']=$pavementReports;$unjoined=count(array_filter($pavementReports,static fn($p)=>$p['connector_expected']&&!$p['connector']));if($unjoined)$intersectionData['warning']=trim(($intersectionData['warning']??'').' '.$unjoined.' side-road entrances could not be matched to primary pavement.');$intersectionData['terrain_shaping']=$intersectionShaping;$intersectionData['final_clearance']=$preparedIntersections['final_clearance'];$intersectionData['turnarounds']=$preparedIntersections['turnarounds'];$intersectionData['navigation_nodes']=count($navigation['objects']);$intersectionData['navigation_edges']=count($navigation['segments']);
-            $report=['mapped_merge_profile_samples'=>count(array_filter($profiles,static fn($p)=>!empty($p['mapped_merge_aligned']))),'median'=>$median['report'],'lane_widening'=>'Fixed travel-left edge; additional width expands to travel-right','terrain_contact_repair'=>$contactRepair,'lane_transition_paint'=>$paintReport,'carriageways'=>['tracks'=>$carriagewayReports,'mapped_junction_links'=>$carriagewayLinks,'matching'=>$plan['carriageway_data']??null],'bridge_deck_shell'=>$underdeck??null,'tunnels'=>$tunnels,'tunnel_data'=>$tunnelGeometry['report'],'cpu_processing'=>$compute->report(),'paved_shoulder_each_side_ft'=>2,'curve_smoothing'=>['method'=>'Bounded quadratic corner rounds; endpoints, junctions, structures and sharp turns protected','max_deviation_m'=>BeamCurve::MAX_DEVIATION_M,'rounded'=>$rounded!==$plan['points'],'explicit_pavement'=>$explicitPavement],'water_data'=>$water['report'],'guardrail_data'=>$guardrails['report'],'shadow_correction'=>$shadowCorrection,'intersection_context'=>$intersectionData,'target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes only for trees, bushes and rocks; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,'shoulder_transition'=>$shoulders,'bridge_approach_correction'=>$bridgeApproachCorrection,
+            $report=['mapped_merge_profile_samples'=>count(array_filter($profiles,static fn($p)=>!empty($p['mapped_merge_aligned']))),'median'=>$median['report'],'lane_widening'=>'Fixed travel-left edge; additional width expands to travel-right','terrain_contact_repair'=>$contactRepair,'lane_transition_paint'=>$paintReport,'carriageways'=>['tracks'=>$carriagewayReports,'mapped_junction_links'=>$carriagewayLinks,'matching'=>$plan['carriageway_data']??null],'bridge_deck_shell'=>$underdeck??null,'tunnels'=>$tunnels,'tunnel_data'=>$tunnelGeometry['report'],'cpu_processing'=>$compute->report(),'paved_shoulder_each_side_ft'=>2,'curve_smoothing'=>['method'=>'Bounded quadratic corner rounds; endpoints, junctions, structures and sharp turns protected','max_deviation_m'=>BeamCurve::MAX_DEVIATION_M,'rounded'=>$rounded!==$plan['points'],'explicit_pavement'=>$explicitPavement],'water_data'=>$water['report'],'guardrail_data'=>$guardrails['report'],'shadow_correction'=>$shadowCorrection,'intersection_context'=>$intersectionData,'target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes for trees, bushes, rocks and grass; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,'shoulder_transition'=>$shoulders,'bridge_approach_correction'=>$bridgeApproachCorrection,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Fixed beam/slab bridges and viaducts up to 2000 meters use estimated approach-derived decks. Complex bridges and unsupported tunnel types are refused. Simple tunnel profiles, clearance and portals are estimated from approaches; not surveyed. Unmapped structures may be inaccurate.','Navigation includes the primary road, side branches and supported synthetic return loops. Enable traffic in-game; maneuvers require in-game validation.','Requires in-game v0.40 validation.']];
             $report['time_trials']=$timeTrials['report'];

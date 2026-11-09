@@ -411,7 +411,7 @@ check(rejects(fn()=>SweepLine\CoveragePlanner::customArea([179.9,52],[-179.9,52]
 
 $quick=in_array('--quick',$argv,true)&&!in_array('--integration',$argv,true);
 echo ($failures?'FAIL ':'PASS ').'Core: '.$checks." checks\n";
-$suites=['version','time-trials','water','divided-roads','elevations','buildings','guardrails','beamng-enhancements','shadows','intersections','pavement','compute','tunnels','tunnel-clearance','beamng','large-bridges','bridge-deck','carriageways','carriageway-network','median-pavement','median','median-surface','ground-materials','export-memory','resource-cache','carriageway-paint','divided-junctions','import-cleanup','import-input','terrain-contact','export-diagnostics'];
+$suites=['scenery-detail','version','time-trials','water','divided-roads','elevations','buildings','guardrails','beamng-enhancements','shadows','intersections','pavement','compute','tunnels','tunnel-clearance','beamng','large-bridges','bridge-deck','carriageways','carriageway-network','median-pavement','median','median-surface','ground-materials','export-memory','resource-cache','carriageway-paint','divided-junctions','import-cleanup','import-input','terrain-contact','export-diagnostics'];
 $archiveSuites=['tunnels','beamng','large-bridges','bridge-deck','carriageways','median-pavement','export-diagnostics'];
 foreach($suites as $suiteName){
     if($quick&&in_array($suiteName,$archiveSuites,true))continue;
