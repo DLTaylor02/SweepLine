@@ -1,7 +1,9 @@
 <?php
 (function(): void {
     $version=\SweepLine\Version::number();$label=\SweepLine\Version::label();
-    check(preg_match('/^0\.[1-9][0-9]*\.0$/D',$version)===1,'Bundled version follows the release numbering format');
+    check(\SweepLine\Version::valid($version),'Bundled version follows the release numbering format');
+    foreach(['0.1.0','0.147.1','0.147.2','0.148.0'] as $value)check(\SweepLine\Version::valid($value),'Version accepts regular and patch releases: '.$value);
+    foreach(['0.147','0.147.-1','0.147.01','0.0147.2','0.147.2-beta',"0.147.2\n"] as $value)check(!\SweepLine\Version::valid($value),'Version rejects malformed release stamps');
     $pipes=[];$child=proc_open([PHP_BINARY,'-n',SWEEPLINE_ROOT.'/bin/version.php'],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);
     if(!is_resource($child))throw new RuntimeException('Cannot run version CLI check.');
     fclose($pipes[0]);$output=stream_get_contents($pipes[1]);fclose($pipes[1]);$errors=stream_get_contents($pipes[2]);fclose($pipes[2]);$status=proc_close($child);

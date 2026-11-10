@@ -1,6 +1,6 @@
 # Application versions
 
-SweepLine uses a manually maintained `VERSION` file. Every commit is a release. Before committing a patch, increment the middle component once (for example, `0.123.0` to `0.124.0`) and include VERSION in that commit. Versions are no longer calculated from Git history.
+SweepLine uses a manually maintained `VERSION` file. Every commit is a release. Before committing a patch, increment the middle component once (for example, `0.123.0` to `0.124.0`) and include VERSION in that commit. Versions are no longer calculated from Git history. Explicit patch releases may increment the last component instead, for example `0.147.0` → `0.147.1` → `0.147.2`. The next middle-component release resets the patch to zero, such as `0.148.0`. Both forms are accepted by the shared application and installer version validator.
 
 The initial numbering began at `0.1.0` and was caught up to the project's existing commits. Read the current release stamp from `VERSION`. Future release numbers are maintained explicitly, including for documentation-only commits.
 

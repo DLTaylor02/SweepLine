@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.147.2:** Allow nonzero patch versions in the shared application validator, fixing startup/export failures with 0.147.1. Add regular/patch and malformed-version regression cases; document explicit patch-release numbering.
+
 - **0.147.1:** Make HTTP CI failures explicitly report the last request, completed-check count, exception location and transport/JSON response metadata to stderr. Force CLI error visibility so a failed HTTP run cannot be represented solely by server access logs. The provided truncated failure log does not establish an application root cause.
 
 - **0.147.0:** Update offline native integration providers to answer density preflight separately from geometry downloads, preventing unintended subdivision and cascading queue failures. Cover count deadlines and early dense-area subdivision; check diagnostic source eligibility separately from the actual consolidated selection explanation.
