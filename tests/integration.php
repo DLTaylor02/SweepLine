@@ -97,7 +97,7 @@ try {
     check($api->search(['zip'=>'12345','profile'=>'twisty','max_stops'=>5,'min_curve_density'=>8])['results']===[],'User-selected stricter density is applied in SQL');
     $densityDiagnosis=(new SweepLine\RoadDiagnostics($db))->run(['zip'=>'12345','max_stops'=>5,'road'=>'Synthetic','min_curve_density'=>8]);
     $mainDensityDiagnosis=array_values(array_filter($densityDiagnosis['candidates'],static fn($candidate)=>(int)$candidate['id']===$mainId));
-    check(count($mainDensityDiagnosis)===1&&in_array('Curve density: 2.26/10 (requires at least 2.34/10).',$mainDensityDiagnosis[0]['reasons'],true),'Diagnosis uses the selected density threshold');
+    check(count($mainDensityDiagnosis)===1&&in_array('Curve density: 2.26/10 (requires at least 2.34/10).',$mainDensityDiagnosis[0]['source_reasons'],true)&&str_contains(implode(' ',$mainDensityDiagnosis[0]['reasons']),'Curve density: 2.26/10 (requires at least 2.34/10).'),'Diagnosis uses the selected density threshold');
     check(count($api->search(['zip'=>'12345','profile'=>'open','max_stops'=>5])['results'])===2,'Twisty qualification does not restrict Open Highway results');
 } finally {
     $restore=$db->prepare('UPDATE road_candidates SET metrics=?::jsonb,highway=? WHERE id=?');

@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.147.0:** Update offline native integration providers to answer density preflight separately from geometry downloads, preventing unintended subdivision and cascading queue failures. Cover count deadlines and early dense-area subdivision; check diagnostic source eligibility separately from the actual consolidated selection explanation.
+
 - **0.146.0:** Preflight regional road density with a bounded count-only provider request and split dense areas before geometry download/import. Persist favorite thumbnail backgrounds in the search service with retries, serve a lightweight route fallback immediately, and refresh pending thumbnail cards without depending on regional task success.
 
 - **0.145.0:** Save Discovery favorites through the durable owner-scoped worker queue with progress and explicit failures. Defer optional thumbnail basemap work until viewing; preserve synchronous API compatibility.

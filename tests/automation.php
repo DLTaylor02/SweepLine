@@ -1,5 +1,18 @@
 <?php
 // Offline integration tests: synthetic provider responses are injected explicitly.
+$densityRequests=0;
+$automationWorker=static function(PDO $db,Closure $provider)use(&$densityRequests): SweepLine\DataWorker {
+    return new SweepLine\DataWorker($db,static function(string $url,string $path,int $maxBytes,?string $post=null,?callable $progress=null,int $timeout=240)use($provider,&$densityRequests):void{
+        parse_str($post??'',$request);
+        if(str_contains($request['data']??'','out count;')){
+            $densityRequests++;
+            check($timeout===15&&str_contains($request['data'],'[timeout:12]'),'Density preflight has bounded client and provider deadlines');
+            file_put_contents($path,'<osm><count><tag k="ways" v="2"/></count></osm>');
+            return;
+        }
+        $provider($url,$path,$maxBytes,$post,$progress,$timeout);
+    });
+};
 $queue=new SweepLine\DataQueue($db);
 $firstTask=$queue->ensure('us-zips','zips'); $secondTask=$queue->ensure('us-zips','zips');
 check($firstTask['id']===$secondTask['id'],'Duplicate preparations share a task');
@@ -11,16 +24,16 @@ $fakeDownload=static function(string $url,string $path,int $maxBytes,?string $po
     $downloads++; copy(__DIR__.'/fixture.osm',$path);
     if ($progress) { $progress('Test fixture download; no network'); }
 };
-$worker=new SweepLine\DataWorker($db,$fakeDownload);
+$worker=$automationWorker($db,$fakeDownload);
 check($worker->runOne(),'Queued automatic road preparation runs');
-check($downloads===1,'Worker fetches once per queued area');
+check($downloads===1&&$densityRequests===1,'Worker performs a count preflight then fetches geometry once per queued area');
 check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-test-pipeline'")->fetchColumn()==='complete','Download, analysis and activation complete');
 $activeJob=(int)$db->query("SELECT active_job_id FROM regions WHERE slug='auto-test-pipeline'")->fetchColumn();
 check($activeJob>0,'Automatic area activates validated dataset');
 check(count($api->search(['profile'=>'open','max_stops'=>5,'zip'=>'12345'])['results'])===2,'Overlapping automatic and manual cells do not duplicate identical roads');
 check(!$worker->runOne() && $downloads===1,'Completed area reused without download');
 $db->exec("UPDATE data_tasks SET status='queued',attempts=0 WHERE task_key='auto-test-pipeline'");
-$failing=new SweepLine\DataWorker($db,static function(): void { throw new RuntimeException('Test provider unavailable'); });
+$failing=$automationWorker($db,static function(): void { throw new RuntimeException('Test provider unavailable'); });
 $failing->runOne();
 check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-test-pipeline'")->fetchColumn()==='retry','Provider failure schedules retry');
 check((int)$db->query("SELECT active_job_id FROM regions WHERE slug='auto-test-pipeline'")->fetchColumn()===$activeJob,'Provider failure retains active dataset');
@@ -30,17 +43,28 @@ check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-test-pipeli
 check($queue->retry((int)$task['id'])['queued'],'SuperAdmin service retries failed job');
 $db->exec("UPDATE data_tasks SET status='complete' WHERE task_key='auto-test-pipeline'");
 $queue->ensure('auto-empty-test','roads',['key'=>'auto-empty-test','bounds'=>[-119,39.5,-118.5,40]]);
-$emptyWorker=new SweepLine\DataWorker($db,static function(string $url,string $path): void { file_put_contents($path,'<?xml version="1.0"?><osm version="0.6"></osm>'); });
+$emptyWorker=$automationWorker($db,static function(string $url,string $path): void { file_put_contents($path,'<?xml version="1.0"?><osm version="0.6"></osm>'); });
 $emptyWorker->runOne();
 check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-empty-test'")->fetchColumn()==='complete','Empty verified OSM response is valid coverage');
 $queue->ensure('auto-dense-test','roads',['key'=>'auto-dense-test','bounds'=>[-120,39.5,-119.5,40]]);
-$denseWorker=new SweepLine\DataWorker($db,static function(): void { throw new RuntimeException('Extract exceeds the safe download limit.'); });
+$denseWorker=$automationWorker($db,static function(): void { throw new RuntimeException('Extract exceeds the safe download limit.'); });
 $denseWorker->runOne();
 check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-dense-test'")->fetchColumn()==='split','Dense area subdivides automatically');
 check((int)$db->query("SELECT count(*) FROM data_tasks WHERE task_key LIKE 'auto-dense-test-%'")->fetchColumn()===4,'Four child areas queued');
 $db->exec("UPDATE data_tasks SET status='complete' WHERE status='queued'");
+$queue->ensure('auto-preflight-dense','roads',['key'=>'auto-preflight-dense','bounds'=>[-120,39.5,-119.5,40]]);
+$preflightCalls=0;
+$preflightWorker=new SweepLine\DataWorker($db,static function(string $url,string $path,int $maxBytes,?string $post=null)use(&$preflightCalls):void{
+    $preflightCalls++;parse_str($post??'',$request);
+    if(!str_contains($request['data']??'','out count;'))throw new RuntimeException('Dense preflight must not download geometry');
+    file_put_contents($path,'<osm><count><tag k="ways" v="12000"/></count></osm>');
+});
+$preflightWorker->runOne();
+check($preflightCalls===1&&$db->query("SELECT status FROM data_tasks WHERE task_key='auto-preflight-dense'")->fetchColumn()==='split','High count splits before any geometry download or analysis');
+check((int)$db->query("SELECT count(*) FROM data_tasks WHERE task_key LIKE 'auto-preflight-dense-%'")->fetchColumn()===4,'Density preflight queues all four discrete child areas');
+$db->exec("UPDATE data_tasks SET status='complete' WHERE status='queued'");
 $queue->ensure('auto-city-limit','roads',['key'=>'auto-city-limit','bounds'=>[-83,39.875,-82.875,40]]);
-$cityWorker=new SweepLine\DataWorker($db,static function(): void {throw new RuntimeException('Road limit exceeded; use a smaller extract (30k ways max)');});
+$cityWorker=$automationWorker($db,static function(): void {throw new RuntimeException('Road limit exceeded; use a smaller extract (30k ways max)');});
 $cityWorker->runOne();
 check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-city-limit'")->fetchColumn()==='split','Road-count cap subdivides at former minimum cell size');
 $db->exec("UPDATE data_tasks SET status='complete' WHERE status='queued'");
@@ -49,7 +73,7 @@ $worker->recover();
 check($db->query("SELECT status FROM data_tasks WHERE task_key='auto-dense-test-0'")->fetchColumn()==='split','Interrupted dense area recovers by subdivision');
 $db->exec("UPDATE data_tasks SET status='complete' WHERE status='queued'");
 $db->exec("UPDATE data_tasks SET status='queued' WHERE task_key='us-zips'");
-$zipWorker=new SweepLine\DataWorker($db,static function(string $url,string $path): void {
+$zipWorker=$automationWorker($db,static function(string $url,string $path): void {
     $archive=new ZipArchive();
     if ($archive->open($path,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true) { throw new RuntimeException('Cannot create test ZIP'); }
     $archive->addFromString('US.txt',"US\t12345\tSynthetic place\tSynthetic state\tZZ\tSynthetic county\t000\t\t\t39.52\t-119.80\t4\n"); $archive->close();
@@ -71,7 +95,7 @@ check($replacement['status']==='queued' && $replacement['id']!=$cancelId,'New de
 $db->exec("UPDATE data_tasks SET status='complete' WHERE id=".(int)$replacement['id']);
 $cancelTask=$queue->ensure('auto-cancel-running','roads',['key'=>'auto-cancel-running','bounds'=>[-120,39.5,-119.5,40]]);
 $cancelId=(int)$cancelTask['id'];$replacement=null;
-$cancellingWorker=new SweepLine\DataWorker($db,static function(string $url,string $path,int $maxBytes,?string $post,?callable $progress) use ($queue,$cancelId,&$replacement): void {
+$cancellingWorker=$automationWorker($db,static function(string $url,string $path,int $maxBytes,?string $post,?callable $progress) use ($queue,$cancelId,&$replacement): void {
     copy(__DIR__.'/fixture.osm',$path);
     $queue->cancel($cancelId);
     $replacement=$queue->ensure('auto-cancel-running','roads',['key'=>'auto-cancel-running','bounds'=>[-120,39.5,-119.5,40]]);
