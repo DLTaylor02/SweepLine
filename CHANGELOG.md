@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.136.0:** Select neutral stock rocks with matching distance appearances on neutral ground, preserving red Utah rocks on warm ground and avoiding unnecessary mesh-only tinting. Extend the asphalt repeat to 48 m while retaining 12 m paint repeats, 3 m dashes and 9 m gaps; add native palette and paint-period regressions.
+
 - **0.135.0:** Explicitly activate both pavement PBR layers so lane paint renders above the approved stock asphalt. Add a regression assertion for the native activeLayers setting.
 
 - **0.134.0:** Replace the excessively damaged asphalt base with the subtler stock AsphaltRoad variation material, including matching normal and roughness maps. Retain independent lane paint and existing road geometry.
