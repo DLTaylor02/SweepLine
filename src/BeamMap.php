@@ -287,7 +287,7 @@ final class BeamMap
                     if(!isset($roadMaterials[$key])){
                         $mat=$prefix.'_road_'.$key;$texture='art/roads/'.$key.'.color.png';
                         $roadMaterials[$key]=BeamRoadMaterials::material($mat,$path.$texture,$profile);
-                        $put($texture,BeamPng::road($profile));
+                        $put($texture,BeamPng::road($profile));$put(BeamRoadMaterials::maskPath($texture),BeamPng::paintMask($profile));
                     }
                     if($last!==$key){$chunks[]=['key'=>$key,'nodes'=>$i>0?[array_merge($renderPoints[$i-1],[$renderProfiles[$i-1]['width_m'],0.5,0,0,1])]:[]];$last=$key;}
                     $chunks[count($chunks)-1]['nodes'][]=array_merge($p,[$profile['width_m'],0.5,0,0,1]);

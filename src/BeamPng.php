@@ -14,7 +14,14 @@ final class BeamPng
     }
     public static function road(array $profile): string
     {
-        return self::rgb(256,256,static function($x,$y)use($profile) {
+        return self::rgb(256,256,static fn($x,$y)=>self::roadPixel($profile,$x,$y));
+    }
+    public static function paintMask(array $profile): string
+    {
+        return self::rgb(256,256,static function($x,$y)use($profile){$value=self::roadPixel($profile,$x,$y)[0]>150?255:0;return [$value,$value,$value];});
+    }
+    private static function roadPixel(array $profile,int $x,int $y): array
+    {
             $noise=(($x*17+$y*31)%11)-5;$color=[62+$noise,63+$noise,65+$noise];
             $edgeMargin=isset($profile['shoulder_m'])?(int)round(255*$profile['shoulder_m']/$profile['width_m']):0;
             if(!empty($profile['unmarked'])){if((!empty($profile['keep_edge_left'])&&abs($x-$edgeMargin)<=1)||(!empty($profile['keep_edge_right'])&&abs($x-(255-$edgeMargin))<=1))return [235,235,225];return $color;}
@@ -31,7 +38,6 @@ final class BeamPng
                 if(abs($x-$line)<=1 && ($center || $y<(int)round(256*self::ROAD_DASH_LENGTH_M/self::ROAD_TEXTURE_LENGTH_M)))$color=$center?[235,190,35]:[225,225,215];
             }
             return $color;
-        });
     }
 }
 

@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.133.0:** Use stock worn asphalt as the pavement base with independently masked lane paint, preserving road geometry and decal reception. Improve grass with clustered patch infill, muted-green eligibility and mixed short/tall stock clumps within the existing budget. Inspect Mt Rose (38), replay its packaged terrain/imagery, and add paint-mask/grass regressions.
+
 - **0.132.0:** Densify stock forests in canopy areas, add bounded stock grass groundcover, shade Utah boulders using the local palette with map-exit restoration, fit stock steel guardrails to mapped runs, and add stock PBR asphalt detail beneath existing lane markings. Preserve validated pavement and terrain geometry; add focused placement/material and complete-archive checks. Stock assets remain game-owned references; fresh exports need in-game appearance and performance validation.
 
 - **0.131.0:** Add native forward/reverse BeamNG time-trial events at the exported Start/Finish arches, with standing starts, player-vehicle selection, road-following checkpoints and recoveries. Preserve preferred names, aliases and export orientation; package event metadata through the file-backed ZIP writer. Add native reference/orientation and complete-archive tests; document in-game validation and short-course limits.

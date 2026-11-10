@@ -8,7 +8,7 @@ final class BeamGrass
     public static function asset(array $rgb,array $center,float $elevation): ?string
     {
         [$r,$g,$b]=$rgb;$light=array_sum($rgb)/3;
-        if($g<=$r*1.025||$g<=$b*1.04||$light<75||$light>215)return null;
+        if($g<=$r*1.025||$g<=$b*1.04||$light<65||$light>215)return null;
         if(BeamBiome::context($center,$elevation,[$rgb])['zone']==='high_alpine')return null;
         return $center[0]>-103||$g>$r*1.2?'green_grass':'dry_grass';
     }
@@ -31,9 +31,15 @@ final class BeamGrass
             // Concentrate small clumps near verges, while retaining the 200 ft limit.
             $offset=(max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2+pow($random(),2)*BeamScenery::RANGE_M)*($random()<0.5?-1:1);
             $x=$a[0]+$t*($b[0]-$a[0])+($b[1]-$a[1])/$len*$offset;$y=$a[1]+$t*($b[1]-$a[1])-($b[0]-$a[0])/$len*$offset;
+            // Grow around proven grass evidence rather than repeatedly sampling bare hillsides.
+            if(count($out)>=8&&$random()<0.8){
+                $anchor=$out[(int)floor($random()*count($out))]['position'];$angle=$random()*2*M_PI;$spread=1+sqrt($random())*5;
+                $x=$anchor[0]+cos($angle)*$spread;$y=$anchor[1]+sin($angle)*$spread;
+            }
             if($x<1||$y<1||$x>=$raster->side-1||$y>=$raster->side-1)continue;
             $rgb=$raster->rgb((int)($x/$raster->side*$raster->size),(int)($y/$raster->side*$raster->size));
             $asset=self::asset($rgb,$center,$raster->roadHeight($x,$y));if($asset===null)continue;
+            if($asset==='green_grass'&&$random()<0.35&&$geometry->edgeDistance($x,$y)>2)$asset='tall_grass';
             $scale=0.7+$random()*0.5;$radius=BeamScenery::radius('grass',$scale,$asset);
             if(!$geometry->allows($x,$y,$radius))continue;
             $h=$raster->height($x,$y);
@@ -44,6 +50,6 @@ final class BeamGrass
             if($blocked)continue;
             $occupied[$cx.':'.$cy][]=[$x,$y];$out[]=['kind'=>'grass','asset'=>$asset,'position'=>[$x,$y,$h-0.03],'scale'=>$scale];
         }
-        return ['objects'=>$out,'target'=>$target,'attempts'=>$attempt,'method'=>'Stock clumps on lit green aerial evidence; excludes pavement, mapped water, buildings, steep ground and alpine terrain.'];
+        return ['objects'=>$out,'target'=>$target,'attempts'=>$attempt,'attempt_limit_reached'=>count($out)<$target&&$attempt>=min(100000,$target*16),'minimum_aerial_brightness'=>65,'method'=>'Mixed short/tall stock grass in seeded patches with locally clustered infill; every clump rechecks aerial evidence, pavement, mapped water, buildings, slope and alpine exclusions.'];
     }
 }

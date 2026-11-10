@@ -7,6 +7,7 @@ final class BeamVegetation
     public const MATERIALS="/levels/Utah/art/shapes/trees/Juniper/main.materials.json";
     public const CATALOG=[
         "green_grass"=>["kind"=>"grass","map"=>"east_coast_usa","shape"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/s_grass_green_short_01.dae","materials"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/main.materials.json","radius"=>0.65],
+        "tall_grass"=>["kind"=>"grass","map"=>"east_coast_usa","shape"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/s_grass_green_long_01.dae","materials"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/main.materials.json","radius"=>0.7],
         "dry_grass"=>["kind"=>"grass","map"=>"west_coast_usa","shape"=>"/levels/west_coast_usa/art/shapes/trees/grassclump_large.dae","materials"=>"/levels/west_coast_usa/art/shapes/trees/main.materials.json","radius"=>1.4],
         "utah_rock"=>["kind"=>"rock","map"=>"Utah","shape"=>self::SHAPES["rock"],"materials"=>"/levels/Utah/art/shapes/rocks/main.materials.json","radius"=>1.7],
         "juniper_tree"=>["kind"=>"tree","map"=>"Utah","shape"=>self::SHAPES["tree"],"materials"=>self::MATERIALS,"radius"=>7.0],

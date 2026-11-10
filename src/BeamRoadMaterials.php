@@ -2,21 +2,19 @@
 declare(strict_types=1);
 namespace SweepLine;
 
-/** Stock, unpainted asphalt detail beneath our lane-aware generated paint. */
+/** Native worn asphalt, with independent lane paint over its intact surface detail. */
 final class BeamRoadMaterials
 {
-    public const TEXTURES='/assets/materials/decalroad/asphalt/AsphaltRoad_variation_01/t_asphalt_variation_01';
+    public const TEXTURES='/assets/materials/decalroad/asphalt/m_asphalt_damaged_01/t_asphalt_damaged_01';
+    public static function maskPath(string $texture): string {return preg_replace('/\.color\.png$/D','.paint.data.png',$texture);}
     public static function material(string $name,string $texture,array $profile): array
     {
-        return ['class'=>'Material','name'=>$name,'mapTo'=>$name,'version'=>1.5,'groundType'=>'ASPHALT','Stages'=>[[
-            'baseColorMap'=>$texture,'baseColorFactor'=>[1,1,1,1],
-            'detailMap'=>self::TEXTURES.'_b.color.dds','detailBaseColorMapStrength'=>0.22,
-            'normalMap'=>dirname(dirname($texture)).'/terrains/flat.normal.png',
-            'detailNormalMap'=>self::TEXTURES.'_nm.normal.dds','detailNormalMapStrength'=>0.35,
-            'roughnessDetailMap'=>self::TEXTURES.'_r.data.dds','detailRoughnessMapStrength'=>0.3,
-            'roughnessFactor'=>0.85,'metallicFactor'=>0,
-            'detailScale'=>[max(1,$profile['width_m']/3),BeamPng::ROAD_TEXTURE_LENGTH_M/3],
-            'useAnisotropic'=>true
-        ]]];
+        return ['class'=>'Material','name'=>$name,'mapTo'=>$name,'version'=>1.5,'groundType'=>'ASPHALT','Stages'=>[
+            ['baseColorMap'=>self::TEXTURES.'_b.color.dds','baseColorFactor'=>[0.9,0.9,0.9,1],
+             'normalMap'=>self::TEXTURES.'_nm.normal.dds','roughnessMap'=>self::TEXTURES.'_r.data.dds',
+             'roughnessFactor'=>0.85,'metallicFactor'=>0,'useAnisotropic'=>true],
+            ['baseColorMap'=>$texture,'baseColorFactor'=>[1,1,1,1],
+             'opacityMap'=>self::maskPath($texture),'opacityFactor'=>1,'roughnessFactor'=>0.85,'metallicFactor'=>0,'useAnisotropic'=>true]
+        ]];
     }
 }

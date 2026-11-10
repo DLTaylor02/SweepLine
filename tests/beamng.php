@@ -134,7 +134,7 @@ try {
     for($i=0;$i<$count;$i++){$length=ord($terrain[$offset++]);$material=substr($terrain,$offset,$length);$offset+=$length;check(isset($terrainMaterials[$material]),'Terrain byte-length material name resolves');}
     check($offset===strlen($terrain),'Terrain binary has no missing or extra payload');
     $textures=json_decode($archive->getFromName($base.'art/roads/main.materials.json'),true,512,JSON_THROW_ON_ERROR);
-    foreach($roads as $road){$material=$textures[$road['topMaterial']];check($archive->locateName(ltrim($material['Stages'][0]['baseColorMap'],'/'))!==false,'Road texture is bundled locally');}
+    foreach($roads as $road){$material=$textures[$road['topMaterial']];check(str_starts_with($material['Stages'][0]['baseColorMap'],'/assets/')&&$archive->locateName(ltrim($material['Stages'][1]['baseColorMap'],'/'))!==false&&$archive->locateName(ltrim($material['Stages'][1]['opacityMap'],'/'))!==false,'Worn stock road references have local lane paint and masks');}
     foreach($objects as $o)if($o['class']==='TSStatic') {
         check(simplexml_load_string($archive->getFromName(ltrim($o['shapeName'],'/')),SimpleXMLElement::class,LIBXML_NONET)!==false,'Procedural scenery mesh is valid COLLADA');
         break;
