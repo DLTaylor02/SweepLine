@@ -4,6 +4,8 @@ namespace SweepLine;
 use PDO;
 final class BeamJobs
 {
+    public const ENQUEUE_LOCK=73019425;
+    public const MAINTENANCE_LOCK=73019426;
     public function __construct(private PDO $db,private ?\Closure $rasterSource=null,private ?string $storageRoot=null) {}
     public static function validId(string $id): string
     {
@@ -51,7 +53,7 @@ final class BeamJobs
         $fingerprint=hash('sha256','beamng-v0.40-88-'.Version::number().$payload);
         $this->db->beginTransaction();
         try {
-            $this->db->exec('SELECT pg_advisory_xact_lock(73019425)');
+            $this->db->exec('SELECT pg_advisory_xact_lock('.self::ENQUEUE_LOCK.')');
             $this->db->prepare('SELECT id FROM app_users WHERE id=? FOR UPDATE')->execute([$user]);
             $q=$this->db->prepare("SELECT id FROM beamng_exports WHERE user_id=? AND fingerprint=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1");
             $q->execute([$user,$fingerprint]);$id=$q->fetchColumn();
@@ -109,7 +111,7 @@ final class BeamJobs
     }
     public function maintain(): void
     {
-        if(!$this->db->query('SELECT pg_try_advisory_lock(73019426)')->fetchColumn())return;
+        if(!$this->db->query('SELECT pg_try_advisory_lock('.self::MAINTENANCE_LOCK.')')->fetchColumn())return;
         try {
         $rows=$this->db->query("UPDATE beamng_exports SET status='expired',progress='Temporary files expired',payload='{}'::jsonb WHERE status='complete' AND expires_at<=now() RETURNING id")->fetchAll(PDO::FETCH_COLUMN);
         foreach($rows as $id)$this->remove($id);
@@ -119,7 +121,7 @@ final class BeamJobs
             $q=$this->db->prepare("SELECT 1 FROM beamng_exports WHERE id=? AND status IN ('queued','running','complete')");$q->execute([basename($dir)]);
             if(!$q->fetchColumn())$this->remove(basename($dir));
         }
-        } finally {$this->db->exec('SELECT pg_advisory_unlock(73019426)');}
+        } finally {$this->db->exec('SELECT pg_advisory_unlock('.self::MAINTENANCE_LOCK.')');}
     }
     public function runOne(): bool
     {

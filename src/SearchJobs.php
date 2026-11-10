@@ -6,6 +6,8 @@ use PDO;
 /** Heavy discovery runs in the existing CLI worker, outside PHP-FPM's request deadline. */
 final class SearchJobs
 {
+    // Session lock: must never share a key with short-lived enqueue/maintenance locks.
+    public const WORKER_LOCK=73019427;
     public function __construct(private PDO $db) {}
     public function enqueue(int $user,array $input,?string $diagnosticRoad=null,?array $favorite=null): array {
         $p=Validation::search($input);$history=null;

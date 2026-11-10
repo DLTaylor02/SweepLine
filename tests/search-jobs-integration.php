@@ -2,6 +2,20 @@
 // Disposable PostGIS integration only: real queue execution, snapshots and ownership.
 (function()use($db,$administrator): void {
     $queue=new \SweepLine\SearchJobs($db);$user=(int)$administrator['id'];
+    $otherConnection=\SweepLine\Database::connect();
+    $db->query('SELECT pg_advisory_lock('.\SweepLine\SearchJobs::WORKER_LOCK.')');
+    try{
+        check(!(bool)$otherConnection->query('SELECT pg_try_advisory_lock('.\SweepLine\SearchJobs::WORKER_LOCK.')')->fetchColumn(),'Search service still prevents duplicate worker processes');
+        $otherConnection->beginTransaction();
+        check((bool)$otherConnection->query('SELECT pg_try_advisory_xact_lock('.\SweepLine\BeamJobs::ENQUEUE_LOCK.')')->fetchColumn(),'Running search service does not block BeamNG export admission');
+        $otherConnection->rollBack();
+        $maintenance=(bool)$otherConnection->query('SELECT pg_try_advisory_lock('.\SweepLine\BeamJobs::MAINTENANCE_LOCK.')')->fetchColumn();
+        check($maintenance,'Running search service does not block BeamNG maintenance');
+        if($maintenance)$otherConnection->query('SELECT pg_advisory_unlock('.\SweepLine\BeamJobs::MAINTENANCE_LOCK.')');
+    }finally{
+        if($otherConnection->inTransaction())$otherConnection->rollBack();
+        $db->query('SELECT pg_advisory_unlock('.\SweepLine\SearchJobs::WORKER_LOCK.')');
+    }
     $tasks=(int)$db->query('SELECT count(*) FROM data_tasks')->fetchColumn();
     $input=['zip'=>'12345','radius_miles'=>5,'profile'=>'open','max_stops'=>100,'surface_filter'=>'any','record_history'=>true];
     $historyId=null;

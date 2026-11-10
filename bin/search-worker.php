@@ -4,7 +4,7 @@ require dirname(__DIR__).'/src/bootstrap.php';
 
 // Independent from imports/exports: bound discovery concurrency to one CPU lane.
 $db=SweepLine\Database::connect();
-if(!$db->query('SELECT pg_try_advisory_lock(73019425)')->fetchColumn())exit("Another search worker is active\n");
+if(!$db->query('SELECT pg_try_advisory_lock('.SweepLine\SearchJobs::WORKER_LOCK.')')->fetchColumn())exit("Another search worker is active\n");
 $searches=new SweepLine\SearchJobs($db);
 $searches->recover();$searches->maintain();
 $once=in_array('--once',$argv,true);$maintenance=time();
