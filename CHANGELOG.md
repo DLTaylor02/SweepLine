@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.140.0:** Add SuperAdmin Manage Region data map with queued, active and imported coverage, region filtering, storage estimates and priority refresh. Add scoped, resumable discard batches with cancellation, shared/external file protection and explicit failure status; preserve validated coverage during refresh. Add migration 021, worker integration, frontend/guard tests and native database/authorization regressions for CI.
+
 - **0.139.0:** Resolve legacy History parameter links to saved entries without silently rerunning discovery; retain explicit fresh-search actions and clarify HTTP 504 errors. Reduce fresh-search database work by restricting coverage aggregation to overlapping regions, adding active coverage index 020, and moving combination-cache eviction to worker maintenance. Add legacy-link, filter-equivalence and timeout UI regressions; production timeout cause remains unverified.
 
 - **0.138.0:** Persist owner-scoped search result snapshots and open History without rerunning discovery or data preparation. Update the same snapshot during active polling; label partial/legacy entries, provide a separate fresh-search action, retain saved road metrics on selection, and add bounded storage plus additive migration 019. Add service/frontend regressions and HTTP ownership checks. Reuse an owner's existing history entry for identical normalized search filters regardless of its age, replacing the ten-second duplicate window. Fresh searches update that entry's result snapshot; different filters remain distinct. Add aged-entry/default-normalization and different-radius HTTP integration regressions.

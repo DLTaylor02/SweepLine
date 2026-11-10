@@ -12,6 +12,11 @@ final class DataWorker
     {
         ($this->download ?? [Download::class,'file'])($url,$path,$maxBytes,$post,$progress);
     }
+    private function queueChild(DataQueue $queue,array $child,bool $force): void
+    {
+        $next=$queue->ensure($child['key'],'roads',$child);
+        if($force)$this->db->prepare("UPDATE data_tasks SET status='queued',manual_priority=true,attempts=0,error=null,import_job_id=null,next_attempt_at=now(),progress='SuperAdmin refresh requested',updated_at=now() WHERE id=? AND status<>'running'")->execute([$next['id']]);
+    }
     public function recover(): void
     {
         $this->db->exec("UPDATE import_jobs SET status='failed',error='Worker interrupted; previous active data retained',finished_at=now() WHERE status='running'");
@@ -24,7 +29,7 @@ final class DataWorker
             if ($task['kind']==='roads' && (int)$task['attempts']>=2 && CoveragePlanner::canSplit($tile)) {
                 $this->db->beginTransaction();
                 try {
-                    foreach (CoveragePlanner::children($tile) as $child) { $queue->ensure($child['key'],'roads',$child); }
+                    foreach (CoveragePlanner::children($tile) as $child) { $this->queueChild($queue,$child,(bool)($task['manual_priority']??false)); }
                     $this->db->prepare("UPDATE data_tasks SET status='split',progress='Smaller areas queued after interrupted processing',updated_at=now() WHERE id=?")->execute([$task['id']]);
                     $this->db->commit();
                 } catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
@@ -41,7 +46,7 @@ final class DataWorker
         $q=$this->db->prepare('SELECT cancel_requested FROM data_tasks WHERE id=?'.($lock?' FOR UPDATE':''));
         $q->execute([$id]);
         if ($q->fetchColumn()) { throw new JobCancelled('Cancelled by SuperAdmin'); }
-        if ($lock) { $this->db->prepare("UPDATE data_tasks SET status='complete',progress='Local data ready',error=null,updated_at=now() WHERE id=?")->execute([$id]); }
+        if ($lock) { $this->db->prepare("UPDATE data_tasks SET status='complete',manual_priority=false,progress='Local data ready',error=null,updated_at=now() WHERE id=?")->execute([$id]); }
     }
     private function progress(int $id,string $message): void
     {
@@ -56,7 +61,7 @@ final class DataWorker
     public function runOne(): bool
     {
         $this->db->beginTransaction();
-        $task=$this->db->query("SELECT * FROM data_tasks WHERE status IN ('queued','retry') AND cancel_requested=false AND next_attempt_at<=now() ORDER BY CASE kind WHEN 'zips' THEN 0 ELSE 1 END,id FOR UPDATE SKIP LOCKED LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $task=$this->db->query("SELECT * FROM data_tasks WHERE status IN ('queued','retry') AND cancel_requested=false AND next_attempt_at<=now() ORDER BY CASE WHEN kind='zips' THEN 0 WHEN manual_priority THEN 1 ELSE 2 END,id FOR UPDATE SKIP LOCKED LIMIT 1")->fetch(PDO::FETCH_ASSOC);
         if ($task) { $this->db->prepare("UPDATE data_tasks SET status='running',import_job_id=null,attempts=attempts+1,progress='Starting preparation',updated_at=now() WHERE id=?")->execute([$task['id']]); $task['attempts']++; }
         $this->db->commit();
         if (!$task) { return false; }
@@ -74,7 +79,7 @@ final class DataWorker
             }
             if ($task['kind']==='zips') { $this->zips($id,$dir); }
             else { $this->roads($id,$dir,$payload); }
-            $this->db->prepare("UPDATE data_tasks SET status='complete',progress='Local data ready',error=null,updated_at=now() WHERE id=? AND cancel_requested=false")->execute([$id]);
+            $this->db->prepare("UPDATE data_tasks SET status='complete',manual_priority=false,progress='Local data ready',error=null,updated_at=now() WHERE id=? AND cancel_requested=false")->execute([$id]);
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) { $this->db->rollBack(); }
             $this->db->beginTransaction();
@@ -87,7 +92,7 @@ final class DataWorker
             if ($task['kind']==='roads' && CoveragePlanner::canSplit($payload) && CoveragePlanner::oversized($message)) {
                 $queue=new DataQueue($this->db);
                 try {
-                    foreach (CoveragePlanner::children($payload) as $child) { $queue->ensure($child['key'],'roads',$child); }
+                    foreach (CoveragePlanner::children($payload) as $child) { $this->queueChild($queue,$child,(bool)($task['manual_priority']??false)); }
                     $this->db->prepare("UPDATE data_tasks SET status='split',progress='Divided dense area into smaller downloads',error=null,updated_at=now() WHERE id=?")->execute([$id]);
                 } catch (\Throwable $splitError) { $this->db->rollBack(); throw $splitError; }
             } else {
@@ -149,6 +154,7 @@ final class DataWorker
         $queue=new DataQueue($this->db); $queue->purgeCancelled(); $queue->ensure('us-zips','zips',[],true);
         // Keep old active data, prune only nonactive automatic attempts after a week.
         // Bulk import pruning runs only in short idle-time ImportCleanup steps.
+        $this->db->exec("DELETE FROM region_operations WHERE status='complete' AND updated_at<now()-interval '30 days'");
         $this->db->exec("DELETE FROM auth_attempts WHERE window_start<now()-interval '1 day'");
         $this->db->exec("DELETE FROM road_combination_cache WHERE created_at<now()-interval '7 days' OR cache_key IN (SELECT cache_key FROM road_combination_cache ORDER BY created_at DESC,cache_key OFFSET 500)");
         foreach (glob(SWEEPLINE_ROOT.'/var/downloads/*') as $file) {

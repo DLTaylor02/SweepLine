@@ -8,11 +8,13 @@ $worker=new SweepLine\DataWorker($db);$worker->heartbeat('Starting worker recove
 SweepLine\BeamFailure::install($db);
 $exports=new SweepLine\BeamJobs($db);$exports->recover();$exports->maintain();
 $worker->recover(); $worker->maintain();
-$cleanup=new SweepLine\ImportCleanup($db);
+$cleanup=new SweepLine\ImportCleanup($db);$regions=new SweepLine\RegionData($db);
 $once=in_array('--once',$argv,true); $lastMaintenance=time();
 do {
     $worker->heartbeat('Checking queued work');
-    $handled=$exports->runOne() || $worker->runOne();
+    $regionWork=$regions->runOne();
+    $priority=$db->query("SELECT EXISTS(SELECT 1 FROM data_tasks WHERE manual_priority AND status IN ('queued','retry') AND NOT cancel_requested AND next_attempt_at<=now())")->fetchColumn();
+    $handled=($priority&&$worker->runOne()) || $exports->runOne() || $worker->runOne() || $regionWork;
     if (!$handled) {
         // Retain the explicit local import tools for diagnostics and advanced provisioning.
         $db->beginTransaction();

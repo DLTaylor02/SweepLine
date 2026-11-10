@@ -37,3 +37,11 @@ Search request template (replace `<US_ZIP>` with your chosen five-digit US ZIP c
 `GET /api/search-history/{id}` returns the authenticated owner's parameters, creation time, snapshot time and `result_snapshot` (null for legacy entries). Another owner's ID returns 404. Existing CSRF-protected DELETE removes the whole entry.
 
 A recorded POST `/api/search` returns `history_id`. Subsequent preparation polls send that ID with `record_history:false`; the server updates only the same owner's entry with matching normalized parameters. History viewing itself performs only the GET above.
+
+### SuperAdmin region administration
+
+- `GET /api/admin/regions`: map FeatureCollection of downloaded and queued road areas (bounded, with `truncated`).
+- `GET /api/admin/regions?key=...`: selected region status and estimated database/managed-file storage.
+- `POST /api/admin/regions/action`: JSON `{"key":"region-key","action":"refresh"}` or `discard`; requires the normal session and CSRF token. Accepted operations return 202. Busy/conflicting actions return 409.
+
+All three require SuperAdmin, including reads. The `/regions` page also rejects other roles. Region keys never become filesystem paths; worker cleanup checks canonical managed-download paths and preserves shared/external sources.

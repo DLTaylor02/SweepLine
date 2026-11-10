@@ -247,3 +247,5 @@ try{
  $cancelStage=$stageJobs->status((int)$administrator['id'],$stageIds[0]);$failedStage=$stageJobs->status((int)$administrator['id'],$stageIds[1]);
  check($cancelStage['status']==='cancelled'&&$cancelStage['stage']===7&&$failedStage['status']==='failed'&&$failedStage['stage']===9&&$failedStage['progress']==='Writing terrain materials','Interrupted cancelled and failed jobs retain their last stage and detailed activity');
 }finally{$q=$db->prepare('DELETE FROM beamng_exports WHERE id IN (?,?)');$q->execute($stageIds);rmdir($stageRoot);}
+
+require __DIR__.'/region-data-integration.php';

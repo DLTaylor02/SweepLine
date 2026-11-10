@@ -30,6 +30,7 @@ jobs:
       - run: bash tests/installer-user.sh
       - run: bash tests/installer-admin.sh
       - run: node --unhandled-rejections=strict tests/frontend.test.js
+      - run: node --unhandled-rejections=strict tests/regions-frontend.test.js
       - run: php tests/run.php --integration
       - run: php bin/bootstrap-app.php
       - run: |

@@ -32,7 +32,7 @@ If executable permissions were lost, run `chmod +x setup.sh` first. See [install
 - **Road exports:** GPX, KMZ and printable PDF maps with geometry-based bend notes.
 - **BeamNG.drive exports:** playable road maps with estimated terrain, stock trees/grass and asphalt detail, mapped lakes/rivers, structures, intersections, start/finish spawns and forward/reverse time trials; downloaded source resources are cached for one week.
 - **Account management:** SuperAdmin, Admin and User roles, configurable password policies, password changes and session timeouts.
-- **Server management:** background job monitoring, cancellation/retries and storage controls.
+- **Server management:** background job monitoring, cancellation/retries, storage controls and a map for refreshing or discarding regional road data.
 - **Adaptive appearance:** automatic light/dark mode with manual theme selection.
 
 ![Lake Tahoe, Nevada](docs/screenshots/laketahoe_nevada.png)

@@ -99,3 +99,10 @@
 .brand .app-version{display:inline-block;margin-left:7px;padding:3px 6px;border:1px solid var(--accent);border-radius:4px;color:var(--accent);background:var(--soft);font-size:10px;letter-spacing:.4px;white-space:nowrap}
 
 .beam-step-track .is-stopped{background:#b45309;box-shadow:inset 0 0 0 1px #92400e}
+
+body[data-page="/regions"] aside>*{display:none}body[data-page="/regions"] aside>#region-controls:not([hidden]){display:block}
+body[data-page="/regions"] .legend,body[data-page="/regions"] #preparation-legend{display:none}
+#region-controls h1{font-size:28px}#region-controls h2{font-size:17px}
+#region-size{display:grid;grid-template-columns:1fr auto;gap:8px}#region-size dd{margin:0;font-weight:700}
+.region-map-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px}.region-actions{display:flex;flex-wrap:wrap;gap:8px}.region-list-item{display:block;width:100%;text-align:left;margin:6px 0;font-size:12px;padding:9px}
+#region-discard{background:#a33b32}#region-action-status{overflow-wrap:anywhere}

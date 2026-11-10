@@ -109,3 +109,17 @@ sudo ./setup.sh
 
 Use the deployment's configured database/service names if customized. Cancelling this statement rolls back that in-progress cleanup; queued jobs and active coverage remain. The installer then applies the indexes and starts the updated worker. No PostgreSQL restart or unrelated service changes are required.
 
+
+## Manage Region data (0.140.0)
+
+SuperAdmins can choose **Manage Region data** on Manage, opening `/regions`. This map shows imported coverage and queued/in-progress road areas without road-result overlays. Green means downloaded, red means queued/retrying, yellow pulses while processing; gray indicates discard work. Failed work is labeled. Select a box or filter the sidebar list by name/key/status.
+
+**Refresh region** queues a new provider download immediately, with priority when the worker is next free. It does not interrupt an existing job. Current validated coverage stays available until the replacement validates. A region already processing cannot start a duplicate refresh. Dense-area child downloads inherit the explicit refresh request.
+
+**Discard region** requires confirmation. Coverage is removed from discovery immediately; the existing worker cancels that region's preparation and removes its import rows in bounded transactions. Cleanup resumes after worker restarts and yields between batches so other jobs can proceed. The map reports discard progress/failure. The operation affects only the selected region: overlapping or subdivided regions remain separate. Active searches may request the discarded area again.
+
+Storage details distinguish **estimated database row bytes** from actual **managed download file bytes**. Temporary OSM extracts normally disappear after successful imports, so file bytes can be zero while database usage is substantial. Estimates exclude shared indexes/free pages/metadata and are bounded under database load; busy estimates can be unavailable. PostgreSQL normally reuses deleted space instead of shrinking database files immediately.
+
+Discard does not remove ZIP coordinates, user accounts, History/Favorite snapshots, BeamNG resources/exports, unrelated regions, or external/manual source files. Managed sources still referenced by another import are retained. Existing saved History results remain viewable, although actions requiring discarded live source data may become unavailable.
+
+Migration `021_region_management.sql` adds the region-operation queue, explicit task priority and supporting indexes. Run the normal installer update to apply it and restart the worker. No new service, persistent runtime, global server setting or external API dependency is introduced.

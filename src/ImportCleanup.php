@@ -7,7 +7,7 @@ use PDOException;
 /** Delete inactive import data in short, resumable idle-time transactions. */
 final class ImportCleanup
 {
-    private const BATCHES=[
+    public const BATCHES=[
         ['candidate_segments',2000,'candidate'],
         ['road_scores',2000,'candidate'],
         ['road_candidates',25,'job'],

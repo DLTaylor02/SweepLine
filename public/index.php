@@ -9,9 +9,10 @@ if (!str_starts_with($path,'/api/')) {
     $pageDb=SweepLine\Database::connect();SweepLine\Auth::start($pageDb);
     $pageUser=(new SweepLine\Auth($pageDb))->user();
     if (($pageUser['must_change_password']??false) && $path!=='/password') {header('Location: /password',true,303);exit;}
+    if($path==='/regions'&&($pageUser['role']??null)!=='superadmin'){http_response_code(403);exit('SuperAdmin access required.');}
     session_write_close();
     if ($path==='/jobs') {header('Location: /manage',true,302);exit;}
-    if (!in_array($path,['/','/users','/manage','/history','/favorites','/password'],true)) { http_response_code(404); exit('Not found'); }
+    if (!in_array($path,['/','/users','/manage','/history','/favorites','/password','/regions'],true)) { http_response_code(404); exit('Not found'); }
     header('Cache-Control: no-store');
     require __DIR__.'/home.php'; exit;
 }
@@ -22,7 +23,7 @@ header('X-Content-Type-Options: nosniff');
 try {
     if ($path==='/api/setup') { throw new OutOfBoundsException('Endpoint not found'); }
     $method=$_SERVER['REQUEST_METHOD']??'GET';
-    $postPaths=['/api/elevations','/api/custom-roads','/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/beamng'];
+    $postPaths=['/api/admin/regions/action','/api/elevations','/api/custom-roads','/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/beamng'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if ($path==='/api/admin/storage' && $method==='PATCH') {$expected='PATCH';}
     if ($path==='/api/admin/session-settings' && $method==='GET') {$expected='GET';}
@@ -162,6 +163,8 @@ try {
                 $result=$method==='GET'?$auth->users():$auth->create($input);
             } elseif (preg_match('#^/api/admin/users/([1-9]\\d{0,17})$#',$path,$m)) { $result=$auth->update((int)$m[1],$input); }
             elseif ($path==='/api/admin/storage') { $settings=new SweepLine\StorageSettings($db);$result=$method==='PATCH'?$settings->save($input):$settings->read(); }
+            elseif($path==='/api/admin/regions'){$regions=new SweepLine\RegionData($db);$result=isset($_GET['key'])?$regions->detail(SweepLine\RegionData::key($_GET['key'])):$regions->map();}
+            elseif($path==='/api/admin/regions/action'){$result=(new SweepLine\RegionData($db))->action((int)$user['id'],SweepLine\RegionData::key($input['key']??null),is_string($input['action']??null)?$input['action']:'');http_response_code(202);}
             elseif ($path==='/api/admin/data') { $result=(new SweepLine\DataQueue($db))->overview(); }
             elseif (preg_match('#^/api/admin/tasks/([1-9]\\d{0,17})/(retry|cancel)$#',$path,$m)) {
                 $queue=new SweepLine\DataQueue($db);

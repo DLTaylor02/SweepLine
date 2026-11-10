@@ -91,6 +91,11 @@ expect(callApi($admin,'POST','/api/admin/users/'.$session['user']['id'],['role'=
 
 $memberSession=expect(callApi($member,'GET','/api/session'),200,'Member pre-login session');
 $memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Member login');
+expect(callApi($admin,'GET','/api/admin/regions'),200,'SuperAdmin reads region map');
+expect(callApi($member,'GET','/api/admin/regions'),403,'User cannot read region management');
+expect(callApi($member,'POST','/api/admin/regions/action',['key'=>'auto-test','action'=>'discard'],$memberSession['csrf']),403,'User cannot discard regional data');
+expect(callApi($admin,'POST','/api/admin/regions/action',['key'=>'auto-test','action'=>'discard']),403,'Region discard requires CSRF');
+expect(callApi($admin,'POST','/api/admin/regions/action',['key'=>'../unsafe','action'=>'discard'],$csrf),422,'Region actions validate identifiers');
 $history=expect(callApi($admin,'GET','/api/search-history'),200,'SuperAdmin views own history');
 if (count($history)!==1 || $history[0]['parameters']['radius_miles']!=25) { throw new RuntimeException('Search history missing or polluted by polling'); }
 if($history[0]['city']!=='Synthetic place' || $history[0]['state']!=='ZZ')throw new RuntimeException('ZIP city missing from History');
@@ -162,6 +167,7 @@ $memberSession=expect(callApi($member,'GET','/api/session'),200,'Admin session t
 $memberSession=expect(callApi($member,'POST','/api/login',['username'=>'member','password'=>'member-password-123'],$memberSession['csrf']),200,'Promoted Admin login');
 expect(callApi($member,'GET','/api/admin/users'),200,'Admin accesses Users');
 expect(callApi($member,'GET','/api/admin/data'),403,'Admin cannot access Manage jobs');
+expect(callApi($member,'GET','/api/admin/regions'),403,'Admin cannot access region management');
 expect(callApi($member,'GET','/api/admin/storage'),403,'Admin cannot access Manage settings');
 expect(callApi($member,'POST','/api/admin/session-settings',['session_timeout_days'=>14],$memberSession['csrf']),403,'Admin cannot alter session lifetime');
 expect(callApi($member,'POST','/api/admin/tasks/1/cancel',[],$memberSession['csrf']),403,'Admin cannot cancel jobs');
