@@ -2,10 +2,10 @@
 declare(strict_types=1);
 namespace SweepLine;
 
-/** Native worn asphalt, with independent lane paint over its intact surface detail. */
+/** Native lightly weathered asphalt, with independent lane paint over its intact surface detail. */
 final class BeamRoadMaterials
 {
-    public const TEXTURES='/assets/materials/decalroad/asphalt/m_asphalt_damaged_01/t_asphalt_damaged_01';
+    public const TEXTURES='/assets/materials/decalroad/asphalt/AsphaltRoad_variation_01/t_asphalt_variation_01';
     public static function maskPath(string $texture): string {return preg_replace('/\.color\.png$/D','.paint.data.png',$texture);}
     public static function material(string $name,string $texture,array $profile): array
     {

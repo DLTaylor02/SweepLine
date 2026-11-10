@@ -458,6 +458,10 @@ All primary, opposite-carriageway and side-road surfaces share a PBR asphalt mat
 
 Reports include grass counts/budgets, actual stock dependencies and rock tint factors. Fresh exports are required. Offline placement, material and complete-archive tests cover packaging and geometry; density, frame rate, shading and guardrail collisions still require in-game validation.
 
+## Lightly weathered asphalt (0.134.0)
+
+Pavement now uses the stock `AsphaltRoad_variation_01` color, normal and roughness maps as its base. This replaces the overly coarse damaged-asphalt set introduced in 0.133.0, while retaining separate masked lane paint. It provides subtler surface variation as a middle ground between uniform generated asphalt and visibly broken pavement. Fresh exports are required; in-game appearance still needs visual validation.
+
 ## Worn asphalt and grass patch correction (0.133.0)
 
 The road base now directly references the stock `m_asphalt_damaged_01` color, normal and roughness maps used by native levels. Generated white/yellow paint is a second PBR layer with a separate grayscale opacity mask. Bare pixels of the generated paint texture no longer cover the stock asphalt. The complete road stays opaque. Existing lane geometry, dash spacing, collision and decal reception settings remain unchanged. Texture wear is generic visual detail, not a claim about the actual road condition.
