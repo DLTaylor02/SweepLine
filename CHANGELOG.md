@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.144.0:** Replace speculative missing-road explanations with actual discovery pipeline outcomes: pre-analysis candidate cap, missing profile scores, consolidated-road filter failures and final ranking limits. Keep original candidate eligibility separate from the selected consolidated road; trace the same discovery pass without relaxing filters.
+
 - **0.143.0:** Run missing-road diagnosis through the durable search queue instead of PHP-FPM, with stage reporting, owner-only polling, cancellation and explicit UI failures. Reuse the existing dedicated search service and admission limits; diagnostics remain read-only and never schedule imports.
 
 - **0.142.0:** Queue web discovery outside HTTP deadlines with owner-scoped progress/results, duplicate pending-request suppression, bounded admission, explicit failure stages and Manage cancellation. Add an independent hardened PHP search service so downloads/exports cannot monopolize discovery. Reconnect to the saved job after navigation; save History snapshots from the worker. Add migration 022 and frontend, HTTP and native PostGIS regressions.

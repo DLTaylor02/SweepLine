@@ -28,7 +28,7 @@ final class Api
     {
         return $this->db->query('SELECT slug,name,imported_at,active_job_id,ST_AsGeoJSON(coverage) AS geometry FROM regions ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
     }
-    public function search(array $input,?callable $progress=null): array
+    public function search(array $input,?callable $progress=null,?callable $trace=null): array
     {
         $progress??=static function(string $stage): void {};
         $progress('Looking up the ZIP location');
@@ -43,6 +43,7 @@ final class Api
             ORDER BY s.score DESC,c.length_m DESC,c.id LIMIT 601");
         $plan->execute(['profile'=>$p['profile'],'lon'=>$zip['lon'],'lat'=>$zip['lat'],'meters'=>$p['radius_miles']*1609.344]);
         $planned=$plan->fetchAll(PDO::FETCH_ASSOC);$truncated=count($planned)>600;$planned=array_slice($planned,0,600);
+        if($trace)$trace('planned',array_map('intval',array_column($planned,'id')));
         if(array_sum(array_column($planned,'point_count'))>200000)throw new HttpException(422,'Road geometry limit reached. Use a smaller search radius.');
         $progress('Loading candidate road geometry');
         $rows=[];
@@ -63,9 +64,12 @@ final class Api
         foreach($groups as $group) {
             $progress($stage);
             $road=$service->combine($group,$p['profile']);
-            if(!RoadDiagnostics::reasons($road,$p))$results[]=$road;
+            $reasons=RoadDiagnostics::reasons($road,$p);
+            if($trace)$trace('group',['members'=>array_map('intval',array_column($group['members'],'id')),'id'=>$road['id'],'name'=>$road['name'],'reasons'=>$reasons]);
+            if(!$reasons)$results[]=$road;
         }
         usort($results,static fn($a,$b)=>($b['score']<=>$a['score'])?:($b['length_m']<=>$a['length_m'])?:($a['id']<=>$b['id']));
+        if($trace)$trace('ranked',array_map('intval',array_column($results,'id')));
         if(count($results)>100)$truncated=true;$results=array_slice($results,0,100);
         $progress('Checking final coverage');
         $coverage=$this->db->prepare('WITH target AS (SELECT ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry AS geom) SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),(SELECT geom FROM target)),false) FROM regions WHERE active_job_id IS NOT NULL AND coverage && (SELECT geom FROM target)');

@@ -565,7 +565,8 @@ $('road-diagnostic').onsubmit=async event=>{
         text('p',(road.length_m/1609.344).toFixed(2)+' mi · '+road.mandatory_stops+' stops + '+road.uncertain_controls+' uncertain · '+road.highway));
       if(alternateLabel(road))row.append(text('p',alternateLabel(road)));
       const reasons=road.reasons.length?road.reasons:['Included in the current search results.'];
-      reasons.forEach(reason=>row.append(text('p',reason)));$('diagnostic-results').append(row);
+      reasons.forEach(reason=>row.append(text('p',reason)));
+      if(road.source_reasons?.length)road.source_reasons.forEach(reason=>row.append(text('p','Source candidate: '+reason)));$('diagnostic-results').append(row);
     });
     if(data.ways.length) {
       $('diagnostic-results').append(text('h3','Imported source tags'));

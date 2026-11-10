@@ -29,6 +29,21 @@ final class RoadDiagnostics
         }
         return $out;
     }
+    /** Explain the actual selection pipeline separately from raw candidate eligibility. */
+    public static function selectionReasons(array $road,array $trace): array {
+        if($road['returned'])return ['Included in the returned road results. Source metrics below describe the original candidate.'];
+        $id=(int)$road['id'];$group=$trace['groups'][$id]??null;
+        if($group){
+            $label='After combining overlapping candidates into “'.$group['name'].'” (#'.$group['id'].'): ';
+            if($group['reasons'])return array_map(static fn($reason)=>$label.$reason,$group['reasons']);
+            $rank=array_search((int)$group['id'],$trace['ranked']??[],true);
+            if($rank!==false&&$rank>=100)return [$label.'Ranked '.($rank+1).'; only the top 100 qualifying roads are displayed. Try a smaller radius.'];
+            return ['The candidate was processed, but its result could not be accounted for. Retry diagnosis; imported data may have changed during this check.'];
+        }
+        if(($road['profile_score']??null)===null)return ['No cached score exists for this driving profile, so discovery could not consider this candidate. A SuperAdmin should review region analysis or refresh its data.'];
+        if(!in_array($id,$trace['planned']??[],true))return ['Not analyzed: discovery considers only the top 600 nearby source candidates by cached profile score, length and ID, before combining roads and applying filters. Try a smaller radius.'];
+        return ['The candidate entered analysis, but no continuous geometry group was recorded. Its geometry or active region may have changed; retry diagnosis or ask a SuperAdmin to inspect the region.'];
+    }
     public static function roadName(array $input): string {
         $name=$input['road']??null;
         if(!is_string($name)||strlen(trim($name))<2||strlen($name)>100)throw new \InvalidArgumentException('Enter a road name or route number (2–100 characters).');
@@ -52,6 +67,7 @@ final class RoadDiagnostics
         $q->execute([...$base,$pattern,$pattern]);$ways=$q->fetchAll(PDO::FETCH_ASSOC);
         $progress('Checking continuous road candidates');
         $q=$this->db->prepare($prefix."SELECT c.id,c.name,c.ref,c.highway,c.length_m,c.mandatory_stops,c.uncertain_controls,c.surface_known_paved,c.surface_status,c.metrics,c.alternate_names,
+            (SELECT score FROM road_scores WHERE candidate_id=c.id AND profile=?) AS profile_score,
             (SELECT jsonb_agg(DISTINCT s.surface) FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id WHERE m.candidate_id=c.id) AS surface_values
             FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id CROSS JOIN area a
             WHERE ST_DWithin(c.geom,a.geom,a.meters)
@@ -59,8 +75,12 @@ final class RoadDiagnostics
                 SELECT 1 FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id
                 WHERE m.candidate_id=c.id AND (s.name ILIKE ? OR s.ref ILIKE ?)))
             ORDER BY c.length_m DESC,c.id LIMIT 101");
-        $q->execute([...$base,$pattern,$pattern,$pattern,$pattern,$pattern]);$roads=$q->fetchAll(PDO::FETCH_ASSOC);
-        $search=$api->search($p,$progress);$visible=[];$combined=[];
+        $q->execute([...$base,$p['profile'],$pattern,$pattern,$pattern,$pattern,$pattern]);$roads=$q->fetchAll(PDO::FETCH_ASSOC);
+        $trace=[];
+        $search=$api->search($p,$progress,static function(string $event,array $data)use(&$trace):void{
+            if($event==='group'){foreach($data['members'] as $id)$trace['groups'][$id]=$data;}
+            else $trace[$event]=$data;
+        });$visible=[];$combined=[];
         foreach($search['results'] as $result)foreach($result['member_ids']??[$result['id']] as $member){$visible[]=(int)$member;$combined[(int)$member]=$result['id'];}
         $truncated=count($ways)>100 || count($roads)>100;$ways=array_slice($ways,0,100);$roads=array_slice($roads,0,100);
         foreach ($roads as &$road) {
@@ -70,7 +90,11 @@ final class RoadDiagnostics
             $road['reasons']=self::reasons($road,$p);$road['returned']=in_array((int)$road['id'],$visible,true);
             $road['combined_into']=$combined[(int)$road['id']]??null;
             if($road['returned'])$road['reasons'][]='Included in a consolidated result; metrics here describe the original source candidate.';
-            if (!$road['reasons'] && !$road['returned']) {$road['reasons'][]='Eligible, but may be hidden by overlap consolidation or bounded result processing.';}
+            $road['source_reasons']=$road['reasons'];
+            $road['reasons']=self::selectionReasons($road,$trace);
+            if($road['returned'])$road['selection_status']='returned';
+            elseif(isset($trace['groups'][(int)$road['id']]))$road['selection_status']=$trace['groups'][(int)$road['id']]['reasons']?'combined_filter':'ranking_limit';
+            else $road['selection_status']=$road['profile_score']===null?'missing_score':'candidate_limit';
         }
         return ['road'=>$name,'parameters'=>$p,'ways'=>$ways,'candidates'=>$roads,'truncated'=>$truncated,
             'full_radius_covered'=>$search['full_radius_covered'],
