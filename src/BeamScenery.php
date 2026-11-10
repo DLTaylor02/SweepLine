@@ -86,6 +86,10 @@ final class BeamScenery
             $pick=$random();$kind=$pick<$biome['tree_probability']?'tree':($random()<0.65?'bush':'rock');
             $biome['edge_distance_m']=max(0,abs($offset)-max($profiles[$i-1]['width_m'],$profiles[$i]['width_m'])/2);
             $asset=BeamVegetation::choose($kind,$center,$raster->roadHeight($x,$y),$cover,$random(),$biome);
+            if($asset==='utah_rock'){
+                $groundRgb=$raster->rgb((int)($x/$raster->side*$raster->size),(int)($y/$raster->side*$raster->size));
+                $asset=BeamRockPalette::stockAsset($groundRgb);
+            }
             $extra=count($out)>=$baseTarget;
             if($asset===null||($extra&&$kind!=='tree'))continue;
             $scale=0.7+$random()*0.6;$radius=self::radius($kind,$scale,$asset);

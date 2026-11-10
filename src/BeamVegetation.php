@@ -9,6 +9,7 @@ final class BeamVegetation
         "green_grass"=>["kind"=>"grass","map"=>"east_coast_usa","shape"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/s_grass_green_short_01.dae","materials"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/main.materials.json","radius"=>0.65],
         "tall_grass"=>["kind"=>"grass","map"=>"east_coast_usa","shape"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/s_grass_green_long_01.dae","materials"=>"/levels/east_coast_usa/art/shapes/groundcover/3d_grass_test/main.materials.json","radius"=>0.7],
         "dry_grass"=>["kind"=>"grass","map"=>"west_coast_usa","shape"=>"/levels/west_coast_usa/art/shapes/trees/grassclump_large.dae","materials"=>"/levels/west_coast_usa/art/shapes/trees/main.materials.json","radius"=>1.4],
+        "neutral_rock"=>["kind"=>"rock","map"=>"east_coast_usa","shape"=>"/levels/east_coast_usa/art/shapes/rocks/eca_rock_small.dae","materials"=>"/levels/east_coast_usa/art/shapes/rocks/main.materials.json","radius"=>1.3],
         "utah_rock"=>["kind"=>"rock","map"=>"Utah","shape"=>self::SHAPES["rock"],"materials"=>"/levels/Utah/art/shapes/rocks/main.materials.json","radius"=>1.7],
         "juniper_tree"=>["kind"=>"tree","map"=>"Utah","shape"=>self::SHAPES["tree"],"materials"=>self::MATERIALS,"radius"=>7.0],
         "juniper_bush"=>["kind"=>"bush","map"=>"Utah","shape"=>self::SHAPES["bush"],"materials"=>self::MATERIALS,"radius"=>1.2],
@@ -64,7 +65,8 @@ final class BeamVegetation
         $paths=implode(",\n",array_map(static fn($s)=>json_encode($s,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES),array_keys($materials)));
         $shapes=implode(",\n",array_map(static fn($path)=>json_encode($path,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES),array_merge(array_column(array_values($used),"shape"),$terrainTextures)));
         $rockColors=[];foreach($placements as $p)if(($p['asset']??null)==='utah_rock'&&isset($p['ground_rgb']))$rockColors[]=$p['ground_rgb'];
-        $rockLua=isset($used['utah_rock'])?BeamRockPalette::lua(BeamRockPalette::factor($rockColors)):"";
+        $rockFactor=BeamRockPalette::factor($rockColors);
+        $rockLua=isset($used['utah_rock'])&&$rockFactor!==[1,1,1]?BeamRockPalette::lua($rockFactor):"";
         $put("mainLevel.lua","local M = {}\nfunction M.onClientPreStartMission()\n  local sources = {".$paths."}\n  local shapes = {".$shapes."}\n  local missing = false\n  for _, materials in ipairs(sources) do\n    if FS:fileExists(materials) then loadJsonMaterialsFile(materials) else missing = true; log(\"E\", \"SweepLine\", \"Missing stock materials: \" .. materials) end\n  end\n  for _, shape in ipairs(shapes) do\n    if not FS:fileExists(shape) then missing = true; log(\"E\", \"SweepLine\", \"Missing stock vegetation: \" .. shape) end\n  end\n  if missing then guihooks.trigger(\"toastrMsg\", {type=\"error\", title=\"SweepLine vegetation\", msg=\"Required stock meshes or materials are missing. Check the game log and export report.\"}) end\nend\n".$rockLua."return M\n");
         return $count;
     }

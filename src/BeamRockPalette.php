@@ -5,6 +5,10 @@ namespace SweepLine;
 /** A map-local visual correction, not a geology estimate. */
 final class BeamRockPalette
 {
+    public static function stockAsset(array $rgb): string
+    {
+        return self::factor([$rgb])===[1,1,1]?'utah_rock':'neutral_rock';
+    }
     public static function factor(array $colors): array
     {
         if(!$colors)return [1,1,1];

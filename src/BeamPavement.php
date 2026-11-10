@@ -28,13 +28,13 @@ final class BeamPavement
         $sections=$surfaceSections??BeamJunctionBoundary::sections($points,$profiles);
         for($i=1;$i<count($points);$i++){
             $next=$along+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);$material=$prefix.'_road_'.self::key($profiles[$i]);
-            $quad($sections[$i-1][0],$sections[$i-1][1],$sections[$i][1],$sections[$i][0],$material,[[0,$along/12],[1,$along/12],[1,$next/12],[0,$next/12]]);$along=$next;
+            $quad($sections[$i-1][0],$sections[$i-1][1],$sections[$i][1],$sections[$i][0],$material,[[0,$along/BeamPng::ROAD_TEXTURE_LENGTH_M],[1,$along/BeamPng::ROAD_TEXTURE_LENGTH_M],[1,$next/BeamPng::ROAD_TEXTURE_LENGTH_M],[0,$next/BeamPng::ROAD_TEXTURE_LENGTH_M]]);$along=$next;
         }
 
         $rings=self::connectorRings($branch,$main,$mainProfiles);$connector=(bool)$rings;
         foreach($rings as $i=>$r)if($i){
             $a=$rings[$i-1][0];$b=$rings[$i-1][1];$c=$r[1];$d=$r[0];
-            $v0=($i-1-(count($rings)-1))/12;$v1=($i-(count($rings)-1))/12;
+            $v0=($i-1-(count($rings)-1))/BeamPng::ROAD_TEXTURE_LENGTH_M;$v1=($i-(count($rings)-1))/BeamPng::ROAD_TEXTURE_LENGTH_M;
             $quad($a,$b,$c,$d,$prefix.'_road_'.self::key($profiles[0]),[[0,$v0],[1,$v0],[1,$v1],[0,$v1]]);
         }
         if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles);

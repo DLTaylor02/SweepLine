@@ -446,7 +446,7 @@ final class BeamMap
             }
             $scenery['objects']=array_merge($scenery['objects'],$grassObjects);$scenery['counts']['grass']=count($grassObjects);foreach($grassObjects as $clump)$scenery['asset_counts'][$clump['asset']]=($scenery['asset_counts'][$clump['asset']]??0)+1;
             $rockColors=[];foreach($scenery['objects'] as $o)if(($o['asset']??null)==='utah_rock'&&isset($o['ground_rgb']))$rockColors[]=$o['ground_rgb'];
-            $scenery['rock_palette']=['factor'=>BeamRockPalette::factor($rockColors),'samples'=>count($rockColors),'method'=>'Bounded Utah rock material tint from nearby aerial palette; restored on map exit.'];unset($rockColors);
+            $scenery['rock_palette']=['factor'=>BeamRockPalette::factor($rockColors),'samples'=>count($rockColors),'method'=>'Warm ground uses stock Utah rocks; neutral ground uses stock gray rocks with matching baked distance appearances.'];unset($rockColors);
             $scenery['groundcover']=['placed'=>count($grassObjects),'shared_budget'=>8000,'total_scenery_budget'=>32000,'corridors'=>$grassReports];unset($grassObjects);
             $scenery['counts']['building']=$buildingData['placed'];$scenery['building_policy']='Only mapped simple building footprints; polygon clearance and estimated foundations/heights.';
 

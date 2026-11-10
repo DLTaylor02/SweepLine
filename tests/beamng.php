@@ -476,7 +476,7 @@ check($strongTint[0]-SweepLine\BeamTerrain::PALETTE[4]['color'][0]>20,'Warm aeri
 
 $markingImage=imagecreatefromstring(SweepLine\BeamPng::road(['lanes'=>3,'backward'=>1,'oneway'=>false,'transition'=>true]));
 $dashRows=0;for($y=0;$y<256;$y++)if((imagecolorat($markingImage,170,$y)&0xffffff)===0xe1e1d7)$dashRows++;
-check($dashRows===64&&SweepLine\BeamPng::ROAD_TEXTURE_LENGTH_M-SweepLine\BeamPng::ROAD_DASH_LENGTH_M===9,'Lane stripes use one 3-meter dash and 9-meter gap per 12-meter repeat');
+check($dashRows===64&&SweepLine\BeamPng::PAINT_REPEAT_LENGTH_M-SweepLine\BeamPng::ROAD_DASH_LENGTH_M===9,'Lane stripes use one 3-meter dash and 9-meter gap per 12-meter repeat');
 check((imagecolorat($markingImage,85,180)&0xffffff)===0xebbe23,'Two-way transition retains a continuous yellow opposing-traffic divider');
 check((imagecolorat($markingImage,170,20)&0xffffff)===0xe1e1d7&&(imagecolorat($markingImage,170,100)&0xffffff)!==0xe1e1d7,'Transition retains same-direction dashed lane markings with wider gaps');
 check((imagecolorat($markingImage,1,180)&0xffffff)===0xebebe1,'Edge markings remain continuous through lane transitions');

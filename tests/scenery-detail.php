@@ -27,8 +27,13 @@
     $m=\SweepLine\BeamRoadMaterials::material('sl_road','/levels/test/art/roads/paint.color.png',$profiles[0]);$s=$m['Stages'][0];$paint=$m['Stages'][1];
     check($m['version']===1.5&&$m['activeLayers']===2&&$m['groundType']==='ASPHALT'&&str_contains($s['baseColorMap'],'AsphaltRoad_variation_01')&&$paint['baseColorMap']==='/levels/test/art/roads/paint.color.png','Lightly weathered stock asphalt is the base and lane paint occupies a separate masked PBR layer');
     check(!isset($s['opacityMap'])&&!isset($m['translucent'])&&$paint['opacityMap']==='/levels/test/art/roads/paint.paint.data.png','Road remains opaque while only its lane-paint layer uses a mask');
+    check(\SweepLine\BeamRockPalette::stockAsset([140,140,135])==='neutral_rock'&&\SweepLine\BeamRockPalette::stockAsset([170,120,85])==='utah_rock','Rock palette selects matching native mesh and distance appearances instead of tinting red billboards');
+    $asphaltRepeat=\SweepLine\BeamPng::ROAD_TEXTURE_LENGTH_M;
+    check($asphaltRepeat===48&&\SweepLine\BeamPng::PAINT_REPEAT_LENGTH_M===12,'Asphalt repeats four times less often with an independent paint period');
     $mask=imagecreatefromstring(\SweepLine\BeamPng::paintMask($profiles[0]));
     check((imagecolorat($mask,64,64)&255)===0&&(imagecolorat($mask,128,64)&255)===255,'Paint mask exposes stock pavement while retaining the existing center line');
+    $repeat=true;for($y=0;$y<256;$y++)foreach([0,64,128,170,255] as $x)if(imagecolorat($mask,$x,$y)!==imagecolorat($mask,$x,$y+256))$repeat=false;
+    check(imagesy($mask)===1024&&$repeat,'Paint mask repeats four identical patterns within the longer asphalt tile');
     imagedestroy($mask);
     $gray=new \SweepLine\BeamRaster($n,256,str_repeat(pack('g',100),$n*$n),str_repeat(chr(150),3*$n*$n));
     $empty=\SweepLine\BeamGrass::place($road,$profiles,$gray,542,static fn($m)=>null,$east,[],[],80);

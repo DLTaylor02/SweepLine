@@ -3,7 +3,9 @@ declare(strict_types=1);
 namespace SweepLine;
 final class BeamPng
 {
-    public const ROAD_TEXTURE_LENGTH_M=12;
+    public const ROAD_TEXTURE_LENGTH_M=48;
+    public const PAINT_REPEAT_LENGTH_M=12;
+    public const ROAD_TEXTURE_HEIGHT=1024;
     public const ROAD_DASH_LENGTH_M=3;
     public static function rgb(int $width,int $height,callable $pixel): string
     {
@@ -14,11 +16,11 @@ final class BeamPng
     }
     public static function road(array $profile): string
     {
-        return self::rgb(256,256,static fn($x,$y)=>self::roadPixel($profile,$x,$y));
+        return self::rgb(256,self::ROAD_TEXTURE_HEIGHT,static fn($x,$y)=>self::roadPixel($profile,$x,$y%256));
     }
     public static function paintMask(array $profile): string
     {
-        return self::rgb(256,256,static function($x,$y)use($profile){$value=self::roadPixel($profile,$x,$y)[0]>150?255:0;return [$value,$value,$value];});
+        return self::rgb(256,self::ROAD_TEXTURE_HEIGHT,static function($x,$y)use($profile){$value=self::roadPixel($profile,$x,$y%256)[0]>150?255:0;return [$value,$value,$value];});
     }
     private static function roadPixel(array $profile,int $x,int $y): array
     {
@@ -35,7 +37,7 @@ final class BeamPng
             for($lane=1;$lane<$profile['lanes'];$lane++) {
                 $line=(int)round($margin+$lane/$profile['lanes']*(255-2*$margin));
                 $center=!$profile['oneway'] && $lane===$profile['backward'];
-                if(abs($x-$line)<=1 && ($center || $y<(int)round(256*self::ROAD_DASH_LENGTH_M/self::ROAD_TEXTURE_LENGTH_M)))$color=$center?[235,190,35]:[225,225,215];
+                if(abs($x-$line)<=1 && ($center || $y<(int)round(256*self::ROAD_DASH_LENGTH_M/self::PAINT_REPEAT_LENGTH_M)))$color=$center?[235,190,35]:[225,225,215];
             }
             return $color;
     }

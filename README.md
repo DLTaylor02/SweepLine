@@ -18,6 +18,10 @@ The installer reuses existing services and creates isolated application resource
 
 If executable permissions were lost, run `chmod +x setup.sh` first. See [installation details](docs/installation.md) for dependencies, configuration and password recovery.
 
+![Discovery mode](docs/screenshots/discoverymode.png)
+
+![Road details](docs/screenshots/roaddetails.png)
+
 ## Features
 
 - **Road discovery:** Twisty Roads and Open Highways profiles, ZIP/map location selection, radius searches, and advanced length, curve, surface and stop filters.
@@ -30,6 +34,16 @@ If executable permissions were lost, run `chmod +x setup.sh` first. See [install
 - **Account management:** SuperAdmin, Admin and User roles, configurable password policies, password changes and session timeouts.
 - **Server management:** background job monitoring, cancellation/retries and storage controls.
 - **Adaptive appearance:** automatic light/dark mode with manual theme selection.
+
+![Lake Tahoe, Nevada](docs/screenshots/laketahoe_nevada.png)
+
+![Mount Rose Highway, Nevada (1)](docs/screenshots/mntrose_nevada_1.png)
+
+![Mount Rose Highway, Nevada (2)](docs/screenshots/mntrose_nevada_2.png)
+
+![Mount Rose Highway, Nevada (3)](docs/screenshots/mntrose_nevada_3.png)
+
+![Canal Road, Ohio](docs/screenshots/canalroad_ohio.png)
 
 SweepLine discovers roads rather than providing turn-by-turn navigation. Road data and exported simulations are estimates; verify real access and conditions before driving.
 
