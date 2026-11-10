@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.147.3:** Isolate History fixtures across native and HTTP integration suites. Clean the search-job test's owned History entry in finally, assert cleanup, and reset only the authenticated HTTP fixture owner's History through its CSRF-protected API before history checks. Fix the shared-database history-count failure without changing application behavior.
+
 - **0.147.2:** Allow nonzero patch versions in the shared application validator, fixing startup/export failures with 0.147.1. Add regular/patch and malformed-version regression cases; document explicit patch-release numbering.
 
 - **0.147.1:** Make HTTP CI failures explicitly report the last request, completed-check count, exception location and transport/JSON response metadata to stderr. Force CLI error visibility so a failed HTTP run cannot be represented solely by server access logs. The provided truncated failure log does not establish an application root cause.

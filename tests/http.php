@@ -67,6 +67,11 @@ if($sessionCookieExpiry<time()+6*86400 || $sessionCookieExpiry>time()+7*86400+60
 }
 
 expect(callApi($admin,'POST','/api/admin/password-policy',['minimum_length'=>12,'strength'=>'basic','screen_compromised'=>false],$csrf),200,'Configure offline test password policy');
+// This suite shares a disposable database with native integration tests.
+// Clear only the authenticated fixture owner's History using the protected API.
+$oldHistory=expect(callApi($admin,'GET','/api/search-history'),200,'Read initial fixture history');
+foreach($oldHistory as $entry)expect(callApi($admin,'DELETE','/api/search-history/'.(int)$entry['id'],null,$csrf),200,'Clear prior fixture history');
+if(expect(callApi($admin,'GET','/api/search-history'),200,'History fixture starts empty')!==[])throw new RuntimeException('Could not establish empty History fixture.');
 $picked=expect(callApi($admin,'GET','/api/zips/nearest?lon=-119.8&lat=39.52'),200,'Map ZIP lookup');
 if($picked['zip']!=='12345') {throw new RuntimeException('Nearest ZIP incorrect');}
 expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=91'),422,'Map ZIP coordinate validation');

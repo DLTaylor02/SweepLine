@@ -4,7 +4,9 @@
     $queue=new \SweepLine\SearchJobs($db);$user=(int)$administrator['id'];
     $tasks=(int)$db->query('SELECT count(*) FROM data_tasks')->fetchColumn();
     $input=['zip'=>'12345','radius_miles'=>5,'profile'=>'open','max_stops'=>100,'surface_filter'=>'any','record_history'=>true];
-    $queued=$queue->enqueue($user,$input);$id=$queued['search_job']['id'];
+    $historyId=null;
+    try{
+    $queued=$queue->enqueue($user,$input);$id=$queued['search_job']['id'];$historyId=$queued['history_id']??null;
     check($queued['search_job']['status']==='queued'&&(int)$db->query('SELECT count(*) FROM data_tasks')->fetchColumn()===$tasks,'Enqueuing discovery performs no coverage preparation or geographic search on the HTTP path');
     check($queue->enqueue($user,$input)['search_job']['id']===$id,'Duplicate pending discovery requests share one worker job');
     try{$queue->status($user+99999,$id);check(false,'Search status ownership');}catch(OutOfBoundsException $e){check(true,'Search job results are private to their owner');}
@@ -43,5 +45,12 @@
     for($radius=10;$radius<14;$radius++)$queue->enqueue($user,array_replace($input,['radius_miles'=>$radius,'record_history'=>false]));
     try{$queue->enqueue($user,array_replace($input,['radius_miles'=>14,'record_history'=>false]));check(false,'Search admission bound');}
     catch(\SweepLine\HttpException $e){check(true,'Concurrent distinct searches are queued with explicit admission limits');}
-    $db->prepare('DELETE FROM search_jobs WHERE user_id=?')->execute([$user]);
+    }finally{
+        $db->prepare('DELETE FROM search_jobs WHERE user_id=?')->execute([$user]);
+        if($historyId!==null)$db->prepare('DELETE FROM search_history WHERE id=? AND user_id=?')->execute([$historyId,$user]);
+    }
+    if($historyId!==null){
+        $remaining=$db->prepare('SELECT count(*) FROM search_history WHERE id=? AND user_id=?');$remaining->execute([$historyId,$user]);
+        check((int)$remaining->fetchColumn()===0,'Search job integration leaves no History fixture for subsequent HTTP tests');
+    }
 })();
