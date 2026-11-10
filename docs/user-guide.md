@@ -192,3 +192,11 @@ Road selection displays the saved geometry and metrics. Existing export/favorite
 Installation/update applies additive migration `019_search_result_snapshots.sql`. Existing history is preserved with null snapshot fields.
 
 Identical searches reuse your existing History entry regardless of age. Comparison uses normalized filters, so omitted defaults and explicitly entered defaults count as the same search. A fresh run refreshes that entry's saved results and snapshot time; its original creation date remains. Different users and different filters remain separate. Previously duplicated entries are preserved until you delete them or normal retention removes them.
+
+## Legacy links and fresh-search timeouts (0.139.0)
+
+Old parameter-based History links (`open=1&zip=...`) now look for a matching stored History entry instead of automatically running discovery. If no entry matches, filters load with an explanation. Only links explicitly marked `fresh=1` auto-start a fresh search.
+
+A deliberate fresh search still runs current discovery and can compete with region imports for database resources. Coverage checks now aggregate only spatially overlapping regions, retaining the exact coverage test, and combination-cache eviction runs in worker maintenance rather than for every combined road. Migration `020_region_coverage_index.sql` supports those local checks.
+
+HTTP 504 is identified as a server timeout. These optimizations reduce avoidable request work; they do not prove which query caused a particular production timeout or guarantee a cold search finishes within the existing PHP-FPM deadline. Snapshot viewing remains separate from a fresh search.

@@ -5,7 +5,7 @@ const normalizedDensity=m=>Math.max(1,Math.min(10,m.curve_density_score??(1+9*m.
 
 const $ = id => document.getElementById(id);
 let map, ready, roads = [], selected = null, request = 0, pollTimer, activeProfile='twisty';
-let pendingHistorySearch=false, activeSearchUser=null, restoredSearchUser=null, explicitSearchParameters=false;
+let pendingHistorySearch=false,pendingLegacyHistory=false, activeSearchUser=null, restoredSearchUser=null, explicitSearchParameters=false;
 let currentSearchParameters=null,pendingFavorite=null,pendingHistoryId=null;
 
 const discoveryTabs=['zip','custom','discoveries'];
@@ -563,6 +563,36 @@ $('search').onsubmit = event => {
   const payload={...searchParameters(form),_recorded:event.fromHistory===true};
   scrollToSearchProgress();rememberSearch(payload);discover(payload,sequence);
 };
+function sameHistoryFilters(a,b){
+  const normalize=p=>({
+    zip:String(p.zip),profile:p.profile??'twisty',radius_miles:Number(p.radius_miles??5),
+    min_length_miles:Number(p.min_length_miles??0),max_length_miles:p.max_length_miles==null?null:Number(p.max_length_miles),
+    max_stops:Number(p.max_stops??1),
+    surface_filter:p.surface_filter??(p.paved_only===true?'known_paved':p.paved_only===false?'any':'exclude_unpaved'),
+    min_curve_density_score:Number(p.min_curve_density_score??(p.min_curve_density==null?2.2:1+9*p.min_curve_density/53.6448)),
+    min_curvature_quality_score:Number(p.min_curvature_quality_score??(1+9*(p.min_curvature_quality??0.12))),
+    min_sustained_curve_ft:Number(p.min_sustained_curve_ft??(p.min_sustained_curve_m==null?150:p.min_sustained_curve_m/0.3048))
+  });
+  const left=normalize(a),right=normalize(b);
+  return Object.keys(left).every(key=>typeof left[key]==='number'&&typeof right[key]==='number'?Math.abs(left[key]-right[key])<1e-8:left[key]===right[key]);
+}
+async function openLegacyHistory(){
+  clearTimeout(pollTimer);const sequence=++request;
+  setStatus('Looking up saved results for this older History link…',true);
+  try{
+    const entries=await api('/api/search-history');if(sequence!==request)return;
+    const parameters=searchParameters($('search'));
+    const legacyQuery=new URLSearchParams(window.location?.search||'');
+    if(legacyQuery.has('max_stops'))parameters.max_stops=Number(legacyQuery.get('max_stops'));
+    const entry=entries.find(row=>sameHistoryFilters(row.parameters,parameters));
+    if(entry){window.history?.replaceState?.(null,'','/?history='+encodeURIComponent(entry.id));await openHistory(entry.id);return;}
+    roads=[];render();selected=null;clearRoadEndpoints();$('road-detail').hidden=true;
+    showDiscoveryTab('zip');
+    setStatus('This older link has no matching saved History entry. Its filters are loaded. Choose Discover roads to run a new search.');
+  }catch(error){if(sequence===request)showSearchError(error,'Opening older History link');}
+  finally{if(sequence===request)$('submit').disabled=false;}
+}
+
 async function openHistory(id){
   clearTimeout(pollTimer);const sequence=++request;
   selected=null;clearRoadEndpoints();$('road-detail').hidden=true;
@@ -634,6 +664,7 @@ async function applyDiscoverySession(event) {
     }
   }
   if(!map)initMap();
+  if(pendingLegacyHistory){pendingLegacyHistory=false;await openLegacyHistory();}
   if(pendingHistoryId){const id=pendingHistoryId;pendingHistoryId=null;await openHistory(id);}
   if(pendingFavorite) {const id=pendingFavorite;pendingFavorite=null;openFavorite(id);}
   if(pendingHistorySearch) {
@@ -665,8 +696,9 @@ if(window.location?.pathname==='/') {
     if(form.max_stops.value==='0')form.max_stops.value='1';
     if(!params.has('min_curve_density_score')&&params.has('min_curve_density'))form.min_curve_density_score.value=String(1+9*Number(params.get('min_curve_density'))/53.6448);
     if(!params.has('surface_filter')&&params.has('paved_only'))form.surface_filter.value=params.get('paved_only')==='true'?'known_paved':'any';
-    pendingHistorySearch=params.get('open')==='1';
-    setStatus(pendingHistorySearch?'Opening previous search…':'Previous search loaded. Select Discover roads to run it again.');
+    pendingHistorySearch=params.get('open')==='1'&&params.get('fresh')==='1';
+    pendingLegacyHistory=params.get('open')==='1'&&!pendingHistorySearch;
+    setStatus(pendingHistorySearch?'Starting fresh search…':pendingLegacyHistory?'Opening saved results for an older History link…':'Previous search loaded. Select Discover roads to run it again.');
   }
 }
 

@@ -39,6 +39,7 @@ async function testFrontend(sources) {
   const session=()=>({user:logged?{id:1,name:'Owner',role:currentRole,must_change_password:mustChange}:null,csrf,admin_ready:adminReady});
   const fetch=async(path,options={})=>{
     requests.push({path,...options});let status=200,data;
+    if(path==='/api/test-timeout')return {ok:false,status:504,json:async()=>{throw Error('HTML gateway response');}};
     if(path==='/api/session')data=session();
     else if(path==='/api/login'){logged=true;csrf='signed-in';data=session();}
     else if(path==='/api/logout'){logged=false;csrf='signed-out';data=session();}
@@ -254,13 +255,13 @@ async function testFrontend(sources) {
   check(get('history-list').children.length===0&&get('history-status').textContent.includes('No previous searches'),'Deleted history entry disappears');
   check(requests.some(r=>r.path==='/api/search-history/1'&&r.method==='DELETE'&&!!r.headers['X-CSRF-Token']),'History deletion sends CSRF-protected request');
   const beforeReplay=requests.filter(r=>r.path==='/api/search').length;
-  const replayWindow={...window,SweepLineAccount:{user:null},location:{pathname:'/',search:'?open=1&zip=12345&radius_miles=5&profile=open&max_stops=2&paved_only=false'}};
+  const replayWindow={...window,SweepLineAccount:{user:null},location:{pathname:'/',search:'?open=1&fresh=1&zip=12345&radius_miles=5&profile=open&max_stops=2&paved_only=false'}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(replayWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
   check(search.radius.value==='5'&&search.profile.value==='open'&&search.surface_filter.value==='any','Replayed search restores saved form values');
   check(requests.filter(r=>r.path==='/api/search').length===beforeReplay,'Saved search waits for authentication');
   await events['sweepline:sessionchange'].at(-1)({detail:{user:{id:1}}});await flush();
   check(requests.filter(r=>r.path==='/api/search').length===beforeReplay+1,'Saved search automatically fetches results after authentication');
-  check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).record_history===false,'Reopening saved search does not duplicate history');
+  check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).record_history===true,'Explicit fresh search requests normal deduplicated history recording');
   await events['sweepline:sessionchange'].at(-1)({detail:{user:{id:1}}});await flush();
   check(requests.filter(r=>r.path==='/api/search').length===beforeReplay+1,'Session refresh does not repeat saved search');
   const saved=new Map([['sweepline:active-search:1',JSON.stringify({zip:'12345',radius_miles:5,profile:'twisty',max_stops:0,paved_only:true})]]);
@@ -474,8 +475,8 @@ async function testFrontend(sources) {
   // Immediate cached results and history replay share the same discovery path.
   let discoveryReply={results:[favoriteRoad],center:{place:'Cached town'},preparation:{state:'ready',complete:1,total:1}},discoveryFailure=null;
   const historyReads=[];
-  const searchWindow={...window,location:{pathname:'/',search:''},SweepLineAccount:null,sweeplineRequest:async(path)=>{historyReads.push(path);if(discoveryFailure)throw discoveryFailure;return discoveryReply;}};
-  const searchUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {run:payload=>discover(payload,++request),openHistory};')(searchWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  const searchWindow={...window,location:{pathname:'/',search:''},SweepLineAccount:null,sweeplineRequest:async(path)=>{historyReads.push(path);if(discoveryFailure)throw discoveryFailure;return typeof discoveryReply==='function'?discoveryReply(path):discoveryReply;}};
+  const searchUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {run:payload=>discover(payload,++request),openHistory,openLegacyHistory,sameHistoryFilters};')(searchWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
   const repeatPayload={zip:'12345',radius_miles:5,profile:'twisty'};
   await searchUI.run({...repeatPayload});await searchUI.run({...repeatPayload});
   check(get('results').children.length===1&&!get('panel-discoveries').hidden&&get('status').textContent.includes('Cached town'),'Repeated immediate cached searches display results and completion');
@@ -509,6 +510,16 @@ async function testFrontend(sources) {
   discoveryReply={...discoveryReply,result_snapshot:null};historyReads.length=0;
   await searchUI.openHistory(12);
   check(historyReads.join(',')==='/api/search-history/12'&&get('status').textContent.includes('older entry has no saved results'),'Legacy history explains missing snapshots without silently rerunning');
+  historyReads.length=0;
+  const oldSnapshot={id:12,parameters:{...repeatPayload,max_stops:1},created_at:'2026-11-01',snapshot_at:'2026-11-01',result_snapshot:{results:[favoriteRoad],preparation:{state:'ready'}}};
+  discoveryReply=path=>path==='/api/search-history'?[oldSnapshot]:oldSnapshot;
+  search.zip.value='12345';search.profile.value='twisty';search.radius.value='5';search.min_length.value='';search.max_length.value='';search.max_stops.value='1';search.surface_filter.value='exclude_unpaved';search.min_curve_density_score.value='2.2';search.min_curvature_quality_score.value='2.08';search.min_sustained_curve_ft.value='150';
+  await searchUI.openLegacyHistory();
+  check(historyReads.join(',')==='/api/search-history,/api/search-history/12'&&get('results').children.length===1,'Legacy History links resolve stored snapshots without rerunning discovery');
+  discoveryReply=[];historyReads.length=0;await searchUI.openLegacyHistory();
+  check(historyReads.join(',')==='/api/search-history'&&get('status').textContent.includes('no matching saved History'),'Unmatched legacy links explain missing results without starting work');
+  check(searchUI.sameHistoryFilters({zip:'12345',min_sustained_curve_m:45.72},{zip:'12345',min_sustained_curve_ft:150}), 'Legacy filter comparison accepts equivalent units and defaults');
+  try{await window.sweeplineRequest('/api/test-timeout');check(false,'Timeout expected');}catch(error){check(error.status===504&&error.message.includes('timed out'),'Gateway timeouts retain HTTP status and a readable explanation');}
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){

@@ -150,7 +150,7 @@ final class DataWorker
         // Keep old active data, prune only nonactive automatic attempts after a week.
         // Bulk import pruning runs only in short idle-time ImportCleanup steps.
         $this->db->exec("DELETE FROM auth_attempts WHERE window_start<now()-interval '1 day'");
-        $this->db->exec("DELETE FROM road_combination_cache WHERE created_at<now()-interval '7 days'");
+        $this->db->exec("DELETE FROM road_combination_cache WHERE created_at<now()-interval '7 days' OR cache_key IN (SELECT cache_key FROM road_combination_cache ORDER BY created_at DESC,cache_key OFFSET 500)");
         foreach (glob(SWEEPLINE_ROOT.'/var/downloads/*') as $file) {
             if (is_file($file) && !is_link($file) && preg_match('/^(roads-[0-9]+\\.osm|us-zips\\.zip|US\\.txt)(\\.part)?$/',basename($file))
                 && filemtime($file)<time()-86400) { unlink($file); }

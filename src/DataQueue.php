@@ -30,8 +30,7 @@ final class DataQueue
             return $this->summary([$zipTask],false);
         }
         // Existing genuine manual or automatic coverage can satisfy a search immediately.
-        $cover=$this->db->prepare("SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry),false)
-            FROM regions WHERE active_job_id IS NOT NULL AND imported_at>now()-interval '30 days'");
+        $cover=$this->db->prepare("WITH target AS (SELECT ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry AS geom) SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),(SELECT geom FROM target)),false) FROM regions WHERE active_job_id IS NOT NULL AND coverage && (SELECT geom FROM target) AND imported_at>now()-interval '30 days'");
         $cover->execute([$center['lon'],$center['lat'],$p['radius_miles']*1609.344]);
         if ($cover->fetchColumn()) { return ['state'=>'ready','complete'=>1,'total'=>1,'message'=>'Local data ready']; }
         $tasks=[];
@@ -54,8 +53,7 @@ final class DataQueue
 
     public function prepareArea(float $lon,float $lat,float $radius): array
     {
-        $cover=$this->db->prepare("SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry),false)
-            FROM regions WHERE active_job_id IS NOT NULL AND imported_at>now()-interval '30 days'");
+        $cover=$this->db->prepare("WITH target AS (SELECT ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry AS geom) SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),(SELECT geom FROM target)),false) FROM regions WHERE active_job_id IS NOT NULL AND coverage && (SELECT geom FROM target) AND imported_at>now()-interval '30 days'");
         $cover->execute([$lon,$lat,$radius*1609.344]);
         if($cover->fetchColumn())return ['state'=>'ready','complete'=>1,'total'=>1,'message'=>'Local data ready'];
         $tasks=[];foreach(CoveragePlanner::tiles($lon,$lat,$radius) as $tile){

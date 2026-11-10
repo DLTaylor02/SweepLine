@@ -62,7 +62,7 @@ final class RoadConsolidator
             'geometry_key'=>$geometryKey,'travel_direction'=>$group['direction']
         ]);
         $this->db->prepare("INSERT INTO road_combination_cache(cache_key,snapshot) VALUES (?,?::jsonb) ON CONFLICT(cache_key) DO UPDATE SET snapshot=excluded.snapshot,created_at=now()")->execute([$key,json_encode($road,JSON_THROW_ON_ERROR)]);
-        $this->db->exec("DELETE FROM road_combination_cache WHERE created_at<now()-interval '7 days' OR cache_key IN (SELECT cache_key FROM road_combination_cache ORDER BY created_at DESC,cache_key OFFSET 500)");
+        // Eviction belongs to worker maintenance, not every newly combined road.
         return $road;
     }
 }

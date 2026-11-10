@@ -18,7 +18,7 @@
     if(method!=='GET') { headers['Content-Type']='application/json';headers['X-CSRF-Token']=session.csrf || ''; }
     const response=await fetch(path,{...options,headers,credentials:'same-origin'});
     let data;
-    try { data=await response.json(); } catch (_) { const error=new Error('The server returned an unreadable response (HTTP '+response.status+'). Please try again.');error.status=response.status;throw error; }
+    try { data=await response.json(); } catch (_) { const error=new Error(response.status===504?'The server timed out waiting for a response (HTTP 504). Please try again.':'The server returned an unreadable response (HTTP '+response.status+'). Please try again.');error.status=response.status;throw error; }
     if(!response.ok) {
       if(data.redirect==='/password')window.location?.assign?.('/password');
       if(response.status===401 && path!=='/api/login') { session.user=null;paint(); }

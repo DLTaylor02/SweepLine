@@ -59,7 +59,7 @@ final class Api
         }
         usort($results,static fn($a,$b)=>($b['score']<=>$a['score'])?:($b['length_m']<=>$a['length_m'])?:($a['id']<=>$b['id']));
         if(count($results)>100)$truncated=true;$results=array_slice($results,0,100);
-        $coverage=$this->db->prepare('SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry),false) FROM regions WHERE active_job_id IS NOT NULL');
+        $coverage=$this->db->prepare('WITH target AS (SELECT ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry AS geom) SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),(SELECT geom FROM target)),false) FROM regions WHERE active_job_id IS NOT NULL AND coverage && (SELECT geom FROM target)');
         $coverage->execute([$zip['lon'],$zip['lat'],$p['radius_miles']*1609.344]);
         return ['center'=>$zip,'parameters'=>$p,'results'=>$results,'truncated'=>$truncated,'full_radius_covered'=>(bool)$coverage->fetchColumn(),
             'notes'=>['Overlapping unbranched geometry is combined before filters; up to 600 source candidates and 200,000 geometry points are analyzed.','Candidates intersect the radius; metrics describe the entire stretch.','Stop counts are mapped lower bounds; the filter includes uncertain controls.','OSM may omit stops, closures, surfaces and speed limits. Verify conditions before driving.']];
