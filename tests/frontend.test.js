@@ -31,6 +31,7 @@ async function testFrontend(sources) {
   const observedElements=[];
   const window={ResizeObserver:class {constructor(callback){this.callback=callback;}observe(element){if(!element)throw new Error('Cannot observe missing element');observedElements.push(element);}},addEventListener:(n,fn)=>(events[n]??=[]).push(fn),dispatchEvent:e=>(events[e.type]||[]).forEach(fn=>fn(e))};
   let currentRole='superadmin',mustChange=false,redirectTarget=null;
+  let queueFavorite=false;
   let logged=false,adminReady=true,csrf='initial',searchResponses=[],jobCancelled=false,historyDeleted=false,favoritesSaved=false;
   const favoriteRoad={id:1,name:'Test road',alternate_names:['Other Road Name'],score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5,dimensions:{curvature:0.7},favorite_id:7,geometry:{type:'LineString',coordinates:[[-120,39],[-119.99,39.01]]}};
   const savedFavorite={id:7,profile:'twisty',created_at:'2026-10-19T12:00:00Z',road:favoriteRoad,search_parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:1,paved_only:true}};
@@ -47,7 +48,8 @@ async function testFrontend(sources) {
     else if(path==='/api/search')data=searchResponses.shift()??{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}};
     else if(path==='/api/search-history/1'&&options.method==='DELETE'){historyDeleted=true;data={deleted:true};}
     else if(path==='/api/search-history')data=historyDeleted?[]:[{id:1,city:'Test City',state:'NV',created_at:'2026-10-19T12:00:00Z',parameters:{zip:'12345',radius_miles:5,profile:'twisty',max_stops:5,paved_only:true,min_length_miles:0,max_length_miles:null}}];
-    else if(path==='/api/favorites'&&options.method==='POST'){favoritesSaved=true;data={id:7,saved:true};}
+    else if(path==='/api/favorites'&&options.method==='POST'){favoritesSaved=true;data=queueFavorite?{search_job:{id:120,status:'queued',progress:'Waiting to save favorite'}}:{id:7,saved:true};}
+    else if(path==='/api/search-jobs/120')data={search_job:{id:120,status:'complete'},result:{id:7,saved:true}};
     else if(path==='/api/favorites/7'&&options.method==='DELETE'){favoritesSaved=false;data={deleted:true};}
     else if(path==='/api/favorites/7')data=savedFavorite;
     else if(path==='/api/favorites')data=favoritesSaved?[savedFavorite]:[];
@@ -156,7 +158,10 @@ async function testFrontend(sources) {
   check(get('road-detail').children.find(n=>n.className==='road-exports').children.every(n=>n.href.includes('preferred_name=Other%20Road%20Name')),'Selected alias propagates to each export link');
   nameChoices.children.find(n=>n.textContent==='Test road').onclick();
   const heart=get('road-detail').children.find(node=>node.className==='road-direction').children.find(node=>node.className==='favorite-heart');
-  await heart.onclick();await flush();
+  queueFavorite=true;const favoritePending=heart.onclick();await flush();
+  check(heart.disabled,'Favorite remains pending until worker confirms saving');
+  await timers.filter(t=>t.active&&t.ms===1500).at(-1).fn();await favoritePending;queueFavorite=false;
+  check(requests.some(r=>r.path==='/api/search-jobs/120'),'Favorite save polls its owner-only worker job');
   check(heart['aria-pressed']==='true'&&heart.textContent.includes('Favorited'),'Heart saves selected road');
   const favoriteRequest=requests.find(r=>r.path==='/api/favorites'&&r.method==='POST');
   check(JSON.parse(favoriteRequest.body).search.zip==='12345'&&!!favoriteRequest.headers['X-CSRF-Token'],'Favorite captures search context with CSRF');

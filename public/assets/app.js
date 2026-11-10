@@ -389,7 +389,16 @@ async function selectRoad(id) {
           await api('/api/favorites/'+data.favorite_id,{method:'DELETE'});data.favorite_id=null;
           favoriteStatus.textContent='Removed from favorites.';
         } else {
-          const saved=await api('/api/favorites',{method:'POST',body:JSON.stringify({road_id:data.id,profile:activeProfile,search:currentSearchParameters,...(data.custom_id?{custom_id:data.custom_id}:{}),preferred_name:data.name,orientation,...((data.member_ids||[]).length>1?{member_ids:data.member_ids}:{})})});
+          favoriteStatus.textContent='Saving favorite...';
+          let saved=await api('/api/favorites',{method:'POST',body:JSON.stringify({background:true,road_id:data.id,profile:activeProfile,search:currentSearchParameters,...(data.custom_id?{custom_id:data.custom_id}:{}),preferred_name:data.name,orientation,...((data.member_ids||[]).length>1?{member_ids:data.member_ids}:{})})});
+          while(saved.search_job){
+            const job=saved.search_job;
+            if(['failed','cancelled'].includes(job.status))throw new Error(job.error||'Favorite save cancelled.');
+            if(job.status==='complete'){saved=saved.result;break;}
+            favoriteStatus.textContent=job.progress+(job.status==='queued'?' · Waiting for the search worker.':'');
+            await new Promise(resolve=>setTimeout(resolve,1500));
+            saved=await api('/api/search-jobs/'+job.id);
+          }
           data.favorite_id=saved.id;favoriteStatus.textContent='Road saved to favorites.';
         }
         heart.textContent=data.favorite_id?'♥ Favorited':'♡ Add to favorites';heart.setAttribute('aria-pressed',String(!!data.favorite_id));

@@ -79,7 +79,11 @@ try {
             elseif ($path==='/api/admin/password-policy') {$result=(new SweepLine\PasswordPolicy($db))->save($input);}
             elseif ($path==='/api/password/change') {$result=$auth->changePassword($input);}
             elseif ($path==='/api/favorites') {
-                $favorites=new SweepLine\Favorites($db);$result=$method==='GET'?$favorites->recent((int)$user['id']):$favorites->save((int)$user['id'],$input);
+                $favorites=new SweepLine\Favorites($db);
+                if($method==='POST'&&($input['background']??false)===true){
+                    if(!is_array($input['search']??null))throw new InvalidArgumentException('Search parameters are required.');
+                    $result=(new SweepLine\SearchJobs($db))->enqueue((int)$user['id'],array_merge($input['search'],['record_history'=>false,'history_id'=>null]),null,array_intersect_key($input,array_flip(['road_id','search','profile','custom_id','member_ids','preferred_name','orientation'])));http_response_code(202);
+                }else $result=$method==='GET'?$favorites->recent((int)$user['id']):$favorites->save((int)$user['id'],$input);
             } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})$#',$path,$m)) {
                 $favorites=new SweepLine\Favorites($db);$result=$method==='DELETE'?$favorites->delete((int)$user['id'],(int)$m[1]):$favorites->detail((int)$user['id'],(int)$m[1]);
             } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})/thumbnail$#',$path,$m)) {

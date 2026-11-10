@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.145.0:** Save Discovery favorites through the durable owner-scoped worker queue with progress and explicit failures. Defer optional thumbnail basemap work until viewing; preserve synchronous API compatibility.
+
 - **0.144.0:** Replace speculative missing-road explanations with actual discovery pipeline outcomes: pre-analysis candidate cap, missing profile scores, consolidated-road filter failures and final ranking limits. Keep original candidate eligibility separate from the selected consolidated road; trace the same discovery pass without relaxing filters.
 
 - **0.143.0:** Run missing-road diagnosis through the durable search queue instead of PHP-FPM, with stage reporting, owner-only polling, cancellation and explicit UI failures. Reuse the existing dedicated search service and admission limits; diagnostics remain read-only and never schedule imports.

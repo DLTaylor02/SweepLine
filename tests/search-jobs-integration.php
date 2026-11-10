@@ -23,6 +23,15 @@
     $queue->runOne();$diagnostic=$queue->status($user,$diagnostic['search_job']['id']);
     check($diagnostic['search_job']['status']==='complete'&&is_array($diagnostic['result']['candidates']??null),'Diagnostic worker returns real candidate exclusion details');
     check((int)$db->query('SELECT count(*) FROM data_tasks')->fetchColumn()===$beforeTasks,'Diagnostic worker never starts regional imports');
+    $candidate=$db->query('SELECT c.id FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id LIMIT 1')->fetchColumn();
+    $favoriteJob=$queue->enqueue($user,array_replace($input,['record_history'=>false]),null,['road_id'=>(int)$candidate,'search'=>$input,'profile'=>'open']);
+    $queue->runOne();$favoriteDone=$queue->status($user,$favoriteJob['search_job']['id']);
+    check($favoriteDone['search_job']['status']==='complete'&&($favoriteDone['result']['saved']??false),'Worker resolves and saves a real owned favorite');
+    if(isset($favoriteDone['result']['id'])){
+        $stored=(new \SweepLine\Favorites($db))->detail($user,(int)$favoriteDone['result']['id']);
+        check(!isset($stored['road']['basemap']),'Favorite save defers optional basemap geometry');
+        (new \SweepLine\Favorites($db))->delete($user,(int)$favoriteDone['result']['id']);
+    }
     for($radius=10;$radius<14;$radius++)$queue->enqueue($user,array_replace($input,['radius_miles'=>$radius,'record_history'=>false]));
     try{$queue->enqueue($user,array_replace($input,['radius_miles'=>14,'record_history'=>false]));check(false,'Search admission bound');}
     catch(\SweepLine\HttpException $e){check(true,'Concurrent distinct searches are queued with explicit admission limits');}
