@@ -86,7 +86,7 @@ async function testFrontend(sources) {
   check(!get('workspace').hidden&&get('account-gate').hidden,'Login reveals authenticated app');
   check(!get('admin-open').hidden,'SuperAdmin sees Manage');
   check(requests.find(r=>r.path==='/api/login').headers['X-CSRF-Token']==='initial','Login uses CSRF');
-  searchResponses=[{results:[],preparation:{state:'preparing',message:'Downloading roads',complete:0,total:3}},{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}}];
+  searchResponses=[{results:[],history_id:7,preparation:{state:'preparing',message:'Downloading roads',complete:0,total:3}},{results:[],center:{place:'Synthetic place'},preparation:{state:'ready'}}];
   search.max_length.value='12.5';search.onsubmit({preventDefault(){},target:search});
   check(!get('search-spinner').hidden&&!('value' in get('search-progress')),'Submitting immediately shows indeterminate preparation');
   check(!get('search-stages').hidden&&get('search-stage-track').children.length===5&&get('search-stage-label').textContent.includes('Coverage'),'Search immediately shows staged coverage check');
@@ -115,7 +115,7 @@ async function testFrontend(sources) {
   check(get('search-spinner').hidden&&get('map-spinner').hidden&&get('search-progress').hidden,'Ready response clears all loading indicators');
   check(!get('search-stages').hidden&&get('search-stage-track').children.every(n=>n.className==='is-complete'),'Ready response fills every search stage even for empty results');
   check(!get('panel-discoveries').hidden&&get('panel-zip').hidden,'Completed ZIP search automatically opens discoveries even with no matches');
-  check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).record_history===false,'Background polling does not add search history');
+  check(JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).record_history===false&&JSON.parse(requests.filter(r=>r.path==='/api/search').at(-1).body).history_id===7,'Background polling updates the original snapshot without adding search history');
   search.min_curve_density_score.value='4.5';
   searchResponses=[{results:[{id:1,name:'Test road',score:70,length_m:5000,metrics:{curve_density:4},mandatory_stops:0,uncertain_controls:0,speed_mph:null,confidence:0.5}],preparation:{state:'preparing',message:'Analyzing roads',complete:1,total:3}}];
   search.onsubmit({preventDefault(){},target:search});await flush();
@@ -245,11 +245,11 @@ async function testFrontend(sources) {
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(historyWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
   await flush();
   check(!get('history-panel').hidden&&get('history-list').children.length===1,'Previous searches render on their own page');
-  check(get('history-list').children[0].children[4].children.find(n=>n.textContent==='View results').href.includes('radius_miles=5'),'Run again link preserves search filters');
+  check(get('history-list').children[0].children[4].children.find(n=>n.textContent==='Run fresh search').href.includes('radius_miles=5'),'Fresh search link preserves filters explicitly');
   const title=get('history-list').children[0].children[0].children[0];
   check(title.textContent==='Test City, NV','ZIP city is primary History label');
   check(get('history-list').children[0].children.length===5,'History entries have five aligned columns');
-  check(title.href.includes('open=1'),'History title opens results automatically');
+  check(title.href.includes('history=1')&&!title.href.includes('open=1'),'History title opens stored results without rerunning');
   await get('history-list').children[0].children[4].children.at(-1).onclick();await flush();
   check(get('history-list').children.length===0&&get('history-status').textContent.includes('No previous searches'),'Deleted history entry disappears');
   check(requests.some(r=>r.path==='/api/search-history/1'&&r.method==='DELETE'&&!!r.headers['X-CSRF-Token']),'History deletion sends CSRF-protected request');
@@ -473,8 +473,9 @@ async function testFrontend(sources) {
 
   // Immediate cached results and history replay share the same discovery path.
   let discoveryReply={results:[favoriteRoad],center:{place:'Cached town'},preparation:{state:'ready',complete:1,total:1}},discoveryFailure=null;
-  const searchWindow={...window,location:{pathname:'/',search:''},SweepLineAccount:null,sweeplineRequest:async()=>{if(discoveryFailure)throw discoveryFailure;return discoveryReply;}};
-  const searchUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {run:payload=>discover(payload,++request)};')(searchWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  const historyReads=[];
+  const searchWindow={...window,location:{pathname:'/',search:''},SweepLineAccount:null,sweeplineRequest:async(path)=>{historyReads.push(path);if(discoveryFailure)throw discoveryFailure;return discoveryReply;}};
+  const searchUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {run:payload=>discover(payload,++request),openHistory};')(searchWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
   const repeatPayload={zip:'12345',radius_miles:5,profile:'twisty'};
   await searchUI.run({...repeatPayload});await searchUI.run({...repeatPayload});
   check(get('results').children.length===1&&!get('panel-discoveries').hidden&&get('status').textContent.includes('Cached town'),'Repeated immediate cached searches display results and completion');
@@ -497,6 +498,17 @@ async function testFrontend(sources) {
   await searchUI.run({...repeatPayload});
   check(get('search-error').hidden&&get('status').textContent.includes('Cached town'),'Recovered preparation clears its warning and shows completed results');
 
+  historyReads.length=0;
+  discoveryReply={id:12,parameters:{...repeatPayload,max_stops:1},created_at:'2026-11-01T12:00:00Z',snapshot_at:'2026-11-01T12:01:00Z',result_snapshot:{results:[favoriteRoad],preparation:{state:'ready'}}};
+  await searchUI.openHistory(12);
+  check(historyReads.join(',')==='/api/search-history/12'&&get('results').children.length===1,'Opening History loads saved roads without a search or preparation request');
+  check(get('status').textContent.includes('Saved results')&&!get('panel-discoveries').hidden,'Snapshot display identifies historical results');
+  discoveryReply={...discoveryReply,result_snapshot:{results:[favoriteRoad],preparation:{state:'preparing'}}};
+  await searchUI.openHistory(12);
+  check(get('status').textContent.includes('incomplete snapshot')&&get('search-spinner').hidden,'Partial snapshots remain historical and never restart polling');
+  discoveryReply={...discoveryReply,result_snapshot:null};historyReads.length=0;
+  await searchUI.openHistory(12);
+  check(historyReads.join(',')==='/api/search-history/12'&&get('status').textContent.includes('older entry has no saved results'),'Legacy history explains missing snapshots without silently rerunning');
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){

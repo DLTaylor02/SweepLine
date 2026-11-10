@@ -178,3 +178,17 @@ Discovery shows available roads while missing areas prepare. The status distingu
 A running area with no reported progress for at least 15 minutes is described as possibly slow or stalled. This is a warning, not proof that the worker has stopped, and does not cancel or restart work. A SuperAdmin can inspect the job in Manage. Once work resumes, active searches continue checking status; if all preparation had failed and polling stopped, run the search again after the job is retried.
 
 Request, rendering, map-update and history-restoration errors appear in both the sidebar and a persistent map alert. The alert includes the reason and clears on a successful retry. Unreadable server responses retain their HTTP status for diagnosis.
+
+## Actual saved search results (0.138.0)
+
+**View results** in History loads the last result snapshot received for that search: road geometry, order, scores, metrics, center and coverage state. It does not call discovery, rerun analysis or enqueue data preparation. **Run fresh search** explicitly runs the saved filters against current coverage.
+
+During an active search, polling updates its original history entry as results arrive. If you leave before completion, its last stored results can be partial; History labels that snapshot incomplete rather than silently completing it later. Opening a snapshot does not poll for new roads.
+
+Entries created before result snapshots were introduced retain their filters but cannot reconstruct their original results. Opening one explains this and lets you choose a fresh search. History remains private to its owner and retains at most 100 entries. Each snapshot is bounded to 16 MiB; deleting the entry also deletes its snapshot.
+
+Road selection displays the saved geometry and metrics. Existing export/favorite actions still require the original road's source data to remain in active coverage; a subsequent regional replacement can make those actions unavailable. Favorites retain their own independent road snapshots.
+
+Installation/update applies additive migration `019_search_result_snapshots.sql`. Existing history is preserved with null snapshot fields.
+
+Identical searches reuse your existing History entry regardless of age. Comparison uses normalized filters, so omitted defaults and explicitly entered defaults count as the same search. A fresh run refreshes that entry's saved results and snapshot time; its original creation date remains. Different users and different filters remain separate. Previously duplicated entries are preserved until you delete them or normal retention removes them.

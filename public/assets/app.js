@@ -6,7 +6,7 @@ const normalizedDensity=m=>Math.max(1,Math.min(10,m.curve_density_score??(1+9*m.
 const $ = id => document.getElementById(id);
 let map, ready, roads = [], selected = null, request = 0, pollTimer, activeProfile='twisty';
 let pendingHistorySearch=false, activeSearchUser=null, restoredSearchUser=null, explicitSearchParameters=false;
-let currentSearchParameters=null,pendingFavorite=null;
+let currentSearchParameters=null,pendingFavorite=null,pendingHistoryId=null;
 
 const discoveryTabs=['zip','custom','discoveries'];
 function showDiscoveryTab(name,focus=false){
@@ -36,7 +36,7 @@ const searchStorageKey=id=>'sweepline:active-search:'+id;
 function rememberSearch(payload) {
   if(!activeSearchUser)return;
   try {
-    const parameters={...payload};delete parameters._recorded;delete parameters._mapShown;
+    const parameters={...payload};delete parameters._recorded;delete parameters._mapShown;delete parameters._historyId;
     window.sessionStorage?.setItem(searchStorageKey(activeSearchUser),JSON.stringify(parameters));
   } catch (_) { /* Search remains usable when browser storage is unavailable. */ }
 }
@@ -363,7 +363,7 @@ async function selectRoad(id) {
   const close=text('button','Close','road-detail-close');close.onclick=()=>{detail.hidden=true;clearRoadEndpoints();window.sweeplineBeamStop?.();};
   detail.append(close,text('h2',road.name),text('p','Loading score breakdown…'));
   try {
-    const data=(road._snapshot||road.custom_id)?road:await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}${memberQuery(road)}`);
+    const data=(road._snapshot||road._historySnapshot||road.custom_id)?road:await api(`/api/roads/${id}?profile=${encodeURIComponent(activeProfile)}${memberQuery(road)}`);
     if(selected!==id) return;
     detail.replaceChildren(close,text('h2',`${data.name} · ${data.score}/100`));
 
@@ -471,13 +471,14 @@ function showSearchError(error,context='Road search',retrying=false,preparation=
 async function discover(payload, sequence) {
   let phase='Road search';
   try {
-    const params={...payload};delete params._mapShown;delete params._recorded;params.record_history=!payload._recorded;
+    const params={...payload};delete params._mapShown;delete params._recorded;delete params._historyId;params.record_history=!payload._recorded;
+    if(payload._historyId)params.history_id=payload._historyId;
     const data=await api('/api/search',{method:'POST',body:JSON.stringify(params)});
     if(sequence!==request)return;
     if(!data||!Array.isArray(data.results))throw new Error('The server returned an invalid search response. Reload the page and try again.');
     phase='Displaying search results';
     currentSearchParameters=data.parameters || {...params};delete currentSearchParameters.record_history;
-    payload._recorded=true;
+    payload._recorded=true;payload._historyId=data.history_id??payload._historyId;
     roads=data.results || [];activeProfile=payload.profile;render();
     const preparation=data.preparation;
     const retryNote=preparation?.retrying>0&&preparation.running===0
@@ -562,6 +563,35 @@ $('search').onsubmit = event => {
   const payload={...searchParameters(form),_recorded:event.fromHistory===true};
   scrollToSearchProgress();rememberSearch(payload);discover(payload,sequence);
 };
+async function openHistory(id){
+  clearTimeout(pollTimer);const sequence=++request;
+  selected=null;clearRoadEndpoints();$('road-detail').hidden=true;
+  showDiscoveryTab('discoveries');setStatus('Loading saved search results…',true);
+  try{
+    const saved=await api('/api/search-history/'+id);if(sequence!==request)return;
+    fillSearch(saved.parameters);currentSearchParameters=saved.parameters;activeProfile=saved.parameters.profile;
+    const data=saved.result_snapshot;
+    if(!data){
+      roads=[];render();showDiscoveryTab('zip');
+      setStatus('This older entry has no saved results. Its filters are loaded; choose Discover roads to run a new search.');
+      if(map){await ready;if(sequence!==request)return;map.getSource('roads').setData(empty());map.getSource('radius').setData(empty());}
+      return;
+    }
+    roads=(data.results||[]).map(road=>({...road,_historySnapshot:true}));render();
+    const partial=data.preparation&&data.preparation.state!=='ready';
+    setStatus('Saved results from '+new Date(saved.snapshot_at||saved.created_at).toLocaleString()+'. '+roads.length+' roads.'+(partial?' This is an incomplete snapshot of the results available at that time.':'')+' Choose Discover roads to run a fresh search.');
+    showDiscoveryTab('discoveries');
+    if(map){
+      await ready;if(sequence!==request)return;
+      map.getSource('roads').setData({type:'FeatureCollection',features:roads.map(r=>({type:'Feature',geometry:r.geometry,properties:{id:r.id,score:r.score}}))});
+      map.setFilter('selected',['==',['get','id'],-1]);
+      if(data.center){const radius=circle(Number(data.center.lon),Number(data.center.lat),saved.parameters.radius_miles);map.getSource('radius').setData(radius);map.fitBounds(bounds(radius.geometry.coordinates[0]),{padding:35});}
+      else map.getSource('radius').setData(empty());
+    }
+  }catch(error){if(sequence===request)showSearchError(error,'Opening saved search');}
+  finally{if(sequence===request)$('submit').disabled=false;}
+}
+
 async function openFavorite(id) {
   clearTimeout(pollTimer);const sequence=++request;
   showDiscoveryTab('discoveries');setStatus('Loading favorite road…',true);
@@ -604,11 +634,12 @@ async function applyDiscoverySession(event) {
     }
   }
   if(!map)initMap();
+  if(pendingHistoryId){const id=pendingHistoryId;pendingHistoryId=null;await openHistory(id);}
   if(pendingFavorite) {const id=pendingFavorite;pendingFavorite=null;openFavorite(id);}
   if(pendingHistorySearch) {
     pendingHistorySearch=false;
     const form=$('search');
-    if(!form.checkValidity || form.checkValidity())form.onsubmit({preventDefault(){},target:form,fromHistory:true});
+    if(!form.checkValidity || form.checkValidity())form.onsubmit({preventDefault(){},target:form,fromHistory:new URLSearchParams(window.location?.search||'').get('fresh')!=='1'});
     else showSearchError(new Error('Saved search contains filters that are no longer supported. Please adjust them.'),'Opening previous search');
   }
   if(map) { await ready;map.resize(); }
@@ -622,7 +653,8 @@ async function applyDiscoverySession(event) {
 if(window.location?.pathname==='/') {
   const params=new URLSearchParams(window.location.search);
   if(/^[1-9][0-9]{0,17}$/.test(params.get('favorite')||'')) {pendingFavorite=params.get('favorite');explicitSearchParameters=true;}
-  if(!pendingFavorite && params.has('zip')) {
+  if(/^[1-9][0-9]{0,17}$/.test(params.get('history')||'')){pendingHistoryId=params.get('history');explicitSearchParameters=true;}
+  if(!pendingFavorite && !pendingHistoryId && params.has('zip')) {
     explicitSearchParameters=true;
     const form=$('search');
     for(const key of ['zip','profile'])if(params.has(key))form[key].value=params.get(key);
@@ -645,6 +677,8 @@ window.addEventListener('pageshow',event=>{
   refreshVisibleMap();
   if(event.persisted && window.SweepLineAccount?.user) {
     restoredSearchUser=null;explicitSearchParameters=false;
+    const history=new URLSearchParams(window.location.search).get('history');
+    if(/^[1-9][0-9]{0,17}$/.test(history||'')){pendingHistoryId=history;explicitSearchParameters=true;}
     const favorite=new URLSearchParams(window.location.search).get('favorite');
     if(/^[1-9][0-9]{0,17}$/.test(favorite||'')){pendingFavorite=favorite;explicitSearchParameters=true;}
     handleSession({detail:window.SweepLineAccount});

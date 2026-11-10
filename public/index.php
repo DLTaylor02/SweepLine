@@ -30,7 +30,7 @@ try {
     if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='POST'; }
     if (preg_match('#^/api/admin/tasks/[1-9]\\d{0,17}/(?:retry|cancel)$#',$path)) { $expected='POST'; }
     if (preg_match('#^/api/admin/imports/[1-9]\\d{0,17}/cancel$#',$path)) { $expected='POST'; }
-    if (preg_match('#^/api/search-history/[1-9]\\d{0,17}$#',$path)) { $expected='DELETE'; }
+    if (preg_match('#^/api/search-history/[1-9]\\d{0,17}$#',$path)) { $expected=$method==='DELETE'?'DELETE':'GET'; }
     if ($path==='/api/favorites' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/favorites/[1-9]\\d{0,17}$#',$path)) { $expected=$method==='DELETE'?'DELETE':'GET'; }
     if(preg_match('#^/api/favorites/[1-9]\\d{0,17}/preferences$#',$path))$expected='POST';
@@ -94,7 +94,7 @@ try {
                 SweepLine\RoadExport::download($favorite['road'],$format,SweepLine\RoadExport::orientation($_GET['orientation']??($favorite['road']['preferred_orientation']??'forward')),$_GET['preferred_name']??null);
             }
             elseif ($path==='/api/search-history') { $result=(new SweepLine\SearchHistory($db))->recent((int)$user['id']); }
-            elseif (preg_match('#^/api/search-history/([1-9]\\d{0,17})$#',$path,$m)) { $result=(new SweepLine\SearchHistory($db))->delete((int)$user['id'],(int)$m[1]); }
+            elseif (preg_match('#^/api/search-history/([1-9]\\d{0,17})$#',$path,$m)) { $history=new SweepLine\SearchHistory($db);$result=$method==='DELETE'?$history->delete((int)$user['id'],(int)$m[1]):$history->detail((int)$user['id'],(int)$m[1]); }
             elseif ($path==='/api/zips/nearest') {
                 // Validate even while the postal dataset is being initialized.
                 SweepLine\Validation::number($_GET,'lon',NAN,-180,180);SweepLine\Validation::number($_GET,'lat',NAN,-90,90);
@@ -127,7 +127,14 @@ try {
                     try { $result=$api->search($p); } catch (OutOfBoundsException $e) { $result=['results'=>[]]; }
                     $result['preparation']=$preparation;
                 }
-                if ($input['record_history']??false) { (new SweepLine\SearchHistory($db))->record((int)$user['id'],$p); }
+                $history=new SweepLine\SearchHistory($db);$historyId=null;
+                if($input['record_history']??false)$historyId=$history->record((int)$user['id'],$p);
+                elseif(isset($input['history_id'])){
+                    $value=SweepLine\Validation::number($input,'history_id',NAN,1,9007199254740991);
+                    if(floor($value)!==$value)throw new InvalidArgumentException('History ID must be a whole number.');
+                    $historyId=(int)$value;
+                }
+                if($historyId!==null){$history->capture((int)$user['id'],$historyId,$p,$result);$result['history_id']=$historyId;}
             } elseif (preg_match('#^/api/zips/(.*)$#',$path,$m)) {
                 SweepLine\Validation::zip($m[1]);
                 try { $result=$api->zip($m[1]); }

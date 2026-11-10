@@ -95,6 +95,9 @@ $history=expect(callApi($admin,'GET','/api/search-history'),200,'SuperAdmin view
 if (count($history)!==1 || $history[0]['parameters']['radius_miles']!=25) { throw new RuntimeException('Search history missing or polluted by polling'); }
 if($history[0]['city']!=='Synthetic place' || $history[0]['state']!=='ZZ')throw new RuntimeException('ZIP city missing from History');
 $historyId=(int)$history[0]['id'];
+$historical=expect(callApi($admin,'GET','/api/search-history/'.$historyId),200,'Owner opens saved search snapshot');
+if(!is_array($historical['result_snapshot']['results']??null)||!isset($historical['snapshot_at']))throw new RuntimeException('History result snapshot missing.');
+expect(callApi($member,'GET','/api/search-history/'.$historyId),404,'History snapshot cannot access another user');
 expect(callApi($member,'DELETE','/api/search-history/'.$historyId,null,$memberSession['csrf']),404,'History deletion cannot access another user');
 expect(callApi($admin,'DELETE','/api/search-history/'.$historyId),403,'History deletion requires CSRF');
 expect(callApi($admin,'DELETE','/api/search-history/'.$historyId,null,$csrf),200,'Owner deletes search');
@@ -105,6 +108,13 @@ if ($memberHistory!==[]) { throw new RuntimeException('Another user history leak
 $historyDb=SweepLine\Database::connect();$store=new SweepLine\SearchHistory($historyDb);
 for($n=0;$n<105;$n++) { $store->record((int)$created['id'],SweepLine\Validation::search(['zip'=>str_pad((string)$n,5,'0',STR_PAD_LEFT)])); }
 if(count($store->recent((int)$created['id']))!==100) { throw new RuntimeException('History retention not bounded'); }
+$sameParameters=SweepLine\Validation::search(['zip'=>'00104']);
+$originalHistory=$store->record((int)$created['id'],$sameParameters);
+$historyDb->prepare("UPDATE search_history SET created_at=now()-interval '1 day' WHERE id=?")->execute([$originalHistory]);
+$repeatedHistory=$store->record((int)$created['id'],['profile'=>'twisty','zip'=>'00104','radius_miles'=>5]);
+if($originalHistory!==$repeatedHistory||count($store->recent((int)$created['id']))!==100)throw new RuntimeException('Identical older search created duplicate history.');
+$differentHistory=$store->record((int)$created['id'],['zip'=>'00104','radius_miles'=>6]);
+if($differentHistory===$originalHistory)throw new RuntimeException('Different search filters were merged.');
 $favoriteBody=['road_id'=>$exportId,'profile'=>'twisty','search'=>['zip'=>'12345','radius_miles'=>25,'max_stops'=>5]];
 expect(callApi($admin,'POST','/api/favorites',$favoriteBody),403,'Favoriting requires CSRF');
 $saved=expect(callApi($admin,'POST','/api/favorites',$favoriteBody,$csrf),200,'Save favorite road');

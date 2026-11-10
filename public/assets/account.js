@@ -145,7 +145,9 @@
           text('p','Stops: '+p.max_stops+' · '+surfaceLabel(p)));
         if(p.profile==='twisty')filtersCell.append(text('p','Minimum curve density: '+(p.min_curve_density_score??(p.min_curve_density==null?2.2:1+9*p.min_curve_density/53.6448)).toFixed(1)+'/10'));
         const again=text('a','View results');again.className='page-back';
-        again.href='/?open=1&'+new URLSearchParams(Object.entries(p).filter(([,v])=>v!==null)).toString();
+        again.href='/?history='+encodeURIComponent(item.id);
+        const fresh=text('a','Run fresh search');fresh.className='page-back';fresh.href='/?open=1&fresh=1&'+new URLSearchParams(Object.entries(p).filter(([,v])=>v!==null)).toString();
+        if(item.has_snapshot===false)again.textContent='View older entry';
         title.href=again.href;
         const remove=text('button','Delete search');remove.type='button';
         remove.onclick=async()=>{
@@ -155,7 +157,7 @@
             await refreshHistory();
           } catch(e) {el('history-status').textContent=e.message;remove.disabled=false;}
         };
-        actionsCell.append(again,remove);el('history-list').append(row);
+        actionsCell.append(again,fresh,remove);el('history-list').append(row);
       });
     } catch(e) {el('history-status').textContent=e.message;}
   }

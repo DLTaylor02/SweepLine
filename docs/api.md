@@ -31,3 +31,9 @@ Search request template (replace `<US_ZIP>` with your chosen five-digit US ZIP c
 
 200 means local data is ready. 202 includes `preparation` state/progress and any currently available results; poll the same search (the UI does this automatically). A terminal preparation failure is represented by `preparation.state="failed"` with a visible explanation; retry it through SuperAdmin management. Invalid inputs return 422; authentication 401; CSRF/authorization 403; absent resources 404; incorrect methods 405; account conflicts 409; request/queue throttles 429; unavailable infrastructure 503. New or changed User/Admin passwords follow the configurable policy. Terminal provisioning locks against concurrent account creation and never resets an existing administrator. There is no email delivery, self-registration, forgotten-password email flow, yet.
 
+
+### Search result snapshots
+
+`GET /api/search-history/{id}` returns the authenticated owner's parameters, creation time, snapshot time and `result_snapshot` (null for legacy entries). Another owner's ID returns 404. Existing CSRF-protected DELETE removes the whole entry.
+
+A recorded POST `/api/search` returns `history_id`. Subsequent preparation polls send that ID with `record_history:false`; the server updates only the same owner's entry with matching normalized parameters. History viewing itself performs only the GET above.

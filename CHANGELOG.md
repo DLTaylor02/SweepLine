@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.138.0:** Persist owner-scoped search result snapshots and open History without rerunning discovery or data preparation. Update the same snapshot during active polling; label partial/legacy entries, provide a separate fresh-search action, retain saved road metrics on selection, and add bounded storage plus additive migration 019. Add service/frontend regressions and HTTP ownership checks. Reuse an owner's existing history entry for identical normalized search filters regardless of its age, replacing the ten-second duplicate window. Fresh searches update that entry's result snapshot; different filters remain distinct. Add aged-entry/default-normalization and different-radius HTTP integration regressions.
+
 - **0.137.0:** Show persistent discovery-map alerts for search API, result rendering, map update, preparation and history-restoration failures; preserve HTTP status on unreadable server responses. Add immediate cached-search/replay and failure/retry regressions. Report queued, running, retrying and possibly stalled preparation with explicit partial-result warnings; the reported production incident was traced by the operator to unfinished preparation and resolved by retrying its job.
 
 - **0.136.0:** Select neutral stock rocks with matching distance appearances on neutral ground, preserving red Utah rocks on warm ground and avoiding unnecessary mesh-only tinting. Extend the asphalt repeat to 48 m while retaining 12 m paint repeats, 3 m dashes and 9 m gaps; add native palette and paint-period regressions.
