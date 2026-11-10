@@ -458,6 +458,10 @@ All primary, opposite-carriageway and side-road surfaces share a PBR asphalt mat
 
 Reports include grass counts/budgets, actual stock dependencies and rock tint factors. Fresh exports are required. Offline placement, material and complete-archive tests cover packaging and geometry; density, frame rate, shading and guardrail collisions still require in-game validation.
 
+## Lane paint activation (0.135.0)
+
+Pavement materials explicitly set `activeLayers: 2`. BeamNG defaults to one active layer even when two entries exist in `Stages`, which hid the lane-paint overlay introduced in 0.133.0. The asphalt textures, paint masks and geometry are retained. Generate a fresh export to include the setting.
+
 ## Lightly weathered asphalt (0.134.0)
 
 Pavement now uses the stock `AsphaltRoad_variation_01` color, normal and roughness maps as its base. This replaces the overly coarse damaged-asphalt set introduced in 0.133.0, while retaining separate masked lane paint. It provides subtler surface variation as a middle ground between uniform generated asphalt and visibly broken pavement. Fresh exports are required; in-game appearance still needs visual validation.

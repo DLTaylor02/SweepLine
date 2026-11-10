@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.135.0:** Explicitly activate both pavement PBR layers so lane paint renders above the approved stock asphalt. Add a regression assertion for the native activeLayers setting.
+
 - **0.134.0:** Replace the excessively damaged asphalt base with the subtler stock AsphaltRoad variation material, including matching normal and roughness maps. Retain independent lane paint and existing road geometry.
 
 - **0.133.0:** Use stock worn asphalt as the pavement base with independently masked lane paint, preserving road geometry and decal reception. Improve grass with clustered patch infill, muted-green eligibility and mixed short/tall stock clumps within the existing budget. Inspect Mt Rose (38), replay its packaged terrain/imagery, and add paint-mask/grass regressions.

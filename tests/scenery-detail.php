@@ -25,7 +25,7 @@
     $rot=$rails[1]['rotationMatrix'];$dot=$rot[0]*$rot[6]+$rot[1]*$rot[7]+$rot[2]*$rot[8];
     check(abs($dot)<1e-9&&$rot[2]>0,'Stock rail orientation follows graded runs with orthogonal axes');
     $m=\SweepLine\BeamRoadMaterials::material('sl_road','/levels/test/art/roads/paint.color.png',$profiles[0]);$s=$m['Stages'][0];$paint=$m['Stages'][1];
-    check($m['version']===1.5&&$m['groundType']==='ASPHALT'&&str_contains($s['baseColorMap'],'AsphaltRoad_variation_01')&&$paint['baseColorMap']==='/levels/test/art/roads/paint.color.png','Lightly weathered stock asphalt is the base and lane paint occupies a separate masked PBR layer');
+    check($m['version']===1.5&&$m['activeLayers']===2&&$m['groundType']==='ASPHALT'&&str_contains($s['baseColorMap'],'AsphaltRoad_variation_01')&&$paint['baseColorMap']==='/levels/test/art/roads/paint.color.png','Lightly weathered stock asphalt is the base and lane paint occupies a separate masked PBR layer');
     check(!isset($s['opacityMap'])&&!isset($m['translucent'])&&$paint['opacityMap']==='/levels/test/art/roads/paint.paint.data.png','Road remains opaque while only its lane-paint layer uses a mask');
     $mask=imagecreatefromstring(\SweepLine\BeamPng::paintMask($profiles[0]));
     check((imagecolorat($mask,64,64)&255)===0&&(imagecolorat($mask,128,64)&255)===255,'Paint mask exposes stock pavement while retaining the existing center line');
