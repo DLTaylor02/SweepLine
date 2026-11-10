@@ -16,9 +16,9 @@ final class RegionData
         $rows=$this->db->query("SELECT r.id,r.slug AS region_key,r.name,r.active_job_id,r.imported_at,
             ST_AsGeoJSON(COALESCE(r.coverage,(SELECT coverage FROM import_jobs j WHERE j.region_id=r.id ORDER BY j.id DESC LIMIT 1))) AS geometry,
             t.status,t.progress,t.payload FROM regions r LEFT JOIN data_tasks t ON t.task_key=r.slug AND t.kind='roads' AND NOT t.cancel_requested
-            ORDER BY r.id DESC LIMIT 3001")->fetchAll(PDO::FETCH_ASSOC);
+            WHERE t.status IS DISTINCT FROM 'split' ORDER BY r.id DESC LIMIT 3001")->fetchAll(PDO::FETCH_ASSOC);
         $truncated=count($rows)>3000;$rows=array_slice($rows,0,3000);
-        $tasks=$this->db->query("SELECT task_key AS region_key,task_key AS name,status,progress,payload FROM data_tasks t WHERE kind='roads' AND NOT cancel_requested
+        $tasks=$this->db->query("SELECT task_key AS region_key,task_key AS name,status,progress,payload FROM data_tasks t WHERE kind='roads' AND NOT cancel_requested AND status<>'split'
             AND NOT EXISTS(SELECT 1 FROM regions r WHERE r.slug=t.task_key) ORDER BY id DESC LIMIT 3001")->fetchAll(PDO::FETCH_ASSOC);
         $operations=$this->db->query("SELECT DISTINCT ON (region_key) region_key,status,progress FROM region_operations ORDER BY region_key,id DESC")->fetchAll(PDO::FETCH_UNIQUE|PDO::FETCH_ASSOC);
         $features=[];

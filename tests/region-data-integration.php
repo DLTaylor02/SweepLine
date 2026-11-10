@@ -27,6 +27,15 @@
         $q=$db->prepare('SELECT count(*) FROM osm_nodes WHERE job_id=?');$q->execute([$jobs[1]]);check((int)$q->fetchColumn()===1&&is_file($external),'Discard preserves another region and external source files');
         $queued=(new \SweepLine\DataQueue($db))->ensure('custom-region-queue-test','roads',['key'=>'custom-region-queue-test','bounds'=>[-81,35,-80.9,35.1]]);
         $map=$manager->map();check((bool)array_filter($map['features'],static fn($f)=>$f['properties']['key']==='custom-region-queue-test'&&$f['properties']['status']==='queued'),'Region map includes queued areas before a region row exists');
+        $db->prepare("UPDATE data_tasks SET status='split' WHERE id=?")->execute([$queued['id']]);
+        $child=(new \SweepLine\DataQueue($db))->ensure('custom-region-queue-test-0','roads',['key'=>'custom-region-queue-test-0','bounds'=>[-81,35,-80.95,35.05]]);
+        $parent=(new \SweepLine\DataQueue($db))->ensure($keys[1],'roads',['key'=>$keys[1],'bounds'=>[-80,35,-79.9,35.1]]);
+        $db->prepare("UPDATE data_tasks SET status='split' WHERE id=?")->execute([$parent['id']]);
+        $visible=array_column(array_column($manager->map()['features'],'properties'),'key');
+        check(!in_array('custom-region-queue-test',$visible,true)&&!in_array($keys[1],$visible,true)&&in_array('custom-region-queue-test-0',$visible,true),'Region management omits split parents with or without imported rows and retains discrete children');
+        $db->prepare("UPDATE data_tasks SET status='queued' WHERE id=?")->execute([$queued['id']]);
+        $db->prepare("UPDATE data_tasks SET status='complete' WHERE id=?")->execute([$parent['id']]);
+        $db->prepare('DELETE FROM data_tasks WHERE id=?')->execute([$child['id']]);
         $manager->action($user,'custom-region-queue-test','discard');$manager->runOne();
         $q=$db->prepare('SELECT count(*) FROM data_tasks WHERE task_key=?');$q->execute(['custom-region-queue-test']);check((int)$q->fetchColumn()===0,'Discard removes a queued-only area without requiring an imported region');
         $zipTask=(new \SweepLine\DataQueue($db))->ensure('us-zips','zips',[]);

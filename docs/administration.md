@@ -123,3 +123,5 @@ Storage details distinguish **estimated database row bytes** from actual **manag
 Discard does not remove ZIP coordinates, user accounts, History/Favorite snapshots, BeamNG resources/exports, unrelated regions, or external/manual source files. Managed sources still referenced by another import are retained. Existing saved History results remain viewable, although actions requiring discarded live source data may become unavailable.
 
 Migration `021_region_management.sql` adds the region-operation queue, explicit task priority and supporting indexes. Run the normal installer update to apply it and restart the worker. No new service, persistent runtime, global server setting or external API dependency is introduced.
+
+Split parent regions are hidden from the management map and sidebar; their discrete child regions remain visible and manageable. This display filter preserves stored data and existing subdivision behavior.
