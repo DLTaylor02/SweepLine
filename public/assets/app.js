@@ -544,8 +544,19 @@ $('road-diagnostic').onsubmit=async event=>{
   $('diagnostic-submit').disabled=true;$('diagnostic-status').textContent='Checking locally imported ways and candidate exclusions…';
   $('diagnostic-results').replaceChildren();
   try {
-    const data=await api('/api/search-diagnostics',{method:'POST',body:JSON.stringify({...searchParameters(search),road:event.target.road.value})});
+    let data=await api('/api/search-diagnostics',{method:'POST',body:JSON.stringify({...searchParameters(search),road:event.target.road.value})});
     if(sequence!==diagnosticRequest)return;
+    while(data.search_job){
+      const job=data.search_job;
+      if(['failed','cancelled'].includes(job.status))throw new Error(job.error||'Road diagnosis cancelled.');
+      if(job.status==='complete'){data=data.result;break;}
+      $('diagnostic-status').textContent=job.progress+(job.status==='queued'?' · Waiting for the search worker'+(job.ahead?' · '+job.ahead+' search(es) ahead':''):'');
+      await new Promise(resolve=>setTimeout(resolve,2000));
+      if(sequence!==diagnosticRequest)return;
+      data=await api('/api/search-jobs/'+job.id);
+      if(sequence!==diagnosticRequest)return;
+    }
+    if(!data||!Array.isArray(data.candidates)||!Array.isArray(data.ways))throw new Error('The server returned an invalid diagnosis. Please try again.');
     $('diagnostic-status').textContent='Checking '+data.road+' near '+data.parameters.zip+' within '+data.parameters.radius_miles+' miles. '+data.ways.length+' matching source ways; '+data.candidates.length+' continuous candidates. '+
       (data.full_radius_covered?'Search area has imported coverage. ':'Search area is not fully covered yet. ')+(data.truncated?'Showing the first 100 matches. ':'');
     data.candidates.forEach(road=>{
@@ -565,7 +576,7 @@ $('road-diagnostic').onsubmit=async event=>{
       'Source ways were imported, but no matching continuous candidate was built. Check classification, segmentation, continuity and access restrictions.':
       'No matching source ways in active local data. The name/reference may differ, the road may be outside the radius, or the import may have excluded it.'));
     $('diagnostic-results').append(text('p',data.note));
-  } catch(e){if(sequence===diagnosticRequest)$('diagnostic-status').textContent=e.message;}
+  } catch(e){if(sequence===diagnosticRequest)$('diagnostic-status').textContent='Road diagnosis failed. '+e.message+' You can retry this check.';}
   finally{if(sequence===diagnosticRequest)$('diagnostic-submit').disabled=false;}
 };
 

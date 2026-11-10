@@ -7,7 +7,7 @@ use PDO;
 final class SearchJobs
 {
     public function __construct(private PDO $db) {}
-    public function enqueue(int $user,array $input): array {
+    public function enqueue(int $user,array $input,?string $diagnosticRoad=null): array {
         $p=Validation::search($input);$history=null;
         if($input['record_history']??false)$history=(new SearchHistory($this->db))->record($user,$p);
         elseif(isset($input['history_id'])){
@@ -17,6 +17,7 @@ final class SearchJobs
             $q->execute([(int)$value,$user,json_encode($p,JSON_THROW_ON_ERROR)]);$history=$q->fetchColumn();
             if($history===false)throw new \OutOfBoundsException('Search history entry not found.');
         }
+        if($diagnosticRoad!==null)$p['_diagnostic_road']=$diagnosticRoad;
         $fingerprint=hash('sha256',json_encode([$p,Scorer::profiles()[$p['profile']]],JSON_THROW_ON_ERROR));
         $this->db->beginTransaction();
         try{
@@ -90,12 +91,16 @@ final class SearchJobs
         try{
             $this->db->exec("SET statement_timeout='45s'; SET lock_timeout='2s'");
             $p=json_decode($row['parameters'],true,512,JSON_THROW_ON_ERROR);
+            if(isset($p['_diagnostic_road'])){
+                $result=(new RoadDiagnostics($this->db))->run($p+['road'=>$p['_diagnostic_road']],$progress);
+            }else{
             $progress('Checking local coverage');
             $preparation=(new DataQueue($this->db))->prepare($p);
             $this->db->prepare('UPDATE search_jobs SET preparation=?::jsonb WHERE id=?')->execute([json_encode($preparation,JSON_THROW_ON_ERROR),$row['id']]);
             try{$result=(new Api($this->db))->search($p,$progress);}
             catch(\OutOfBoundsException $e){if($preparation['state']==='ready')throw $e;$result=['results'=>[],'parameters'=>$p];}
             $result['preparation']=$preparation;
+            }
             $progress('Saving search results');
             $historyQuery=$this->db->prepare('SELECT history_id FROM search_jobs WHERE id=?');$historyQuery->execute([$row['id']]);$currentHistory=$historyQuery->fetchColumn();
             $row['history_id']=$currentHistory===false?null:$currentHistory;

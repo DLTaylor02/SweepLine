@@ -119,7 +119,10 @@ try {
                 }else $result=$road;
             }
 
-            elseif ($path==='/api/search-diagnostics') { $result=(new SweepLine\RoadDiagnostics($db))->run($input); }
+            elseif ($path==='/api/search-diagnostics') {
+                $name=SweepLine\RoadDiagnostics::roadName($input);
+                $result=(new SweepLine\SearchJobs($db))->enqueue((int)$user['id'],array_merge($input,['record_history'=>false,'history_id'=>null]),$name);http_response_code(202);
+            }
             elseif(preg_match('#^/api/search-jobs/([1-9]\\d{0,17})$#',$path,$m)){$result=(new SweepLine\SearchJobs($db))->status((int)$user['id'],(int)$m[1]);}
             elseif(preg_match('#^/api/admin/search-jobs/([1-9]\\d{0,17})/cancel$#',$path,$m)){$result=(new SweepLine\SearchJobs($db))->cancel((int)$m[1]);}
             elseif($path==='/api/search'&&isset($input['background'])&&!is_bool($input['background'])){throw new InvalidArgumentException('background must be a JSON boolean');}

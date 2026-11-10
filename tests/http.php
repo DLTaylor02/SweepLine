@@ -53,8 +53,9 @@ if($picked['zip']!=='12345') {throw new RuntimeException('Nearest ZIP incorrect'
 expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=91'),422,'Map ZIP coordinate validation');
 expect(callApi($admin,'GET','/api/zips/nearest?lon=0&lat=0'),404,'Map ZIP distant point rejected');
 expect(callApi($admin,'POST','/api/search-diagnostics',['zip'=>'12345','road'=>'x'],$csrf),422,'Road diagnosis validates query');
-$diagnosis=expect(callApi($admin,'POST','/api/search-diagnostics',['zip'=>'12345','radius_miles'=>25,'road'=>'Synthetic'],$csrf),200,'Road diagnosis includes excluded candidates');
-if(count($diagnosis['candidates'])!==2) {throw new RuntimeException('Road diagnosis hid excluded fixture roads');}
+$diagnosis=expect(callApi($admin,'POST','/api/search-diagnostics',['zip'=>'12345','radius_miles'=>25,'road'=>'Synthetic'],$csrf),202,'Road diagnosis is queued outside the web request deadline');
+if(($diagnosis['search_job']['status']??null)!=='queued')throw new RuntimeException('Diagnosis was not queued');
+expect(callApi($admin,'POST','/api/admin/search-jobs/'.$diagnosis['search_job']['id'].'/cancel',[],$csrf),200,'Queued diagnostic can be cancelled');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','min_curve_density'=>54],$csrf),422,'Curve density upper bound via API');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345','min_curve_density'=>7.5],$csrf),200,'Fractional curve density via API');
 expect(callApi($admin,'POST','/api/search',['zip'=>'12345']),403,'Search requires CSRF');

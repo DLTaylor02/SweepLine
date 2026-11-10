@@ -18,6 +18,11 @@
     $db->prepare("UPDATE search_jobs SET status='running',progress='Grouping overlapping road geometry' WHERE id=?")->execute([$interrupted['search_job']['id']]);
     $queue->recover();$failed=$queue->status($user,$interrupted['search_job']['id']);
     check($failed['search_job']['status']==='failed'&&$failed['search_job']['progress']==='Grouping overlapping road geometry','Worker interruption preserves the last search stage with an explicit failure');
+    $beforeTasks=(int)$db->query('SELECT count(*) FROM data_tasks')->fetchColumn();
+    $diagnostic=$queue->enqueue($user,array_replace($input,['record_history'=>false]),'Synthetic');
+    $queue->runOne();$diagnostic=$queue->status($user,$diagnostic['search_job']['id']);
+    check($diagnostic['search_job']['status']==='complete'&&is_array($diagnostic['result']['candidates']??null),'Diagnostic worker returns real candidate exclusion details');
+    check((int)$db->query('SELECT count(*) FROM data_tasks')->fetchColumn()===$beforeTasks,'Diagnostic worker never starts regional imports');
     for($radius=10;$radius<14;$radius++)$queue->enqueue($user,array_replace($input,['radius_miles'=>$radius,'record_history'=>false]));
     try{$queue->enqueue($user,array_replace($input,['radius_miles'=>14,'record_history'=>false]));check(false,'Search admission bound');}
     catch(\SweepLine\HttpException $e){check(true,'Concurrent distinct searches are queued with explicit admission limits');}

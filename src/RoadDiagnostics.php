@@ -29,20 +29,28 @@ final class RoadDiagnostics
         }
         return $out;
     }
-    public function run(array $input): array
+    public static function roadName(array $input): string {
+        $name=$input['road']??null;
+        if(!is_string($name)||strlen(trim($name))<2||strlen($name)>100)throw new \InvalidArgumentException('Enter a road name or route number (2–100 characters).');
+        return trim($name);
+    }
+    public function run(array $input,?callable $progress=null): array
     {
-        $p=Validation::search($input);$name=$input['road']??null;
-        if (!is_string($name) || strlen(trim($name))<2 || strlen($name)>100) {throw new \InvalidArgumentException('Enter a road name or route number (2–100 characters).');}
+        $progress??=static function(string $stage):void{};
+        $p=Validation::search($input);$name=self::roadName($input);
         $name=trim($name);$pattern='%'.str_replace(['\\','%','_'],['\\\\','\\%','\\_'],$name).'%';
+        $progress('Looking up the diagnostic ZIP location');
         $api=new Api($this->db);$zip=$api->zip($p['zip']);
         $prefix="WITH center AS (SELECT ST_SetSRID(ST_MakePoint(?,?),4326)::geography AS geom,?::double precision AS meters),
             area AS (SELECT geom,meters,ST_Envelope(ST_Buffer(geom,meters)::geometry) AS bounds FROM center) ";
         $base=[$zip['lon'],$zip['lat'],$p['radius_miles']*1609.344];
+        $progress('Checking imported source road tags');
         $q=$this->db->prepare($prefix."SELECT DISTINCT ON(s.osm_id) s.osm_id,s.name,s.ref,s.highway,s.surface
             FROM road_segments s JOIN regions r ON r.active_job_id=s.job_id CROSS JOIN area a
             WHERE s.geom && a.bounds AND ST_DWithin(s.geom::geography,a.geom,a.meters)
             AND (s.name ILIKE ? OR s.ref ILIKE ?) ORDER BY s.osm_id,r.imported_at DESC LIMIT 101");
         $q->execute([...$base,$pattern,$pattern]);$ways=$q->fetchAll(PDO::FETCH_ASSOC);
+        $progress('Checking continuous road candidates');
         $q=$this->db->prepare($prefix."SELECT c.id,c.name,c.ref,c.highway,c.length_m,c.mandatory_stops,c.uncertain_controls,c.surface_known_paved,c.surface_status,c.metrics,c.alternate_names,
             (SELECT jsonb_agg(DISTINCT s.surface) FROM candidate_segments m JOIN road_segments s ON s.id=m.segment_id WHERE m.candidate_id=c.id) AS surface_values
             FROM road_candidates c JOIN regions r ON r.active_job_id=c.job_id CROSS JOIN area a
@@ -52,7 +60,7 @@ final class RoadDiagnostics
                 WHERE m.candidate_id=c.id AND (s.name ILIKE ? OR s.ref ILIKE ?)))
             ORDER BY c.length_m DESC,c.id LIMIT 101");
         $q->execute([...$base,$pattern,$pattern,$pattern,$pattern,$pattern]);$roads=$q->fetchAll(PDO::FETCH_ASSOC);
-        $search=$api->search($p);$visible=[];$combined=[];
+        $search=$api->search($p,$progress);$visible=[];$combined=[];
         foreach($search['results'] as $result)foreach($result['member_ids']??[$result['id']] as $member){$visible[]=(int)$member;$combined[(int)$member]=$result['id'];}
         $truncated=count($ways)>100 || count($roads)>100;$ways=array_slice($ways,0,100);$roads=array_slice($roads,0,100);
         foreach ($roads as &$road) {

@@ -546,6 +546,16 @@ async function testFrontend(sources) {
   discoveryReply={search_job:{id:92,status:'failed',progress:'Loading candidate road geometry',error:'Database operation failed during Loading candidate road geometry.'}};
   await searchUI.run({...repeatPayload});
   check(!get('search-error').hidden&&get('search-error').textContent.includes('Loading candidate road geometry')&&get('search-spinner').hidden,'Worker failures expose their actual stage without a gateway timeout');
+  let diagnosticPolls=0;
+  discoveryReply=path=>{
+    if(path==='/api/search-diagnostics')return {search_job:{id:93,status:'queued',progress:'Waiting for the search worker'}};
+    diagnosticPolls++;return {search_job:{id:93,status:'failed',error:'Database operation failed during Checking continuous road candidates.'}};
+  };
+  const diagnosticRun=get('road-diagnostic').onsubmit({preventDefault(){},target:get('road-diagnostic')});
+  await flush();
+  check(get('diagnostic-status').textContent.includes('Waiting for the search worker')&&get('diagnostic-submit').disabled,'Queued road diagnosis displays worker progress');
+  await timers.filter(t=>t.active&&t.ms===2000).at(-1).fn();await diagnosticRun;
+  check(diagnosticPolls===1&&get('diagnostic-status').textContent.includes('Checking continuous road candidates')&&!get('diagnostic-submit').disabled,'Diagnostic polling displays persistent stage-specific failure and allows retry');
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){
