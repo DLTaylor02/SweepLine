@@ -9,6 +9,7 @@ SweepLine\BeamFailure::install($db);
 $exports=new SweepLine\BeamJobs($db);$exports->recover();$exports->maintain();
 $worker->recover(); $worker->maintain();
 $cleanup=new SweepLine\ImportCleanup($db);$regions=new SweepLine\RegionData($db);
+
 $once=in_array('--once',$argv,true); $lastMaintenance=time();
 do {
     $worker->heartbeat('Checking queued work');
@@ -27,5 +28,5 @@ do {
             if(!$once)sleep($pruned?1:3);
         }
     }
-    if (time()-$lastMaintenance>3600) { $worker->maintain(); $lastMaintenance=time(); }
+    if (time()-$lastMaintenance>3600) { $worker->maintain();$lastMaintenance=time(); }
 } while (!$once);

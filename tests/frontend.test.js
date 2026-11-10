@@ -289,6 +289,17 @@ async function testFrontend(sources) {
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(otherWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
   await flush();
   check(resumed===2,'Another account cannot resume the previous user search');
+  const reconnectReads=[];
+  saved.set('sweepline:active-search:1',JSON.stringify({zip:'12345',radius_miles:5,profile:'open',max_stops:1,_searchJob:91}));
+  const reconnectWindow={...resumeWindow,sweeplineRequest:async path=>{
+    reconnectReads.push(path);
+    if(path==='/api/search-jobs/91')return {search_job:{id:91,status:'running',progress:'Grouping overlapping road geometry'}};
+    return [];
+  }};
+  new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js'])(reconnectWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  await flush();
+  check(reconnectReads.includes('/api/search-jobs/91')&&!reconnectReads.includes('/api/search'),'Returning to Discovery reconnects to the saved job without submitting another search');
+  check(get('status').textContent.includes('Grouping overlapping'),'Reconnected job restores its actual processing stage');
   favoritesSaved=true;
   const favoritesWindow={...window,location:{pathname:'/favorites'}};
   new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['account.js'])(favoritesWindow,document,fetch,function(type,opts){this.type=type;this.detail=opts.detail;},setTimer,clearTimer,SearchParams);
@@ -520,6 +531,21 @@ async function testFrontend(sources) {
   check(historyReads.join(',')==='/api/search-history'&&get('status').textContent.includes('no matching saved History'),'Unmatched legacy links explain missing results without starting work');
   check(searchUI.sameHistoryFilters({zip:'12345',min_sustained_curve_m:45.72},{zip:'12345',min_sustained_curve_ft:150}), 'Legacy filter comparison accepts equivalent units and defaults');
   try{await window.sweeplineRequest('/api/test-timeout');check(false,'Timeout expected');}catch(error){check(error.status===504&&error.message.includes('timed out'),'Gateway timeouts retain HTTP status and a readable explanation');}
+  const queueReads=[];let queuedPoll=0;
+  discoveryReply=path=>{
+    queueReads.push(path);
+    if(path==='/api/search')return {search_job:{id:91,status:'queued',progress:'Waiting for the search worker'},history_id:12};
+    queuedPoll++;return queuedPoll===1?{search_job:{id:91,status:'running',progress:'Grouping overlapping road geometry'}}:{search_job:{id:91,status:'complete'},result:{results:[favoriteRoad],center:{place:'Queued town'},preparation:{state:'ready'},history_id:12}};
+  };
+  await searchUI.run({...repeatPayload});
+  check(get('status').textContent.includes('Waiting for')&&!get('search-spinner').hidden,'Queued searches explain worker availability instead of holding a web request');
+  let searchPoll=timers.filter(t=>t.active&&t.ms===2000).at(-1);await searchPoll.fn();await flush();
+  check(get('status').textContent.includes('Grouping overlapping'),'Worker search stages remain visible during processing');
+  searchPoll=timers.filter(t=>t.active&&t.ms===2000).at(-1);await searchPoll.fn();await flush();
+  check(queueReads.join(',')==='/api/search,/api/search-jobs/91,/api/search-jobs/91'&&get('status').textContent.includes('Queued town'),'Search polling reads a job rather than rerunning expensive discovery');
+  discoveryReply={search_job:{id:92,status:'failed',progress:'Loading candidate road geometry',error:'Database operation failed during Loading candidate road geometry.'}};
+  await searchUI.run({...repeatPayload});
+  check(!get('search-error').hidden&&get('search-error').textContent.includes('Loading candidate road geometry')&&get('search-spinner').hidden,'Worker failures expose their actual stage without a gateway timeout');
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){

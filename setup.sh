@@ -195,6 +195,10 @@ if [[ "$DEPLOYED" != "1" ]]; then
             grep -Fq "Managed by SweepLine installer" "/etc/systemd/system/$APP_SLUG-worker.service" || die "Refusing to stop an unowned worker."
             systemctl stop "$APP_SLUG-worker.service"
         fi
+        if [[ -f "/etc/systemd/system/$APP_SLUG-search.service" ]]; then
+            grep -Fq "Managed by SweepLine installer" "/etc/systemd/system/$APP_SLUG-search.service" || die "Refusing to stop an unowned search worker."
+            systemctl stop "$APP_SLUG-search.service"
+        fi
         info "Deploying application to $APP_DIR"
         install -d -m 0755 "$APP_DIR"
         printf '%s\n' "$APP_SLUG" > "$APP_DIR/.sweepline-deployment"
@@ -215,7 +219,7 @@ if [[ ! -f "$APP_DIR/.sweepline-deployment" ]]; then
     printf '%s\n' "$APP_SLUG" > "$APP_DIR/.sweepline-deployment"
 fi
 [[ "$(cat "$APP_DIR/.sweepline-deployment")" == "$APP_SLUG" ]] || die "Deployment marker mismatch."
-for managed in "/etc/nginx/sites-available/$APP_SLUG" /etc/php/*/fpm/pool.d/"$APP_SLUG".conf "/etc/systemd/system/$APP_SLUG-worker.service"; do
+for managed in "/etc/systemd/system/$APP_SLUG-search.service" "/etc/nginx/sites-available/$APP_SLUG" /etc/php/*/fpm/pool.d/"$APP_SLUG".conf "/etc/systemd/system/$APP_SLUG-worker.service"; do
     [[ ! -e "$managed" ]] || grep -Fq "Managed by SweepLine installer" "$managed" || die "Refusing to overwrite unowned configuration $managed."
 done
 validate_cron_entry "/etc/cron.d/$APP_SLUG"
@@ -413,7 +417,14 @@ WantedBy=multi-user.target
 SERVICE
     install -m 0644 "$worker_tmp" "/etc/systemd/system/$APP_SLUG-worker.service"
     systemd-analyze verify "/etc/systemd/system/$APP_SLUG-worker.service"
-    systemctl daemon-reload; systemctl enable "$APP_SLUG-worker.service"; systemctl restart "$APP_SLUG-worker.service"
+    # Reuse the same hardened service settings for an independent bounded search lane.
+    sed -e "s|background worker|search worker|" -e "s|$WORKER_SCRIPT_RELATIVE|bin/search-worker.php|" "$worker_tmp" > "$worker_tmp.search"
+    install -m 0644 "$worker_tmp.search" "/etc/systemd/system/$APP_SLUG-search.service"
+    rm -f "$worker_tmp.search"
+    systemd-analyze verify "/etc/systemd/system/$APP_SLUG-search.service"
+    systemctl daemon-reload
+    systemctl enable "$APP_SLUG-worker.service" "$APP_SLUG-search.service"
+    systemctl restart "$APP_SLUG-worker.service" "$APP_SLUG-search.service"
 fi
 
 if [[ -n "$SCHEDULED_SCRIPT_RELATIVE" ]]; then
@@ -436,6 +447,7 @@ systemctl is-active --quiet "$fpm_service" || die "PHP-FPM is not running."
 systemctl is-active --quiet nginx || die "Nginx is not running."
 [[ -z "$SCHEDULED_SCRIPT_RELATIVE" ]] || systemctl is-active --quiet cron || die "cron is not running."
 [[ -z "$WORKER_SCRIPT_RELATIVE" ]] || systemctl is-active --quiet "$APP_SLUG-worker.service" || die "Worker is not running."
+[[ -z "$WORKER_SCRIPT_RELATIVE" ]] || systemctl is-active --quiet "$APP_SLUG-search.service" || die "Search worker is not running."
 project_verify
 installed_version="$("${PHP_CLI[@]}" "$APP_DIR/bin/version.php")"
 

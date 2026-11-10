@@ -124,14 +124,22 @@ final class DataQueue
         if($failed)$warnings[]=$failed.' area(s) could not be prepared. A SuperAdmin can inspect and retry failed work in Manage.';
         if($stalled)$warnings[]='No progress has been reported for '.$stalled.' running area(s) for at least 15 minutes. Work may be slow or stalled; a SuperAdmin can inspect it in Manage.';
         return ['state'=>$pending?'preparing':($failed?'failed':'ready'),
-            'areas'=>self::areaFeatures($tasks),'complete'=>$complete,'total'=>count($tasks),'failed'=>$failed,'message'=>$failureMessage??$message,
+            'task_ids'=>array_map('intval',array_column($tasks,'id')),'areas'=>self::areaFeatures($tasks),'complete'=>$complete,'total'=>count($tasks),'failed'=>$failed,'message'=>$failureMessage??$message,
             'queued'=>$queued,'running'=>$running,'retrying'=>$retrying,'stalled'=>$stalled,'warning'=>implode(' ',$warnings),
             'last_activity_at'=>$lastActivity===null?null:gmdate(DATE_ATOM,$lastActivity),'next_retry_at'=>$nextRetry===null?null:gmdate(DATE_ATOM,$nextRetry)];
+    }
+    public function taskStatus(array $ids): array {
+        $ids=array_values(array_unique(array_filter(array_map('intval',$ids),static fn($id)=>$id>0)));
+        if(!$ids||count($ids)>1024)throw new \InvalidArgumentException('Invalid preparation task list.');
+        $q=$this->db->prepare('SELECT * FROM data_tasks WHERE id IN ('.implode(',',array_fill(0,count($ids),'?')).')');$q->execute($ids);$tasks=$q->fetchAll(PDO::FETCH_ASSOC);
+        if(count($tasks)<count($ids))$tasks[]=['kind'=>'roads','status'=>'failed','error'=>'An area preparation job was removed. Run the search again to request it.','payload'=>[]];
+        $roads=(bool)array_filter($tasks,static fn($task)=>($task['kind']??'')==='roads');
+        return $this->summary($tasks,$roads);
     }
     public function overview(): array
     {
         $this->purgeCancelled();
-        return ['beamng'=>$this->db->query("SELECT id,name AS task_key,'beamng' AS kind,status,progress,error,cancel_requested,created_at FROM beamng_exports WHERE status NOT IN ('cancelled','expired') ORDER BY CASE WHEN status IN ('queued','running') THEN 0 ELSE 1 END,created_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),'settings'=>(new StorageSettings($this->db))->read(),'storage'=>StorageUsage::read($this->db),'tasks'=>$this->db->query("SELECT id,task_key,kind,status,attempts,progress,error,cancel_requested,next_attempt_at,updated_at FROM data_tasks WHERE cancel_requested=false AND status<>'cancelled' ORDER BY CASE WHEN status IN ('running','queued','retry') THEN 0 ELSE 1 END,updated_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
+        return ['searches'=>$this->db->query("SELECT id,'Road search near ZIP '||(parameters->>'zip')||' / '||(parameters->>'radius_miles')||' mi' AS task_key,'search' AS kind,status,progress,error,cancel_requested,created_at FROM search_jobs WHERE status IN ('queued','running','failed') ORDER BY id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),'beamng'=>$this->db->query("SELECT id,name AS task_key,'beamng' AS kind,status,progress,error,cancel_requested,created_at FROM beamng_exports WHERE status NOT IN ('cancelled','expired') ORDER BY CASE WHEN status IN ('queued','running') THEN 0 ELSE 1 END,created_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),'settings'=>(new StorageSettings($this->db))->read(),'storage'=>StorageUsage::read($this->db),'tasks'=>$this->db->query("SELECT id,task_key,kind,status,attempts,progress,error,cancel_requested,next_attempt_at,updated_at FROM data_tasks WHERE cancel_requested=false AND status<>'cancelled' ORDER BY CASE WHEN status IN ('running','queued','retry') THEN 0 ELSE 1 END,updated_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
             'imports'=>$this->db->query("SELECT j.id,r.name,j.status,j.progress,j.error,j.cancel_requested,j.created_at FROM import_jobs j JOIN regions r ON r.id=j.region_id WHERE j.cancel_requested=false AND NOT EXISTS(SELECT 1 FROM data_tasks t WHERE t.import_job_id=j.id) ORDER BY CASE WHEN j.status IN ('queued','running') THEN 0 ELSE 1 END,j.id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC),
             'counts'=>$this->db->query('SELECT status,count(*) AS count FROM data_tasks WHERE cancel_requested=false GROUP BY status')->fetchAll(PDO::FETCH_ASSOC),
             'worker_activity'=>$this->db->query("SELECT value FROM app_settings WHERE key='worker_activity'")->fetchColumn()?:null,

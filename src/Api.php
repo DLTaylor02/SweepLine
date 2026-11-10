@@ -28,9 +28,12 @@ final class Api
     {
         return $this->db->query('SELECT slug,name,imported_at,active_job_id,ST_AsGeoJSON(coverage) AS geometry FROM regions ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
     }
-    public function search(array $input): array
+    public function search(array $input,?callable $progress=null): array
     {
+        $progress??=static function(string $stage): void {};
+        $progress('Looking up the ZIP location');
         $p=Validation::search($input); $zip=$this->zip($p['zip']);
+        $progress('Finding nearby road candidates');
         // All geometry and scores are precomputed. Indexed spheroidal distance, not a bbox filter.
         // Plan IDs/point counts first: do not transfer unbounded full-resolution geometry.
         $plan=$this->db->prepare("SELECT c.id,ST_NPoints(c.geom::geometry) AS point_count
@@ -41,6 +44,7 @@ final class Api
         $plan->execute(['profile'=>$p['profile'],'lon'=>$zip['lon'],'lat'=>$zip['lat'],'meters'=>$p['radius_miles']*1609.344]);
         $planned=$plan->fetchAll(PDO::FETCH_ASSOC);$truncated=count($planned)>600;$planned=array_slice($planned,0,600);
         if(array_sum(array_column($planned,'point_count'))>200000)throw new HttpException(422,'Road geometry limit reached. Use a smaller search radius.');
+        $progress('Loading candidate road geometry');
         $rows=[];
         if($planned) {
             $ids=array_column($planned,'id');$marks=implode(',',array_fill(0,count($ids),'?'));
@@ -53,12 +57,17 @@ final class Api
             $q->execute(array_merge([$p['profile']],$ids));$rows=$q->fetchAll(PDO::FETCH_ASSOC);
         }
         $service=new RoadConsolidator($this->db);$results=[];
-        foreach(RoadOverlap::groups(array_map([$this,'decode'],$rows)) as $group) {
+        $progress('Grouping overlapping road geometry');
+        $groups=RoadOverlap::groups(array_map([$this,'decode'],$rows));
+        $stage='Combining and scoring '.count($groups).' road groups';
+        foreach($groups as $group) {
+            $progress($stage);
             $road=$service->combine($group,$p['profile']);
             if(!RoadDiagnostics::reasons($road,$p))$results[]=$road;
         }
         usort($results,static fn($a,$b)=>($b['score']<=>$a['score'])?:($b['length_m']<=>$a['length_m'])?:($a['id']<=>$b['id']));
         if(count($results)>100)$truncated=true;$results=array_slice($results,0,100);
+        $progress('Checking final coverage');
         $coverage=$this->db->prepare('WITH target AS (SELECT ST_Buffer(ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?)::geometry AS geom) SELECT COALESCE(ST_Covers(ST_UnaryUnion(ST_Collect(coverage)),(SELECT geom FROM target)),false) FROM regions WHERE active_job_id IS NOT NULL AND coverage && (SELECT geom FROM target)');
         $coverage->execute([$zip['lon'],$zip['lat'],$p['radius_miles']*1609.344]);
         return ['center'=>$zip,'parameters'=>$p,'results'=>$results,'truncated'=>$truncated,'full_radius_covered'=>(bool)$coverage->fetchColumn(),

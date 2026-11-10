@@ -58,7 +58,12 @@ function restoreSearch(userId) {
     if(!p || !/^\d{5}$/.test(p.zip) || !Number.isInteger(p.radius_miles) || p.radius_miles<1 || p.radius_miles>50 ||
       !['twisty','open'].includes(p.profile) || !Number.isInteger(p.max_stops) ||
       p.max_stops<0 || p.max_stops>100)return false;
-    fillSearch(p);return true;
+    fillSearch(p);
+    if(Number.isSafeInteger(p._searchJob)&&p._searchJob>0){
+      const sequence=++request;setStatus('Reconnecting to your search...',true);
+      discover({...p,_recorded:true},sequence);return false;
+    }
+    return true;
   } catch (_) {return false;}
 }
 let pickingZip=false,zipPickRequest=0;
@@ -124,8 +129,9 @@ function paintSearchStages(busy,preparation){
   const message=preparation?.message||'';
   let stage=0;
   if(complete)stage=searchStages.length;
+  else if(/final coverage|saving search results|results ready/i.test(message))stage=4;
   else if(/ZIP|postal/i.test(message))stage=1;
-  else if(/analyz|connect|scor|normaliz|loaded.*nodes/i.test(message))stage=3;
+  else if(/analyz|connect|scor|normaliz|loaded.*nodes|overlapping|candidate|combining/i.test(message))stage=3;
   else if(preparation)stage=2;
   const label=complete?'Search ready · cached or prepared data':`Step ${stage+1} of ${searchStages.length} · ${searchStages[stage]}`;
   $('search-stage-label').textContent=label;
@@ -471,10 +477,23 @@ function showSearchError(error,context='Road search',retrying=false,preparation=
 async function discover(payload, sequence) {
   let phase='Road search';
   try {
-    const params={...payload};delete params._mapShown;delete params._recorded;delete params._historyId;params.record_history=!payload._recorded;
+    const params={...payload};delete params._mapShown;delete params._recorded;delete params._historyId;delete params._searchJob;params.record_history=!payload._recorded;params.background=true;
     if(payload._historyId)params.history_id=payload._historyId;
-    const data=await api('/api/search',{method:'POST',body:JSON.stringify(params)});
+    let data=payload._searchJob?await api('/api/search-jobs/'+payload._searchJob):await api('/api/search',{method:'POST',body:JSON.stringify(params)});
     if(sequence!==request)return;
+    if(data.search_job){
+      const job=data.search_job;
+      if('history_id' in data)payload._historyId=data.history_id??undefined;
+      if(['failed','cancelled'].includes(job.status))throw new Error(job.error||'Search cancelled.');
+      if(job.status!=='complete'){
+        payload._searchJob=job.id;rememberSearch(payload);
+        const preparation=data.preparation?{...data.preparation,state:'preparing',message:job.status==='queued'&&data.preparation.state!=='ready'?data.preparation.message:job.progress}:null;
+        setStatus(job.progress+(job.status==='queued'?'. '+(job.ahead?job.ahead+' search(es) ahead. ':'')+'Waiting for the search worker.':'.')+(preparation?.total?' '+preparation.complete+'/'+preparation.total+' areas ready.':'')+(roads.length?' Previously displayed roads remain visible.':''),true,preparation);
+        if(preparation?.warning){$('search-error').textContent=preparation.warning;$('search-error').hidden=false;}
+        pollTimer=setTimeout(()=>discover(payload,sequence),2000);return;
+      }
+      delete payload._searchJob;data=data.result;
+    }
     if(!data||!Array.isArray(data.results))throw new Error('The server returned an invalid search response. Reload the page and try again.');
     phase='Displaying search results';
     currentSearchParameters=data.parameters || {...params};delete currentSearchParameters.record_history;

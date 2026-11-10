@@ -249,3 +249,5 @@ try{
 }finally{$q=$db->prepare('DELETE FROM beamng_exports WHERE id IN (?,?)');$q->execute($stageIds);rmdir($stageRoot);}
 
 require __DIR__.'/region-data-integration.php';
+
+require __DIR__.'/search-jobs-integration.php';

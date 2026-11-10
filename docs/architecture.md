@@ -213,3 +213,7 @@ Split/merge paint distinguishes through lanes from the opposing carriageway. Opp
 `composer test` runs quick algorithm/security/cache checks, including generated tunnel-clearance geometry, without rebuilding every complete map archive. `composer test:full` retains all archive scenarios; `composer test:integration` adds the disposable-PostGIS tests. CI still runs the complete set. Output is condensed by suite with timings and an explicit failure summary; add `--verbose` to `php tests/run.php` for every assertion. Quick mode is also available as `php tests/run.php --quick`. On the development machine the quick path takes about eight seconds; timings depend on the host.
 
 Validated BeamNG inputs are shared for seven days in the owner-only `var/beam-resources/` cache. Keys cover exact provider URLs/query bodies and resource types; stored size/hash and format checks reject corrupt or incomplete data. Publication is atomic and per-key locked. The existing scheduled BeamNG cleanup expires data without new services, packages or migrations. Upgrades preserve this directory under `var/`; small lock files contain no source data. Resource caching does not change completed ZIP download expiry or regional road-import refresh rules.
+
+## Durable web discovery
+
+See [search processing](search-processing.md) for migration 022, the independent PHP search service, admission limits, reconnection, cancellation and timeout behavior. This supersedes synchronous web-discovery processing for the Discovery UI; compatibility API calls remain synchronous.

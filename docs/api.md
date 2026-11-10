@@ -12,7 +12,9 @@ JSON, same-origin sessions, no permissive CORS. Call `GET /api/session` to obtai
 | `GET /api/profiles` | Public profile definitions |
 | `GET /api/session` | Current user, CSRF token, administrator readiness |
 | `POST /api/login`, `POST /api/logout` | Web session login/logout |
-| `POST /api/search` | Authenticated road discovery and automatic preparation |
+| `POST /api/search` | Authenticated road discovery; use `background:true` for durable queued processing |
+| `GET /api/search-jobs/{id}` | Owner-only queued search progress and completed results |
+| `POST /api/admin/search-jobs/{id}/cancel` | SuperAdmin search cancellation; CSRF required |
 | `GET /api/zips/{zip}` | Authenticated local ZIP lookup; 202 during preparation |
 | `GET /api/coverage` | Authenticated active coverage |
 | `GET /api/roads/123?profile=twisty` | Authenticated road details and score dimensions |

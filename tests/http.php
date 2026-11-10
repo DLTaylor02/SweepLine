@@ -21,6 +21,7 @@ function expect(array $response,int $code,string $message): array {
 }
 expect(callApi($anonymous,'GET','/api/health'),200,'Public application health');
 expect(callApi($anonymous,'GET','/api/search-history'),401,'Search history requires login');
+expect(callApi($anonymous,'GET','/api/search-jobs/1'),401,'Search job status requires login');
 expect(callApi($anonymous,'GET','/api/zips/nearest?lon=-119.8&lat=39.52'),401,'Map ZIP lookup requires sign-in');
 expect(callApi($anonymous,'POST','/api/search-diagnostics',['zip'=>'12345','road'=>'Synthetic']),403,'Road diagnosis requires CSRF before authentication');
 expect(callApi($anonymous,'GET','/api/coverage'),401,'Coverage requires login');
@@ -96,6 +97,13 @@ expect(callApi($member,'GET','/api/admin/regions'),403,'User cannot read region 
 expect(callApi($member,'POST','/api/admin/regions/action',['key'=>'auto-test','action'=>'discard'],$memberSession['csrf']),403,'User cannot discard regional data');
 expect(callApi($admin,'POST','/api/admin/regions/action',['key'=>'auto-test','action'=>'discard']),403,'Region discard requires CSRF');
 expect(callApi($admin,'POST','/api/admin/regions/action',['key'=>'../unsafe','action'=>'discard'],$csrf),422,'Region actions validate identifiers');
+$queuedSearch=expect(callApi($admin,'POST','/api/search',['zip'=>'12345','radius_miles'=>5,'background'=>true,'record_history'=>false],$csrf),202,'Discovery can enqueue worker processing without holding the HTTP request');
+$searchJobId=$queuedSearch['search_job']['id'];
+expect(callApi($admin,'GET','/api/search-jobs/'.$searchJobId),200,'Owner polls worker search');
+expect(callApi($member,'GET','/api/search-jobs/'.$searchJobId),404,'Another user cannot read a search job');
+expect(callApi($admin,'POST','/api/admin/search-jobs/'.$searchJobId.'/cancel'),403,'Search cancellation requires CSRF');
+expect(callApi($admin,'POST','/api/admin/search-jobs/'.$searchJobId.'/cancel',[],$csrf),200,'SuperAdmin cancels queued discovery');
+expect(callApi($admin,'POST','/api/search',['zip'=>'12345','background'=>'yes'],$csrf),422,'Background search flag must be a Boolean');
 $history=expect(callApi($admin,'GET','/api/search-history'),200,'SuperAdmin views own history');
 if (count($history)!==1 || $history[0]['parameters']['radius_miles']!=25) { throw new RuntimeException('Search history missing or polluted by polling'); }
 if($history[0]['city']!=='Synthetic place' || $history[0]['state']!=='ZZ')throw new RuntimeException('ZIP city missing from History');

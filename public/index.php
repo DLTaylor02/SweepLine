@@ -25,6 +25,7 @@ try {
     $method=$_SERVER['REQUEST_METHOD']??'GET';
     $postPaths=['/api/admin/regions/action','/api/elevations','/api/custom-roads','/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/beamng'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
+    if(preg_match('#^/api/admin/search-jobs/[1-9]\\d{0,17}/cancel$#',$path))$expected='POST';
     if ($path==='/api/admin/storage' && $method==='PATCH') {$expected='PATCH';}
     if ($path==='/api/admin/session-settings' && $method==='GET') {$expected='GET';}
     if ($path==='/api/admin/users' && $method==='GET') { $expected='GET'; }
@@ -119,6 +120,13 @@ try {
             }
 
             elseif ($path==='/api/search-diagnostics') { $result=(new SweepLine\RoadDiagnostics($db))->run($input); }
+            elseif(preg_match('#^/api/search-jobs/([1-9]\\d{0,17})$#',$path,$m)){$result=(new SweepLine\SearchJobs($db))->status((int)$user['id'],(int)$m[1]);}
+            elseif(preg_match('#^/api/admin/search-jobs/([1-9]\\d{0,17})/cancel$#',$path,$m)){$result=(new SweepLine\SearchJobs($db))->cancel((int)$m[1]);}
+            elseif($path==='/api/search'&&isset($input['background'])&&!is_bool($input['background'])){throw new InvalidArgumentException('background must be a JSON boolean');}
+            elseif($path==='/api/search'&&($input['background']??false)===true){
+                if(isset($input['record_history'])&&!is_bool($input['record_history']))throw new InvalidArgumentException('record_history must be a JSON boolean');
+                $result=(new SweepLine\SearchJobs($db))->enqueue((int)$user['id'],$input);http_response_code(202);
+            }
             elseif ($path==='/api/search') {
                 if (isset($input['record_history']) && !is_bool($input['record_history'])) { throw new InvalidArgumentException('record_history must be a JSON boolean'); }
                 $p=SweepLine\Validation::search($input); $queue=new SweepLine\DataQueue($db); $preparation=$queue->prepare($p);
