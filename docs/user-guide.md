@@ -170,3 +170,11 @@ Tunnel bend clearance: excavation retains every original pavement heading/grade 
 
 tests/tunnel-clearance.php generates curved, sloped, changing-width roads at multiple orientations and checks all replacement ground/wall faces against their pavement triangles, including vertex, edge-midpoint and centroid samples with a 5 mm detection tolerance. Terrain and geometry are generated entirely by the tests. These offline checks supplement in-game validation.
 
+
+## Preparation problems and incomplete results
+
+Discovery shows available roads while missing areas prepare. The status distinguishes waiting for the background worker, active processing and scheduled automatic retries. Failed areas remain visible as an attention notice even when other areas are still processing; those results are explicitly incomplete.
+
+A running area with no reported progress for at least 15 minutes is described as possibly slow or stalled. This is a warning, not proof that the worker has stopped, and does not cancel or restart work. A SuperAdmin can inspect the job in Manage. Once work resumes, active searches continue checking status; if all preparation had failed and polling stopped, run the search again after the job is retried.
+
+Request, rendering, map-update and history-restoration errors appear in both the sidebar and a persistent map alert. The alert includes the reason and clears on a successful retry. Unreadable server responses retain their HTTP status for diagnosis.

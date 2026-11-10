@@ -18,7 +18,7 @@
     if(method!=='GET') { headers['Content-Type']='application/json';headers['X-CSRF-Token']=session.csrf || ''; }
     const response=await fetch(path,{...options,headers,credentials:'same-origin'});
     let data;
-    try { data=await response.json(); } catch (_) { throw new Error('Server response unavailable. Please try again.'); }
+    try { data=await response.json(); } catch (_) { const error=new Error('The server returned an unreadable response (HTTP '+response.status+'). Please try again.');error.status=response.status;throw error; }
     if(!response.ok) {
       if(data.redirect==='/password')window.location?.assign?.('/password');
       if(response.status===401 && path!=='/api/login') { session.user=null;paint(); }

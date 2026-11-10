@@ -107,8 +107,28 @@ final class DataQueue
             elseif ($task['status']==='failed') { $failed++; $failureMessage=$task['error']?:'Data preparation failed.'; }
             elseif ($task['status']==='running' || $task['status']==='retry') { $message=$task['progress']; }
         }
+        $queued=0;$running=0;$retrying=0;$stalled=0;$lastActivity=null;$nextRetry=null;$now=time();
+        foreach($tasks as $task){
+            if($task['cancel_requested']??false)continue;
+            if($task['status']==='queued')$queued++;
+            if($task['status']==='running'){
+                $running++;$updated=strtotime($task['updated_at']??'');
+                if($updated!==false&&$now-$updated>=900)$stalled++;
+            }
+            if($task['status']==='retry'){
+                $retrying++;$next=strtotime($task['next_attempt_at']??'');
+                if($next!==false)$nextRetry=$nextRetry===null?$next:min($nextRetry,$next);
+            }
+            $updated=strtotime($task['updated_at']??'');
+            if($updated!==false)$lastActivity=$lastActivity===null?$updated:max($lastActivity,$updated);
+        }
+        $warnings=[];
+        if($failed)$warnings[]=$failed.' area(s) could not be prepared. A SuperAdmin can inspect and retry failed work in Manage.';
+        if($stalled)$warnings[]='No progress has been reported for '.$stalled.' running area(s) for at least 15 minutes. Work may be slow or stalled; a SuperAdmin can inspect it in Manage.';
         return ['state'=>$pending?'preparing':($failed?'failed':'ready'),
-            'areas'=>self::areaFeatures($tasks),'complete'=>$complete,'total'=>count($tasks),'failed'=>$failed,'message'=>$failureMessage??$message];
+            'areas'=>self::areaFeatures($tasks),'complete'=>$complete,'total'=>count($tasks),'failed'=>$failed,'message'=>$failureMessage??$message,
+            'queued'=>$queued,'running'=>$running,'retrying'=>$retrying,'stalled'=>$stalled,'warning'=>implode(' ',$warnings),
+            'last_activity_at'=>$lastActivity===null?null:gmdate(DATE_ATOM,$lastActivity),'next_retry_at'=>$nextRetry===null?null:gmdate(DATE_ATOM,$nextRetry)];
     }
     public function overview(): array
     {

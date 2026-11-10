@@ -470,6 +470,33 @@ async function testFrontend(sources) {
   check(requests.some(r=>r.path==='/api/password/change'&&r.method==='POST'&&!!r.headers['X-CSRF-Token']),'Password change uses CSRF POST');
   check(redirectTarget==='/','Password success returns to authenticated discovery');
   check(customMapResizes>0,'Custom-road map mock supports resize when later account sessions change');
+
+  // Immediate cached results and history replay share the same discovery path.
+  let discoveryReply={results:[favoriteRoad],center:{place:'Cached town'},preparation:{state:'ready',complete:1,total:1}},discoveryFailure=null;
+  const searchWindow={...window,location:{pathname:'/',search:''},SweepLineAccount:null,sweeplineRequest:async()=>{if(discoveryFailure)throw discoveryFailure;return discoveryReply;}};
+  const searchUI=new Function('window','document','fetch','CustomEvent','setTimeout','clearTimeout','URLSearchParams',sources['app.js']+'\nreturn {run:payload=>discover(payload,++request)};')(searchWindow,document,fetch,function(){},setTimer,clearTimer,SearchParams);
+  const repeatPayload={zip:'12345',radius_miles:5,profile:'twisty'};
+  await searchUI.run({...repeatPayload});await searchUI.run({...repeatPayload});
+  check(get('results').children.length===1&&!get('panel-discoveries').hidden&&get('status').textContent.includes('Cached town'),'Repeated immediate cached searches display results and completion');
+  discoveryFailure=Object.assign(new Error('Road geometry limit reached. Use a smaller search radius.'),{status:422});
+  await searchUI.run({...repeatPayload,_recorded:true});
+  check(!get('search-error').hidden&&get('search-error').textContent.includes('geometry limit')&&get('map-status').textContent==='SEARCH NEEDS ATTENTION','History/search API rejection stays visible over the map with the actual reason');
+  check(get('search-spinner').hidden&&!get('submit').disabled,'Failed search stops loading and permits retry');
+  discoveryFailure=null;await searchUI.run({...repeatPayload,_recorded:true});
+  check(get('search-error').hidden&&get('results').children.length===1,'Retrying a previous search clears its error and displays cached roads');
+  discoveryReply={...discoveryReply,results:[{...favoriteRoad,score:'invalid'}]};
+  await searchUI.run({...repeatPayload});
+  check(!get('search-error').hidden&&get('search-error').textContent.includes('Displaying search results failed'),'Browser result-rendering failure is reported visibly instead of silently ending search');
+
+
+  discoveryReply={results:[favoriteRoad],center:{place:'Cached town'},preparation:{state:'preparing',message:'Reading roads',complete:1,total:3,failed:1,running:0,retrying:1,warning:'One area failed. A SuperAdmin can inspect it in Manage.'}};
+  await searchUI.run({...repeatPayload});
+  check(get('results').children.length===1&&!get('search-error').hidden&&get('search-error').textContent.includes('incomplete'),'Failed areas remain prominent alongside available partial roads');
+  check(get('status').textContent.includes('automatic retry')&&!get('search-spinner').hidden,'Waiting retry is explained while automatic status checking continues');
+  discoveryReply={results:[favoriteRoad],center:{place:'Cached town'},preparation:{state:'ready',complete:3,total:3}};
+  await searchUI.run({...repeatPayload});
+  check(get('search-error').hidden&&get('status').textContent.includes('Cached town'),'Recovered preparation clears its warning and shows completed results');
+
   return checks;
 }
 if(typeof require==='function'&&typeof module!=='undefined'&&require.main===module){

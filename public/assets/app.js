@@ -139,6 +139,7 @@ function paintSearchStages(busy,preparation){
 }
 
 function setStatus(message, busy=false, preparation=null) {
+  $('search-error').hidden=true;
   paintSearchStages(busy,preparation);
   if(preparation?.state==='ready')showDiscoveryTab('discoveries');
   if(preparation||!busy)updatePreparationAreas(preparation);
@@ -459,23 +460,44 @@ async function selectRoad(id) {
   } catch(e) { if(selected===id) detail.append(text('p',e.message)); }
 }
 
+function showSearchError(error,context='Road search',retrying=false,preparation=null){
+  const reason=error?.message||'An unexpected error occurred. Please try again.';
+  const message=context+' failed. '+reason+(retrying?' Retrying automatically…':' You can retry this search.');
+  setStatus(message,retrying,preparation);
+  $('search-error').textContent=message;$('search-error').hidden=false;
+  $('map-status').textContent=retrying?'SEARCH RETRY SCHEDULED':'SEARCH NEEDS ATTENTION';
+  scrollToSearchProgress();
+}
 async function discover(payload, sequence) {
+  let phase='Road search';
   try {
     const params={...payload};delete params._mapShown;delete params._recorded;params.record_history=!payload._recorded;
     const data=await api('/api/search',{method:'POST',body:JSON.stringify(params)});
     if(sequence!==request)return;
+    if(!data||!Array.isArray(data.results))throw new Error('The server returned an invalid search response. Reload the page and try again.');
+    phase='Displaying search results';
     currentSearchParameters=data.parameters || {...params};delete currentSearchParameters.record_history;
     payload._recorded=true;
     roads=data.results || [];activeProfile=payload.profile;render();
     const preparation=data.preparation;
+    const retryNote=preparation?.retrying>0&&preparation.running===0
+      ? ' Waiting for an automatic retry'+(preparation.next_retry_at?' at '+new Date(preparation.next_retry_at).toLocaleTimeString():'')+'.'
+      : preparation?.queued>0&&preparation.running===0?' Waiting for the background worker.':'';
+
     if(preparation && preparation.state!=='ready') {
       setStatus(`${preparation.message} · ${preparation.complete}/${preparation.total} areas ready.`+
-        (preparation.state==='failed'?' A SuperAdmin can retry failed tasks in Manage.':` ${roads.length?'Showing partial results.':'First-time preparation can take several minutes.'} This search will update automatically.`), preparation.state!=='failed', preparation);
-      if(preparation.state!=='failed')pollTimer=setTimeout(()=>discover(payload,sequence),5000);
+        (preparation.state==='failed'?' A SuperAdmin can retry failed tasks in Manage.':` ${roads.length?'Showing partial results.':'First-time preparation can take several minutes.'} This search will update automatically.`)+retryNote, preparation.state!=='failed', preparation);
+      if(preparation.warning&&preparation.state!=='failed'){
+        $('search-error').textContent=preparation.warning+' '+(roads.length?'Available roads remain visible; these results are incomplete.':'This search is incomplete.');$('search-error').hidden=false;
+        $('map-status').textContent='PREPARATION NEEDS ATTENTION';
+      }
+      if(preparation.state==='failed')showSearchError(new Error(preparation.message+' A SuperAdmin can retry failed tasks in Manage.'),'Road preparation',false,preparation);
+      else pollTimer=setTimeout(()=>discover(payload,sequence),5000);
     } else {
       setStatus(roads.length?`${roads.length}${data.truncated?'+':''} roads found near ${data.center.place}.`:'No roads match these filters. Try adjusting the length, stop, or surface filters.',false,preparation||{state:'ready'});
     }
     if(map && data.center) {
+      phase='Updating the discovery map';
       await ready;if(sequence!==request)return;
       map.getSource('roads').setData({type:'FeatureCollection',features:roads.map(r=>({type:'Feature',geometry:r.geometry,properties:{id:r.id,score:r.score}}))});
       map.setFilter('selected',['==',['get','id'],-1]);
@@ -484,7 +506,7 @@ async function discover(payload, sequence) {
     }
   } catch(e) {
     if(sequence!==request)return;
-    setStatus(e.status===503?`${e.message} Retrying automatically…`:e.message,e.status===503);
+    showSearchError(e,phase,e.status===503);
     if(e.status===503)pollTimer=setTimeout(()=>discover(payload,sequence),10000);
   } finally { if(sequence===request)$('submit').disabled=false; }
 }
@@ -559,6 +581,10 @@ async function openFavorite(id) {
   } catch(e){if(sequence===request)setStatus(e.message);}
 }
 async function handleSession(event) {
+  try { await applyDiscoverySession(event); }
+  catch(error){showSearchError(error,'Restoring discovery');$('submit').disabled=false;}
+}
+async function applyDiscoverySession(event) {
   if(window.location?.pathname && window.location.pathname!=='/')return;
   if(!event.detail.user) {
     window.sweeplineBeamStop?.();
@@ -583,7 +609,7 @@ async function handleSession(event) {
     pendingHistorySearch=false;
     const form=$('search');
     if(!form.checkValidity || form.checkValidity())form.onsubmit({preventDefault(){},target:form,fromHistory:true});
-    else setStatus('Saved search contains filters that are no longer supported. Please adjust them.');
+    else showSearchError(new Error('Saved search contains filters that are no longer supported. Please adjust them.'),'Opening previous search');
   }
   if(map) { await ready;map.resize(); }
   api('/api/coverage').then(regions=>{
