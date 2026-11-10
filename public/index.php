@@ -88,9 +88,10 @@ try {
                 $favorites=new SweepLine\Favorites($db);$result=$method==='DELETE'?$favorites->delete((int)$user['id'],(int)$m[1]):$favorites->detail((int)$user['id'],(int)$m[1]);
             } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})/thumbnail$#',$path,$m)) {
                 $favorite=(new SweepLine\Favorites($db))->detail((int)$user['id'],(int)$m[1]);
-                if (!isset($favorite['road']['basemap'])) {$favorite['road']['basemap']=SweepLine\ExportMap::load($db,$favorite['road']);}
+                $thumbnail=$db->prepare('SELECT svg FROM favorite_thumbnails WHERE favorite_id=?');$thumbnail->execute([(int)$m[1]]);$cachedThumbnail=$thumbnail->fetchColumn();
+                header('Cache-Control: private, no-store');
                 header('Content-Type: image/svg+xml; charset=utf-8');header("Content-Security-Policy: default-src 'none'; style-src 'none'; sandbox");
-                echo SweepLine\FavoriteThumbnail::render($favorite['road']);exit;
+                echo $cachedThumbnail?:SweepLine\FavoriteThumbnail::render($favorite['road']);exit;
             } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})/preferences$#',$path,$m)) {
                 $result=(new SweepLine\Favorites($db))->preferences((int)$user['id'],(int)$m[1],$input);
             } elseif (preg_match('#^/api/favorites/([1-9]\\d{0,17})/export$#',$path,$m)) {

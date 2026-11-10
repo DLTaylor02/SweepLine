@@ -33,7 +33,9 @@ final class Favorites
             $q=$this->db->prepare('INSERT INTO favorites(user_id,geometry_key,profile,snapshot,search_parameters) VALUES (?,?,?,?::jsonb,?::jsonb)
                 ON CONFLICT(user_id,geometry_key,profile) DO UPDATE SET snapshot=excluded.snapshot,search_parameters=excluded.search_parameters RETURNING id');
             $q->execute([$user,$key,$profile,json_encode($road,JSON_THROW_ON_ERROR),json_encode($search,JSON_THROW_ON_ERROR)]);
-            $id=(int)$q->fetchColumn();$this->db->commit();return ['id'=>$id,'saved'=>true];
+            $id=(int)$q->fetchColumn();
+            $this->db->prepare('DELETE FROM favorite_thumbnails WHERE favorite_id=?')->execute([$id]);
+            $this->db->commit();return ['id'=>$id,'saved'=>true];
         } catch (\Throwable $e) {$this->db->rollBack();throw $e;}
     }
     public function preferences(int $user,int $id,array $input): array
@@ -41,11 +43,13 @@ final class Favorites
         $road=$this->detail($user,$id)['road'];$road=RoadNames::prefer($road,$input['preferred_name']??null);
         $orientation=RoadExport::orientation($input['orientation']??($road['preferred_orientation']??'forward'));
         $q=$this->db->prepare("UPDATE favorites SET snapshot=snapshot || CAST(? AS jsonb) WHERE id=? AND user_id=?");
-        $q->execute([json_encode(['name'=>$road['name'],'alternate_names'=>$road['alternate_names'],'preferred_orientation'=>$orientation],JSON_THROW_ON_ERROR),$id,$user]);return ['saved'=>true];
+        $q->execute([json_encode(['name'=>$road['name'],'alternate_names'=>$road['alternate_names'],'preferred_orientation'=>$orientation],JSON_THROW_ON_ERROR),$id,$user]);
+        $this->db->prepare('DELETE FROM favorite_thumbnails WHERE favorite_id=?')->execute([$id]);return ['saved'=>true];
     }
     public function recent(int $user): array
     {
         $q=$this->db->prepare("SELECT id,profile,created_at,search_parameters,snapshot-'geometry'-'parts'-'basemap' AS road,
+            EXISTS(SELECT 1 FROM favorite_thumbnails t WHERE t.favorite_id=favorites.id AND t.svg IS NOT NULL) AS thumbnail_ready,
             ST_AsGeoJSON(ST_SimplifyPreserveTopology(ST_GeomFromGeoJSON((snapshot->'geometry')::text),0.0001),6) AS geometry
             FROM favorites WHERE user_id=? ORDER BY id DESC LIMIT 200");
         $q->execute([$user]);$rows=$q->fetchAll(PDO::FETCH_ASSOC);

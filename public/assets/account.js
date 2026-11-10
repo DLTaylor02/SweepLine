@@ -103,7 +103,10 @@
     image.loading='lazy';image.decoding='async';image.width=532;image.height=280;
     return image;
   }
+  let favoriteTimer;
   async function refreshFavorites() {
+    clearTimeout(favoriteTimer);
+    if(!session.user||el('favorites-panel').hidden)return;
     const userId=session.user.id;
     el('favorites-status').textContent='Loading favorites…';
     try {
@@ -119,8 +122,11 @@
         if((road.alternate_names||[]).length)link.append(text('p','Also known as: '+road.alternate_names.join('; ')));
         const remove=text('button','Remove favorite');remove.type='button';
         remove.onclick=async()=>{remove.disabled=true;try{await window.sweeplineRequest('/api/favorites/'+item.id,{method:'DELETE'});await refreshFavorites();}catch(e){el('favorites-status').textContent=e.message;remove.disabled=false;}};
-        card.append(link,remove);el('favorites-list').append(card);
+        card.append(link,remove);
+        if(item.thumbnail_ready===false)card.append(text('p','Background thumbnail pending; showing the road outline.'));
+        el('favorites-list').append(card);
       });
+      if(items.some(item=>item.thumbnail_ready===false))favoriteTimer=setTimeout(refreshFavorites,15000);
     } catch(e){el('favorites-status').textContent=e.message;}
   }
   async function refreshHistory() {

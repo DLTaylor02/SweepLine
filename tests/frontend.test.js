@@ -52,7 +52,7 @@ async function testFrontend(sources) {
     else if(path==='/api/search-jobs/120')data={search_job:{id:120,status:'complete'},result:{id:7,saved:true}};
     else if(path==='/api/favorites/7'&&options.method==='DELETE'){favoritesSaved=false;data={deleted:true};}
     else if(path==='/api/favorites/7')data=savedFavorite;
-    else if(path==='/api/favorites')data=favoritesSaved?[savedFavorite]:[];
+    else if(path==='/api/favorites')data=favoritesSaved?[{...savedFavorite,thumbnail_ready:false}]:[];
     else if(path==='/api/roads/1?profile=twisty')data={id:1,name:'Test road',alternate_names:['Other Road Name'],score:70,dimensions:{curvature:0.7},geometry:favoriteRoad.geometry};
     else if(path==='/api/elevations')data={elevations_m:[304.8,609.6]};
     else if(path==='/api/coverage')data=[];
@@ -311,6 +311,8 @@ async function testFrontend(sources) {
   await flush();
   check(!get('favorites-panel').hidden&&get('workspace').hidden,'Favorites has a dedicated page');
   const card=get('favorites-list').children[0];
+  check(card.children.some(n=>n.textContent.includes('Background thumbnail pending')),'Favorites explain pending geographic backgrounds instead of showing a broken image');
+  check(timers.some(t=>t.active&&t.ms===15000),'Favorites refresh while thumbnail background is pending');
   check(card.children[0].href==='/?favorite=7'&&card.children[0].children[0].src==='/api/favorites/7/thumbnail','Favorite card has geographic thumbnail and direct map link');
   check(card.children[0].children.some(n=>n.textContent==='Also known as: Other Road Name'),'Favorite cards display alternate names');
   check(card.children[0].children[0].loading==='lazy'&&card.children[0].children[0].alt.includes('basemap'),'Geographic thumbnails load lazily with accessible descriptions');

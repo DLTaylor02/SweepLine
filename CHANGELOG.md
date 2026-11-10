@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.146.0:** Preflight regional road density with a bounded count-only provider request and split dense areas before geometry download/import. Persist favorite thumbnail backgrounds in the search service with retries, serve a lightweight route fallback immediately, and refresh pending thumbnail cards without depending on regional task success.
+
 - **0.145.0:** Save Discovery favorites through the durable owner-scoped worker queue with progress and explicit failures. Defer optional thumbnail basemap work until viewing; preserve synchronous API compatibility.
 
 - **0.144.0:** Replace speculative missing-road explanations with actual discovery pipeline outcomes: pre-analysis candidate cap, missing profile scores, consolidated-road filter failures and final ranking limits. Keep original candidate eligibility separate from the selected consolidated road; trace the same discovery pass without relaxing filters.

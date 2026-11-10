@@ -43,6 +43,17 @@ final class CoveragePlanner
         return ['key'=>'custom-'.substr(hash('sha256',json_encode($bounds,JSON_THROW_ON_ERROR)),0,24),'bounds'=>$bounds,'halo'=>0.002];
     }
 
+    public static function roadCount(string $xml): int {
+        $prior=libxml_use_internal_errors(true);
+        try{
+            $document=simplexml_load_string($xml,\SimpleXMLElement::class,LIBXML_NONET);
+            if(!$document||isset($document->remark))throw new \RuntimeException('Road density estimate unavailable.');
+            foreach($document->count->tag??[] as $tag){
+                if((string)$tag['k']==='ways'&&preg_match('/^[0-9]{1,9}$/D',(string)$tag['v']))return (int)$tag['v'];
+            }
+            throw new \RuntimeException('Road density estimate missing.');
+        }finally{libxml_clear_errors();libxml_use_internal_errors($prior);}
+    }
     public static function canSplit(array $tile): bool
     {
         return max($tile['bounds'][2]-$tile['bounds'][0],$tile['bounds'][3]-$tile['bounds'][1])>0.015625;

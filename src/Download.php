@@ -4,7 +4,7 @@ namespace SweepLine;
 
 final class Download
 {
-    public static function file(string $url,string $path,int $maxBytes,?string $post=null,?callable $progress=null): void
+    public static function file(string $url,string $path,int $maxBytes,?string $post=null,?callable $progress=null,int $timeout=240): void
     {
         if (!str_starts_with($url,'https://')) { throw new \RuntimeException('Data providers must use HTTPS.'); }
         $f=fopen($path.'.part','wb');
@@ -12,7 +12,7 @@ final class Download
         $curl=curl_init($url); $bytes=0; $last=0; $tooLarge=false;
         curl_setopt_array($curl,[
             CURLOPT_PROTOCOLS=>CURLPROTO_HTTPS, CURLOPT_REDIR_PROTOCOLS=>CURLPROTO_HTTPS,
-            CURLOPT_FOLLOWLOCATION=>false, CURLOPT_CONNECTTIMEOUT=>20, CURLOPT_TIMEOUT=>240,
+            CURLOPT_FOLLOWLOCATION=>false, CURLOPT_CONNECTTIMEOUT=>min(20,max(1,$timeout)), CURLOPT_TIMEOUT=>max(1,$timeout),
             CURLOPT_FAILONERROR=>true, CURLOPT_USERAGENT=>'SweepLine/0.2 (self-hosted road discovery)',
             CURLOPT_SSL_VERIFYPEER=>true, CURLOPT_SSL_VERIFYHOST=>2,
             CURLOPT_WRITEFUNCTION=>static function ($handle,string $chunk) use ($f,$maxBytes,&$bytes,&$tooLarge): int {

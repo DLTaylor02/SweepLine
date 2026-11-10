@@ -9,6 +9,8 @@ $searches=new SweepLine\SearchJobs($db);
 $searches->recover();$searches->maintain();
 $once=in_array('--once',$argv,true);$maintenance=time();
 do{
-    if(!$searches->runOne()&&!$once)sleep(1);
+    $searched=$searches->runOne();
+    $thumbnail=(new SweepLine\FavoriteThumbnails($db))->runOne();
+    if(!$searched&&!$thumbnail&&!$once)sleep(1);
     if(time()-$maintenance>3600){$searches->maintain();$maintenance=time();}
 }while(!$once);

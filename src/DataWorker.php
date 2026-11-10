@@ -8,9 +8,9 @@ use ZipArchive;
 final class DataWorker
 {
     public function __construct(private PDO $db,private ?\Closure $download=null) {}
-    private function download(string $url,string $path,int $maxBytes,?string $post=null,?callable $progress=null): void
+    private function download(string $url,string $path,int $maxBytes,?string $post=null,?callable $progress=null,int $timeout=240): void
     {
-        ($this->download ?? [Download::class,'file'])($url,$path,$maxBytes,$post,$progress);
+        ($this->download ?? [Download::class,'file'])($url,$path,$maxBytes,$post,$progress,$timeout);
     }
     private function queueChild(DataQueue $queue,array $child,bool $force): void
     {
@@ -133,6 +133,19 @@ final class DataWorker
         // A small halo improves continuity around cell boundaries; only the core is advertised as covered.
         $halo=CoveragePlanner::halo($tile);
         $bbox=implode(',', [max(-90,$s-$halo),max(-180,$w-$halo),min(90,$n+$halo),min(180,$e+$halo)]);
+        $selector='way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service)$"]('.$bbox.');';
+        if(CoveragePlanner::canSplit($tile)){
+            $countPath=$dir.'/roads-'.$id.'-count.osm';$count=null;
+            $this->progress($id,'Checking road density before downloading geometry');
+            try{
+                $this->download(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$countPath,65536,http_build_query(['data'=>'[out:xml][timeout:12];'.$selector.'out count;']),fn($m)=>$this->progress($id,'Checking road density'),15);
+                $count=CoveragePlanner::roadCount((string)file_get_contents($countPath));
+            }catch(JobCancelled $cancelled){throw $cancelled;}
+            catch(\Throwable $densityError){$this->progress($id,'Density estimate unavailable; using bounded fallback');}
+            finally{if(is_file($countPath))unlink($countPath);}
+            if($count!==null&&$count>=12000)throw new \RuntimeException('Road density limit exceeded: '.$count.' ways; splitting before geometry download.');
+            if($count===null&&max($e-$w,$n-$s)>0.25)throw new \RuntimeException('Road density limit exceeded: estimate unavailable for a large area; splitting conservatively.');
+        }
         $query='[out:xml][timeout:180][maxsize:134217728];way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service)$"]('.$bbox.');(._;>;);out body;';
         $path=$dir.'/roads-'.$id.'.osm';
         try {
@@ -158,7 +171,7 @@ final class DataWorker
         $this->db->exec("DELETE FROM auth_attempts WHERE window_start<now()-interval '1 day'");
         $this->db->exec("DELETE FROM road_combination_cache WHERE created_at<now()-interval '7 days' OR cache_key IN (SELECT cache_key FROM road_combination_cache ORDER BY created_at DESC,cache_key OFFSET 500)");
         foreach (glob(SWEEPLINE_ROOT.'/var/downloads/*') as $file) {
-            if (is_file($file) && !is_link($file) && preg_match('/^(roads-[0-9]+\\.osm|us-zips\\.zip|US\\.txt)(\\.part)?$/',basename($file))
+            if (is_file($file) && !is_link($file) && preg_match('/^(roads-[0-9]+(-count)?\\.osm|us-zips\\.zip|US\\.txt)(\\.part)?$/',basename($file))
                 && filemtime($file)<time()-86400) { unlink($file); }
         }
         $this->heartbeat();

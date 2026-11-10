@@ -30,6 +30,14 @@
     if(isset($favoriteDone['result']['id'])){
         $stored=(new \SweepLine\Favorites($db))->detail($user,(int)$favoriteDone['result']['id']);
         check(!isset($stored['road']['basemap']),'Favorite save defers optional basemap geometry');
+        $db->beginTransaction();
+        try{
+            $db->prepare("INSERT INTO favorite_thumbnails(favorite_id,next_attempt_at) SELECT id,now()+interval '1 hour' FROM favorites WHERE id<>? ON CONFLICT(favorite_id) DO UPDATE SET next_attempt_at=excluded.next_attempt_at")->execute([$favoriteDone['result']['id']]);
+            (new \SweepLine\FavoriteThumbnails($db))->runOne();
+            $cached=$db->prepare('SELECT svg FROM favorite_thumbnails WHERE favorite_id=?');$cached->execute([$favoriteDone['result']['id']]);
+            $svg=$cached->fetchColumn();
+            check(is_string($svg)&&str_contains($svg,'<polyline')&&str_contains($svg,'OpenStreetMap contributors'),'Independent thumbnail worker persists a real geographic preview');
+        }finally{$db->rollBack();}
         (new \SweepLine\Favorites($db))->delete($user,(int)$favoriteDone['result']['id']);
     }
     for($radius=10;$radius<14;$radius++)$queue->enqueue($user,array_replace($input,['radius_miles'=>$radius,'record_history'=>false]));
