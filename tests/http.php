@@ -1,18 +1,37 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
+// CI must retain the client assertion, not just the development server's access log.
+$lastHttpRequest='none';$checks=0;
+set_exception_handler(static function(Throwable $error):void{
+    global $lastHttpRequest,$checks;
+    fwrite(STDERR,'FAIL HTTP test after '.$checks.' checks; last request: '.$lastHttpRequest."\n".
+        get_class($error).': '.$error->getMessage().' at '.basename($error->getFile()).':'.$error->getLine()."\n");
+    exit(1);
+});
+register_shutdown_function(static function():void{
+    $error=error_get_last();
+    if($error&&in_array($error['type'],[E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR],true)){
+        global $lastHttpRequest;
+        fwrite(STDERR,'FATAL HTTP test; last request: '.$lastHttpRequest."\n".$error['message'].' at '.basename($error['file']).':'.$error['line']."\n");
+    }
+});
 if (getenv('SWEEPLINE_TEST_DATABASE')!=='1') { exit("Refusing HTTP fixture mutations without SWEEPLINE_TEST_DATABASE=1\n"); }
 $base=$argv[1]??'http://127.0.0.1:8099';
 if (!preg_match('#^http://(127\\.0\\.0\\.1|localhost):[0-9]+$#D',$base)) { exit("HTTP tests require a loopback-only server\n"); }
 function client() { $c=curl_init(); curl_setopt_array($c,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_COOKIEFILE=>'',CURLOPT_TIMEOUT=>20]); return $c; }
 $admin=client();$member=client();$anonymous=client();$checks=0;
 function callApi($client,string $method,string $path,?array $body=null,?string $csrf=null): array {
-    global $base;
+    global $base,$lastHttpRequest;
+    $lastHttpRequest=$method.' '.$path;
     curl_setopt_array($client,[CURLOPT_URL=>$base.$path,CURLOPT_POSTFIELDS=>$body===null?null:json_encode((object)$body),
         CURLOPT_CUSTOMREQUEST=>$method,CURLOPT_HTTPHEADER=>array_filter(['Content-Type: application/json',$csrf?'X-CSRF-Token: '.$csrf:null])]);
     $raw=curl_exec($client);
-    if ($raw===false) { throw new RuntimeException(curl_error($client)); }
-    return ['code'=>(int)curl_getinfo($client,CURLINFO_HTTP_CODE),'data'=>json_decode($raw,true,512,JSON_THROW_ON_ERROR)];
+    $code=(int)curl_getinfo($client,CURLINFO_HTTP_CODE);
+    if ($raw===false) { throw new RuntimeException('Transport failed (curl '.curl_errno($client).', HTTP '.$code.'): '.curl_error($client)); }
+    try{$data=json_decode($raw,true,512,JSON_THROW_ON_ERROR);}
+    catch(JsonException $error){throw new RuntimeException('Unreadable JSON response (HTTP '.$code.', '.strlen($raw).' bytes, content type '.(curl_getinfo($client,CURLINFO_CONTENT_TYPE)?:'unknown').').');}
+    return ['code'=>$code,'data'=>$data];
 }
 function expect(array $response,int $code,string $message): array {
     global $checks;$checks++;
