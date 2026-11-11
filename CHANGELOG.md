@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.148.0:** Use the supplied PNG logo in the shared web header and README, with responsive sizing and dark-theme contrast. Use the supplied ICO favicon with a cache-versioned icon link.
+
 - **0.147.4:** Fix BeamNG submissions failing before enqueue because the search service held the BeamNG admission advisory lock for its entire lifetime. Give the search worker a distinct lock and name the export admission/maintenance keys. Add independent-connection PostGIS regression coverage and a quick lock-identity guard.
 
 - **0.147.3:** Isolate History fixtures across native and HTTP integration suites. Clean the search-job test's owned History entry in finally, assert cleanup, and reset only the authenticated HTTP fixture owner's History through its CSRF-protected API before history checks. Fix the shared-database history-count failure without changing application behavior.

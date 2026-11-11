@@ -106,3 +106,5 @@ body[data-page="/regions"] .legend,body[data-page="/regions"] #preparation-legen
 #region-size{display:grid;grid-template-columns:1fr auto;gap:8px}#region-size dd{margin:0;font-weight:700}
 .region-map-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px}.region-actions{display:flex;flex-wrap:wrap;gap:8px}.region-list-item{display:block;width:100%;text-align:left;margin:6px 0;font-size:12px;padding:9px}
 #region-discard{background:#a33b32}#region-action-status{overflow-wrap:anywhere}
+
+.brand-logo{display:block;width:46px;height:46px;object-fit:contain;flex-shrink:0}:root[data-theme=dark] .brand-logo{filter:invert(1)}@media(max-width:800px){.brand-logo{width:38px;height:38px}}

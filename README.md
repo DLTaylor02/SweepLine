@@ -1,5 +1,9 @@
 # SweepLine
 
+<p align="center">
+  <img src="public/assets/sweepline-icon.png" alt="SweepLine logo" width="128" height="128">
+</p>
+
 SweepLine is a self-hosted road discovery tool for automotive enthusiasts. Find and compare continuous driving roads near a US ZIP code, or select your own stretch on an interactive map.
 
 ## Install
