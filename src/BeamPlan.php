@@ -39,9 +39,39 @@ final class BeamPlan
         $points=$projected[0]['coordinates'];$bounds=self::square($points,$options['padding_miles']*1609.344);
         $sources=[];
         foreach($parts as $i=>$part)$sources[]=['points'=>$projected[$i+1]['coordinates'],'tags'=>$part['tags']??[],'highway'=>$part['highway']??$road['highway']??'secondary','direction'=>(int)($part['direction']??0),'osm_id'=>$part['osm_id']??null];
+        $requestedGeo=$road['geometry'];$extension=['start_m'=>0.,'finish_m'=>0.];
+        $spans=BeamStructures::spans($points,$sources,true,true);
+        [$before,$after]=BeamApproaches::needed($points,$spans);
+        if($before>0||$after>0){
+            $names=array_values(array_unique(array_filter(array_merge([$road['name'],$road['ref']??null],$road['alternate_names']??[],array_column($parts,'name'),array_column($parts,'ref')),static fn($v)=>is_string($v)&&$v!=='')));
+            $names=array_slice($names,0,100);$namesJson=json_encode($names,JSON_THROW_ON_ERROR);
+            foreach([[$before,$points[0]],[$after,$points[count($points)-1]]] as [$need,$endpoint]){
+                if($need<=0)continue;
+                $extra=$db->prepare("SELECT s.osm_id,s.highway,s.direction,s.tags,ST_AsGeoJSON(ST_Transform(s.geom,CAST(? AS integer)),9) AS geometry
+                    FROM road_segments s JOIN regions r ON r.active_job_id=s.job_id
+                    WHERE s.geom && ST_Transform(ST_MakeEnvelope(?,?,?,?,?),4326)
+                    AND (s.name IN (SELECT jsonb_array_elements_text(?::jsonb)) OR s.ref IN (SELECT jsonb_array_elements_text(?::jsonb)))
+                    AND s.highway IN ('motorway','trunk','primary','secondary','tertiary','unclassified','residential','living_street')
+                    AND ST_NPoints(s.geom)<=2000 ORDER BY s.id LIMIT 51");
+                $extra->execute([$epsg,$endpoint[0]-350,$endpoint[1]-350,$endpoint[0]+350,$endpoint[1]+350,$epsg,$namesJson,$namesJson]);
+                $nearby=$extra->fetchAll(PDO::FETCH_ASSOC);
+                if(count($nearby)>50)throw new \InvalidArgumentException('Bridge approach area has too many matching road pieces. Select a longer stretch explicitly.');
+                foreach($nearby as $part)$sources[]=['points'=>json_decode($part['geometry'],true,512,JSON_THROW_ON_ERROR)['coordinates'],'tags'=>json_decode($part['tags'],true,512,JSON_THROW_ON_ERROR),'highway'=>$part['highway'],'direction'=>(int)$part['direction'],'osm_id'=>$part['osm_id']];
+            }
+            for($attempt=0;$attempt<3&&($before>0||$after>0);$attempt++){
+                if($extension['start_m']+$before>300||$extension['finish_m']+$after>300)throw new \InvalidArgumentException('Bridge approach extension exceeds the 984 ft per-end limit. Select a longer stretch explicitly.');
+                $points=BeamApproaches::extend($points,$sources,$before,$after);
+                $extension['start_m']+=$before;$extension['finish_m']+=$after;
+                $spans=BeamStructures::spans($points,$sources,true,true);[$before,$after]=BeamApproaches::needed($points,$spans);
+            }
+            $bounds=self::square($points,$options['padding_miles']*1609.344);
+            $q=$db->prepare('SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?),?),4326),9)');
+            $q->execute([json_encode(['type'=>'LineString','coordinates'=>$points],JSON_THROW_ON_ERROR),$epsg]);
+            $road['geometry']=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR);$geo=$road['geometry']['coordinates'];
+        }
         $bridges=BeamStructures::spans($points,$sources,true);$tunnels=BeamTunnels::spans($points,$sources);
         $oneway=false;foreach($road['parts']??[] as $part)if((int)$part['direction']!==0)$oneway=true;
-        return $options+['name'=>$road['name'],'alternate_names'=>$road['alternate_names']??[],'epsg'=>$epsg,'bounds'=>$bounds,'points'=>$points,'sources'=>$sources,'bridges'=>$bridges,'tunnels'=>$tunnels,'oneway'=>$oneway,'center'=>[$lon,$lat],'selection'=>['original'=>$road['selection']??null,'exported_geometry'=>$road['geometry'],'exported_start'=>$geo[0],'exported_finish'=>$geo[count($geo)-1],'candidate_id'=>$road['id']??null]];
+        return $options+['name'=>$road['name'],'alternate_names'=>$road['alternate_names']??[],'epsg'=>$epsg,'bounds'=>$bounds,'points'=>$points,'sources'=>$sources,'bridges'=>$bridges,'tunnels'=>$tunnels,'oneway'=>$oneway,'center'=>[$lon,$lat],'selection'=>['original'=>$road['selection']??null,'requested_geometry'=>($extension['start_m']>0||$extension['finish_m']>0?$requestedGeo:null),'bridge_approach_extension'=>$extension,'exported_geometry'=>$road['geometry'],'exported_start'=>$geo[0],'exported_finish'=>$geo[count($geo)-1],'candidate_id'=>$road['id']??null]];
     }
     /** Keep original vertices while adding short supports, avoiding cuts across sharp corners. */
     public static function sample(array $points,float $spacing=8,float $minimumSegment=0.5): array

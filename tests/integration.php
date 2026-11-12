@@ -251,3 +251,5 @@ try{
 require __DIR__.'/region-data-integration.php';
 
 require __DIR__.'/search-jobs-integration.php';
+
+require __DIR__.'/bridge-approaches-integration.php';

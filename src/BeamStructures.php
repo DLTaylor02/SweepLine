@@ -7,7 +7,7 @@ final class BeamStructures
     public const SIMPLE_LENGTH_M=200;
     private static function tagged(array $tags,string $key): bool {return isset($tags[$key])&&!in_array(strtolower((string)$tags[$key]),["no","false","0"],true);}
     /** Match collinear overlap, not merely a crossing or proximity. Distances are planar meters. */
-    public static function spans(array $road,array $sources,bool $allowTunnels=false): array
+    public static function spans(array $road,array $sources,bool $allowTunnels=false,bool $allowShortApproaches=false): array
     {
         $structures=[];
         foreach($sources as $source){$tags=$source["tags"]??[];if(!self::tagged($tags,"bridge")&&!self::tagged($tags,"tunnel"))continue;
@@ -39,7 +39,7 @@ final class BeamStructures
             if($span["length_m"]>self::MAX_LENGTH_M)throw new \InvalidArgumentException("A selected bridge is longer than the 2000-meter estimated-bridge export limit.");
             $span["estimated"]=true;$span["large"]=$span["length_m"]>self::SIMPLE_LENGTH_M;
             $span["approach_m"]=$span["large"]?50:25;
-            if($span["start_m"]<$span["approach_m"]||$chain-$span["end_m"]<$span["approach_m"])throw new \InvalidArgumentException("A selected bridge lacks the required approach road at both ends (25 meters for short bridges, 50 meters for large bridges). Choose a longer stretch that includes both approaches.");
+            if(!$allowShortApproaches&&($span["start_m"]<$span["approach_m"]||$chain-$span["end_m"]<$span["approach_m"]))throw new \InvalidArgumentException("A selected bridge lacks the required approach road at both ends (25 meters for short bridges, 50 meters for large bridges). Choose a longer stretch that includes both approaches.");
             $a=self::at($road,$span["start_m"]);$b=self::at($road,$span["end_m"]);
             if(hypot($b[0]-$a[0],$b[1]-$a[1])/$span["length_m"]<($span["large"]?0.85:0.95))throw new \InvalidArgumentException("A selected bridge is too curved for a simple estimated deck.");
         }unset($span);
