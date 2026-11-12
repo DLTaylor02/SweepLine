@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.149.0:** Handle small bridge DEM/profile disagreements with a bounded grid-aware allowance (0.15–0.50 m) and smoothly tapered deck correction rather than rejecting every discrepancy above 0.15 m. Retain grade, clearance and substantial-conflict rejection; record estimated corrections in raster provenance for both carriageways. Add synthetic regression coverage without road-specific rules.
+
 - **0.148.0:** Use the supplied PNG logo in the shared web header and README, with responsive sizing and dark-theme contrast. Use the supplied ICO favicon with a cache-versioned icon link.
 
 - **0.147.4:** Fix BeamNG submissions failing before enqueue because the search service held the BeamNG admission advisory lock for its entire lifetime. Give the search worker a distinct lock and name the export admission/maintenance keys. Add independent-connection PostGIS regression coverage and a quick lock-identity guard.

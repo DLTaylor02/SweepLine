@@ -73,12 +73,29 @@ final class BeamStructures
                 if($ground-$z>$peak){$peak=$ground-$z;$peakAt=$distance;}
                 if($z-$ground>$clearance){$clearance=$z-$ground;$clearanceAt=$distance;}
             }
-            if($peak>0.15)throw new \RuntimeException(sprintf(
-                '%s: downloaded elevation is %.2f ft above the approach-based deck profile at %.2f mi from this carriageway\'s selected start. The rejection threshold is 0.49 ft; elevation grid spacing is %.1f ft and approach samples are %.0f ft outside the mapped span. This is an elevation-data/estimate conflict, not confirmation that the real bridge is obstructed.',
-                $label,$peak/0.3048,$peakAt/1609.344,($raster->side/$raster->elevationResolution())/0.3048,$anchor/0.3048
+            // Horizontal DEM spacing is not vertical accuracy. This is a bounded
+            // heuristic allowance for small sampling/profile disagreements, not surveyed clearance.
+            $grid=$raster->side/$raster->elevationResolution();
+            $tolerance=max(0.15,min(0.5,$grid*0.02));
+            if($peak>$tolerance)throw new \RuntimeException(sprintf(
+                '%s: downloaded elevation is %.2f ft above the approach-based deck profile at %.2f mi from this carriageway\'s selected start. The rejection threshold is %.2f ft; elevation grid spacing is %.1f ft and approach samples are %.0f ft outside the mapped span. This is an elevation-data/estimate conflict, not confirmation that the real bridge is obstructed.',
+                $label,$peak/0.3048,$peakAt/1609.344,$tolerance/0.3048,$grid/0.3048,$anchor/0.3048
             ));
             if($clearance>150)throw new \RuntimeException(sprintf('%s: estimated clearance exceeds 492 ft at %.2f mi from this carriageway\'s selected start; the deck estimate could not be validated.',$label,$clearanceAt/1609.344));
-            foreach($chain as $i=>$distance)if($distance>=$lo&&$distance<=$hi)$heights[$i]=$za+($zb-$za)*(($distance-$lo)/($hi-$lo));
+            $lift=$peak>0.15?$peak+0.05:0.;
+            if($lift>0){
+                $ramp=min($span['start_m']-$lo,$hi-$span['end_m']);
+                if($ramp<=0||abs($zb-$za)/max(1,$hi-$lo)+1.5*$lift/$ramp>0.12)
+                    throw new \RuntimeException($label.': sampling correction would exceed the 12% approach-grade limit.');
+                $raster->provenance['bridge_profile_adjustments'][]=['context'=>$context,'bridge'=>$number+1,'peak_conflict_m'=>$peak,'tolerance_m'=>$tolerance,'deck_lift_m'=>$lift,'elevation_grid_m'=>$grid,'estimated'=>true];
+            }
+            foreach($chain as $i=>$distance)if($distance>=$lo&&$distance<=$hi){
+                $blend=1.;
+                if($distance<$span['start_m'])$blend=($distance-$lo)/max(0.001,$span['start_m']-$lo);
+                elseif($distance>$span['end_m'])$blend=($hi-$distance)/max(0.001,$hi-$span['end_m']);
+                $blend=max(0.,min(1.,$blend));$blend=$blend*$blend*(3-2*$blend);
+                $heights[$i]=$za+($zb-$za)*(($distance-$lo)/($hi-$lo))+$lift*$blend;
+            }
         }
         return $heights;
     }
