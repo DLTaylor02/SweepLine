@@ -14,7 +14,7 @@ final class BeamApproaches {
             for($i=1;$i<count($line);$i++){
                 $a=$line[$i-1];$b=$line[$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$l2=$dx*$dx+$dy*$dy;if($l2<0.000001)continue;
                 $cuts=[0=>$a,1000000=>$b];
-                foreach($ends as $p){$t=(($p[0]-$a[0])*$dx+($p[1]-$a[1])*$dy)/$l2;
+                foreach(($source['allow_endpoint_split']??true)?$ends:[] as $p){$t=(($p[0]-$a[0])*$dx+($p[1]-$a[1])*$dy)/$l2;
                     if($t>=0&&$t<=1&&hypot($p[0]-$a[0]-$t*$dx,$p[1]-$a[1]-$t*$dy)<0.1)$cuts[(int)round($t*1000000)]=$p;
                 }
                 ksort($cuts);$cuts=array_values($cuts);
@@ -40,7 +40,7 @@ final class BeamApproaches {
                     $cos=($d[0]*$heading[0]+$d[1]*$heading[1])/max(0.000001,$distance*hypot(...$heading));
                     if($cos>=0.5)$choices[]=[$p,$d,$distance,$next];
                 }
-                if(count($choices)!==1)throw new \InvalidArgumentException('Bridge needs more approach road at the '.($start?'start':'finish').', but local road data has '.($choices?'an ambiguous junction':'no supported continuous extension').'. Refresh the region or choose a longer stretch.');
+                if(count($choices)!==1)throw new \InvalidArgumentException('Bridge needs more approach road at the '.($start?'start':'finish').', but local road data has '.($choices?'an ambiguous junction':'no supported continuous extension').'. Needed '.round($needed/0.3048).' ft; followed '.round($length/0.3048).' ft of mapped road. No gaps are joined. Refresh the region or choose a longer stretch.');
                 [$p,$d,$distance,$next]=$choices[0];$take=min($distance,$needed-$length);$t=$take/$distance;
                 $at=[$at[0]+$d[0]*$t,$at[1]+$d[1]*$t];$path[]=$at;$length+=$take;$visited[$next]=true;$heading=$d;
             }

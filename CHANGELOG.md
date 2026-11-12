@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.151.0:** Look for bridge approach continuations across name/reference changes instead of excluding those roads before topology checks. Still require a unique connected, direction-compatible continuation; nearby unrelated ways must meet at existing vertices rather than crossing an endpoint mid-edge. Report required/followed approach distances on rejection and add renamed-connector and crossing regressions.
+
 - **0.150.0:** Extend BeamNG selections along unambiguous, direction-compatible locally mapped continuations when bridges lack endpoint approaches. Bound additions to 300 m per end, retain all structure validation, recalculate map bounds and actual exported endpoints, and record requested geometry plus extension distances. Reject gaps/forks rather than inventing road geometry.
 
 - **0.149.0:** Handle small bridge DEM/profile disagreements with a bounded grid-aware allowance (0.15–0.50 m) and smoothly tapered deck correction rather than rejecting every discrepancy above 0.15 m. Retain grade, clearance and substantial-conflict rejection; record estimated corrections in raster provenance for both carriageways. Add synthetic regression coverage without road-specific rules.
