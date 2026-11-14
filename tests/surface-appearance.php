@@ -8,11 +8,14 @@
     for($x=0;$x<128;$x++)$seam=$seam&&imagecolorat($image,$x,0)===imagecolorat($image,$x,511);
     for($y=0;$y<512;$y++){
         $seam=$seam&&imagecolorat($image,0,$y)===imagecolorat($image,127,$y);
-        if($y)$gradient=$gradient&&abs((imagecolorat($image,64,$y)&255)-(imagecolorat($image,64,$y-1)&255))<=3;
+        if($y)$gradient=$gradient&&abs((imagecolorat($image,64,$y)&255)-(imagecolorat($image,64,$y-1)&255))<=12;
     }
     for($i=0;$i<15;$i++)$colors[imagecolorat($image,64,(int)round($i*48/733*511))]=true;
     check($seam&&$gradient,'Macro asphalt variation wraps seamlessly without sharp tonal steps');
     check(count($colors)>6,'Successive stock asphalt repeats receive different broad color shading');
+    $dark=0;$total=128*512;for($y=0;$y<512;$y++)for($x=0;$x<128;$x++)if((imagecolorat($image,$x,$y)&255)<95)$dark++;
+    check($dark>100&&$dark<$total*0.2,'Irregular asphalt wear is present but remains sparse');
+    check($base['detailBaseColorMapStrength']===0.14,'Broad color blend is restrained to preserve the stock asphalt grain');
     check($png===\SweepLine\BeamRoadMaterials::variation(),'Road variation is reproducible without random generation or provider calls');
     imagedestroy($image);
     $uniform=[110,115,105];

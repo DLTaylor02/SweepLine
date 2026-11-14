@@ -14,6 +14,11 @@ final class BeamTerrain
         ["name"=>"stone","prefix"=>"/assets/materials/terrain/rock/t_pebbles/t_pebbles","ground"=>"ROCK","color"=>[177,171,158]],
         ["name"=>"sand","prefix"=>"/assets/materials/terrain/sand/t_sand/t_sand","ground"=>"SAND","color"=>[204,185,141]],
     ];
+    // Per material: minimum/maximum exposure shift, maximum chroma shift from its palette.
+    public const TINT_LIMITS=[
+        0=>[-17,20,20],1=>[-16,16,16],2=>[-22,26,20],
+        3=>[-18,20,12],4=>[-20,22,12],6=>[-18,20,10],7=>[-16,20,14],
+    ];
     /** Bounded aerial color variation, independent of material classification and collision. */
     public static function blendedColor(int $id,array $rgb): array
     {
@@ -34,6 +39,15 @@ final class BeamTerrain
             $photo=max(0,min(255,$rgb[$channel]+$mean-$light));
             $out[$channel]=(int)round(($value+$photo)/2);
         }
+        [$low,$high,$chromaLimit]=self::TINT_LIMITS[$id];
+        $baseMean=array_sum($base)/3;$mean=array_sum($out)/3;
+        $exposure=max($low,min($high,$mean-$baseMean));
+        foreach($out as $channel=>$value){
+            $shift=($value-$mean)-($base[$channel]-$baseMean);
+            $shift=max(-$chromaLimit,min($chromaLimit,$shift));
+            $out[$channel]=max((int)round($base[$channel]*0.85),min(255,(int)round($base[$channel]+$exposure+$shift)));
+        }
+        if($id<2)$out[1]=max($out[1],$out[0]+8,$out[2]+8);
         return $out;
     }
     /** Retain local ground color while softening photographed illumination over broad areas. */

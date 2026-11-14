@@ -4,6 +4,10 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.154.0:** Add centralized material-specific exposure/chroma limits for grass, forest floor, soil, gravel, rock, stone and sand. Preserve aerial variation while preventing extreme photo hues from overwhelming natural material palettes. Keep the existing multi-scale shadow heuristic, classifications, approved asphalt and geometry unchanged; this is the next terrain-refinement pass, not complete lighting reconstruction.
+
+- **0.153.0:** Reduce the broad asphalt color blend and add sparse deterministic mottled wear patches to the long-scale field after reviewing Mount Rose export (44). Retain the approved stock asphalt PBR maps, independent paint and reduced repetition; leave terrain shading unchanged. Add wear coverage and blend-strength checks.
+
 - **0.152.0:** Add subtle long-scale asphalt color variation independently of the approved stock surface, normal/roughness detail and lane paint. Blend local terrain tint with broader neighborhood illumination to soften baked aerial shadows while retaining surface classifications. Record the Mount Rose archive review and add material/shading regressions; in-game appearance still requires validation.
 
 - **0.151.0:** Look for bridge approach continuations across name/reference changes instead of excluding those roads before topology checks. Still require a unique connected, direction-compatible continuation; nearby unrelated ways must meet at existing vertices rather than crossing an endpoint mid-edge. Report required/followed approach distances on rejection and add renamed-connector and crossing regressions.
