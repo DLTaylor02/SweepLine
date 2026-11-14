@@ -17,12 +17,18 @@ $largePlan=['terrain_style'=>'aerial','name'=>'Synthetic Large Viaduct','alterna
  $largeSource([[400,800],[1100,800]],['bridge'=>'viaduct','lanes'=>'2']),
  $largeSource([[1100,800],[1500,800]],['lanes'=>'2'])
 ],'center'=>[-119.8,39.5],'oneway'=>false];
+$largePlan['traffic_sign_data']=['fetch_status'=>'complete','source'=>'Explicit synthetic OSM fixture','signs'=>[['id'=>'99001','code'=>'W1-2L','bearing'=>270.,'point'=>[200,810],'lon'=>-100.,'lat'=>40.,'timestamp'=>'2026-01-01T00:00:00Z','source'=>'OpenStreetMap']]];
+$largePlan['roadside_data']=['fetch_status'=>'complete','features'=>[
+ ['id'=>'node:99002','kind'=>'bench','tags'=>['amenity'=>'bench'],'points'=>[[200,820]],'node_ids'=>[],'timestamp'=>null],
+ ['id'=>'way:99003','kind'=>'wall','tags'=>['barrier'=>'wall'],'points'=>[[250,820],[280,820]],'node_ids'=>[],'timestamp'=>null]
+]];
 $largeFile=tempnam(sys_get_temp_dir(),'sl-large-bridge-');
 try{
  $largeReport=BeamMap::build($largePlan,$largeRaster,str_repeat('8',32),$largeFile,static function($m){});
  $largeZip=new ZipArchive();$largeZip->open($largeFile);$largeBase='levels/sweepline_8888888888888888/';
  $largeObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($largeZip->getFromName($largeBase.'main/MissionGroup/items.level.json'))));
  check(str_starts_with($largeZip->getFromName($largeBase.'art/roads/variation.color.png'),"\x89PNG")&&str_contains($largeZip->getFromName($largeBase.'art/roads/main.materials.json'),'variation.color.png')&&$largeReport['surface_appearance']['asphalt_variation_repeat_m']===733,'Generated archive bundles and references independent pavement variation');
+ check($largeReport['traffic_sign_data']['placed']===1&&$largeZip->getFromName($largeBase.'art/signs/W1_2L.dae')!==false&&$largeZip->getFromName($largeBase.'art/signs/W1_2L.color.png')!==false,'Generated BeamNG archive contains mapped sign objects, source report and face assets');
  check($largeReport['bridges'][0]['large']&&abs($largeReport['bridges'][0]['length_m']-700)<0.01,'Complete ZIP supports a seven hundred metre viaduct');
  check(abs($largeRaster->height(750,800)-60)<0.01,'Large bridge preserves native valley terrain');
  check(count(array_filter($largeObjects,static fn($o)=>str_starts_with($o['name']??'','bridge_0_pier_')))>15,'Large bridge generates bounded intermediate supports');
@@ -30,6 +36,9 @@ try{
  $largeDeck=array_values(array_filter($largeObjects,static fn($o)=>$o['class']==='MeshRoad'&&str_starts_with($o['name']??'','road_')))[0];
  $largeMiddle=array_values(array_filter($largeDeck['nodes'],static fn($p)=>abs($p[0]-750)<5))[0];
  check(abs($largeMiddle[2]+$largeReport['elevation_origin_m']-100.25)<0.1,'Long deck follows approach elevations instead of valley floor');
+ check(($largeReport['roadside_data']['stock_assets']['bench']??0)===1&&$largeReport['roadside_data']['mesh_parts']>0,'Archive combines stock roadside furniture and generated mapped paths');
+ check(str_contains($largeZip->getFromName($largeBase.'mainLevel.lua'),'/levels/east_coast_usa/art/shapes/buildings/main.materials.json'),'Archive loads referenced stock furniture materials');
+ check(count(array_filter($largeObjects,static fn($o)=>($o['shapeName']??'')==='/levels/east_coast_usa/art/shapes/clutter/clutter_city_bench_wood.dae'))===1,'Archive references stock bench without copying game geometry');
  $largeZip->close();
 }finally{@unlink($largeFile);}
 

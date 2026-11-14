@@ -80,6 +80,8 @@ final class BeamJobs
         if(!empty($row['report']['intersection_context']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['intersection_context']['warning']);
         if(!empty($row['report']['time_trials']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['time_trials']['warning']);
         if(!empty($row['report']['water_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['water_data']['warning']);
+        if(!empty($row['report']['roadside_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['roadside_data']['warning']);
+        if(!empty($row['report']['traffic_sign_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['traffic_sign_data']['warning']);
         if(!empty($row['report']['guardrail_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['guardrail_data']['warning']);
         if($row['status']==='complete')$row['download_url']='/api/beamng/'.$id.'/download';
         return $row;
@@ -152,7 +154,7 @@ final class BeamJobs
             }
             $raster=$this->rasterSource?($this->rasterSource)($plan,$dir,$progress):(new BeamSources())->fetch($plan,$dir,$progress);
             $progress('Preparing geographic context');
-            if(!$this->rasterSource){$plan['building_data']=BeamBuildings::fetch($this->db,$plan,$dir,$progress);$plan['guardrail_data']=BeamGuardrails::fetch($this->db,$plan,$dir,$progress);}
+            if(!$this->rasterSource){$plan['building_data']=BeamBuildings::fetch($this->db,$plan,$dir,$progress);$plan['guardrail_data']=BeamGuardrails::fetch($this->db,$plan,$dir,$progress);$plan['traffic_sign_data']=BeamSigns::fetch($this->db,$plan,$dir,$progress);$plan['roadside_data']=BeamRoadsideData::fetch($this->db,$plan,$dir,$progress);}
             try{$plan['intersection_data']=BeamIntersections::fetch($this->db,$plan,$progress);}
             catch(JobCancelled $e){throw $e;}
             catch(\Throwable $e){$plan['intersection_data']=['branches'=>[],'warning'=>'Local intersecting-road context could not be prepared.'];}
@@ -161,6 +163,8 @@ final class BeamJobs
             foreach($plan['carriageways']??[] as $i=>$track){
                 $other=array_replace($plan,['points'=>$track['points'],'sources'=>$track['sources']]);
                 if(!$this->rasterSource){
+                    $plan['roadside_data']=BeamRoadsideData::merge($plan['roadside_data'],BeamRoadsideData::fetch($this->db,$other,$dir,$progress));
+                    $plan['traffic_sign_data']=BeamSigns::merge($plan['traffic_sign_data'],BeamSigns::fetch($this->db,$other,$dir,$progress));
                     $buildings=BeamBuildings::fetch($this->db,$other,$dir,$progress);$rails=BeamGuardrails::fetch($this->db,$other,$dir,$progress);
                     foreach([['building_data','footprints',$buildings],['guardrail_data','lines',$rails]] as [$key,$field,$data]){
                         $items=[];foreach(array_merge($plan[$key][$field]??[],$data[$field]??[]) as $item)$items[hash('sha256',json_encode($item['points'],JSON_THROW_ON_ERROR))]=$item;

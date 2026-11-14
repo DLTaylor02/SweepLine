@@ -20,11 +20,12 @@ final class BeamRoadIndex
             }
         }
     }
-    public function nearest(array $p,float $radius=200): ?array
+    public function nearest(array $p,float $radius=200,?string $excludeLine=null): ?array
     {
         $cx=(int)floor($p[0]/100);$cy=(int)floor($p[1]/100);$n=(int)ceil($radius/100);$best=$radius;$out=null;$seen=[];
         for($x=$cx-$n;$x<=$cx+$n;$x++)for($y=$cy-$n;$y<=$cy+$n;$y++)foreach($this->cells[$x.':'.$y]??[] as $id){
             if(isset($seen[$id]))continue;$seen[$id]=true;[$a,$b,$length,$along,$i,$line]=$this->segments[$id];
+            if($excludeLine!==null&&($line['sign_line_id']??null)===$excludeLine)continue;
             $dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$raw=(($p[0]-$a[0])*$dx+($p[1]-$a[1])*$dy)/($length*$length);$t=max(0,min(1,$raw));
             $d=hypot($p[0]-$a[0]-$t*$dx,$p[1]-$a[1]-$t*$dy);
             if($d<$best){$best=$d;$out=['distance'=>$d,'along'=>$along+$t*$length,'raw'=>$raw,'segment'=>$i,'fraction'=>$t,'dx'=>$dx/$length,'dy'=>$dy/$length,'line'=>$line];}

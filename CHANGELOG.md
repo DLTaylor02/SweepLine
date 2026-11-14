@@ -4,6 +4,10 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.156.0:** Fetch mapped utility supports/lines, streetlights, barriers, railways/crossings, milestones, bus stops, shelters, benches and parking footprints near BeamNG roads. Prefer fitting base-game models and stock hedge vegetation, with bounded generated fallback geometry and limited working lights; retain source IDs/dates and report unsupported geometry. Preserve source placement and existing collision; generic model dimensions, cable sag and rail details remain estimates.
+
+- **0.155.0:** Add state-independent OSM physical roadside-sign acquisition and conservative BeamNG placement for explicit US curve/turn warnings, chevrons, stop/yield and encoded speed-limit faces. Require mapped coordinates and absolute facing; skip ambiguous types, centerline positions and unresolved mounting. Generate generic signs/posts and report source dates, omissions and provider failures without inventing sign locations.
+
 - **0.154.0:** Add centralized material-specific exposure/chroma limits for grass, forest floor, soil, gravel, rock, stone and sand. Preserve aerial variation while preventing extreme photo hues from overwhelming natural material palettes. Keep the existing multi-scale shadow heuristic, classifications, approved asphalt and geometry unchanged; this is the next terrain-refinement pass, not complete lighting reconstruction.
 
 - **0.153.0:** Reduce the broad asphalt color blend and add sparse deterministic mottled wear patches to the long-scale field after reviewing Mount Rose export (44). Retain the approved stock asphalt PBR maps, independent paint and reduced repetition; leave terrain shading unchanged. Add wear coverage and blend-strength checks.

@@ -253,3 +253,7 @@ require __DIR__.'/region-data-integration.php';
 require __DIR__.'/search-jobs-integration.php';
 
 require __DIR__.'/bridge-approaches-integration.php';
+
+require __DIR__.'/mapped-signs-integration.php';
+
+require __DIR__.'/roadside-context-integration.php';
