@@ -36,7 +36,21 @@ final class BeamTerrain
         }
         return $out;
     }
-    /** North-up, gently filtered imagery shared by all material base textures. */
+    /** Retain local ground color while softening photographed illumination over broad areas. */
+    public static function shadeSample(array $local,array $broad): array {
+        $light=array_sum($local)/3;$wide=array_sum($broad)/3;
+        $shadow=$light<0.65*$wide&&$light<80;
+        $weight=$shadow?0.6:0.25;
+        $target=$light+max(-24,min(24,($wide-$light)*$weight));
+        $out=[];
+        foreach($local as $i=>$value){
+            $chroma=$value-$light;
+            if($shadow)$chroma=0.4*$chroma+0.6*($broad[$i]-$wide);
+            $out[]=max(0,min(255,(int)round($target+$chroma)));
+        }
+        return $out;
+    }
+    /** North-up, multi-scale imagery shading shared by all material base textures. */
     public static function tintPixels(BeamRaster $raster,callable $progress,?BeamCompute $compute=null): string
     {
         if($compute&&$compute->workers()>1){
@@ -48,6 +62,7 @@ final class BeamTerrain
     public static function tintRows(BeamRaster $raster,int $start,int $end,callable $progress): string
     {
         $size=self::TEXTURE_SIZE;$pixels="";
+        $broadRadius=max(1,(int)round(35/max(0.01,$raster->side/$raster->size)));
         for($y=$start;$y<$end;$y++){
             if($y%16===0)$progress(null);
             for($x=0;$x<$size;$x++){
@@ -55,7 +70,11 @@ final class BeamTerrain
                 foreach([[0,0],[-1,0],[1,0],[0,-1],[0,1]] as [$dx,$dy]){
                     $sample=$raster->rgb($sx+$dx,$sy+$dy);foreach($sample as $channel=>$value)$rgb[$channel]+=$value;
                 }
-                foreach($rgb as $value)$pixels.=chr((int)round($value/5));
+                $local=array_map(static fn($value)=>$value/5,$rgb);$broad=[0.,0.,0.];
+                foreach([[-$broadRadius,0],[$broadRadius,0],[0,-$broadRadius],[0,$broadRadius]] as [$dx,$dy]){
+                    $sample=$raster->rgb($sx+$dx,$sy+$dy);foreach($sample as $channel=>$value)$broad[$channel]+=$value/4;
+                }
+                foreach(self::shadeSample($local,$broad) as $value)$pixels.=chr($value);
             }
         }
         return $pixels;
