@@ -198,6 +198,11 @@ async function testFrontend(sources) {
   await get('session-settings').onsubmit({preventDefault(){}});await flush();
   check(requests.some(r=>r.path==='/api/admin/session-settings'&&r.method==='POST'&&r.headers['X-CSRF-Token']&&JSON.parse(r.body).session_timeout_days===14),'Session setting saves with authenticated CSRF POST');
   check(get('session-settings-status').textContent.includes('saved'),'Session setting save is confirmed');
+  get('mapillary-token').value='fixture-ui-token';await get('mapillary-settings').onsubmit({preventDefault(){}});await flush();
+  check(requests.some(r=>r.path==='/api/admin/mapillary-settings'&&r.method==='POST'&&r.headers['X-CSRF-Token']&&JSON.parse(r.body).access_token==='fixture-ui-token'),'SuperAdmin token save uses CSRF POST');
+  check(get('mapillary-token').value==='','Saved token field is cleared');
+  await get('mapillary-clear').onclick();await flush();
+  check(requests.some(r=>r.path==='/api/admin/mapillary-settings'&&r.method==='POST'&&JSON.parse(r.body).clear_token===true),'Removing Mapillary token is an explicit POST');
   const previousStorage=storage;storage={available:false,database_bytes:100,message:'Remote database; combined chart unavailable.'};
   await get('admin-refresh').onclick();await flush();
   check(get('storage-pie').hidden&&get('storage-legend').children.length===1,'Unavailable disk totals hide pie and retain database size');
