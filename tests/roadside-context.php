@@ -65,3 +65,16 @@ use SweepLine\{BeamRoadsideData,BeamRoadside,BeamRoadsideAssets,BeamRaster};
         check(\SweepLine\BeamOsm::failureReason(new RuntimeException('secret https://user:password@example.test/?token=private'))==='response or local processing failed','Failure diagnostics do not expose arbitrary provider text or credentials');
     }finally{foreach(glob($dir.'/*') as $f)unlink($f);rmdir($dir);}
 })();
+
+(function():void{
+    $detail=\SweepLine\Download::providerError('<p><strong>Error</strong>: line 1: parse error: expected &quot;;&quot;.</p>');
+    check($detail==='line 1: parse error: expected ";".','Overpass HTML parser errors become bounded readable diagnostics');
+    check(\SweepLine\Download::providerError('<html>arbitrary gateway content</html>')===null,'Unrecognized provider bodies are not exposed as diagnostics');
+    check(strlen(\SweepLine\Download::providerError('parse error: '.str_repeat('x',2000)))<=500,'Provider diagnostics remain bounded');
+    $file=tempnam(sys_get_temp_dir(),'sl-parser-');
+    try{
+        \SweepLine\BeamOsm::download('https://example.invalid',$file,'query',static fn($m)=>null,static function()use($detail){throw new \SweepLine\DownloadFailure('Data provider HTTP 400',false,$detail);},static fn()=>null);
+        check(false,'Parser rejection should propagate');
+    }catch(\SweepLine\DownloadFailure $e){check($e->providerDetail===$detail&&!$e->retryable,'Retry wrapper preserves parser details on permanent HTTP 400 rejection');}
+    finally{unlink($file);}
+})();

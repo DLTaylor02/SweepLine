@@ -57,7 +57,7 @@ final class BeamRoadsideData {
             }catch(JobCancelled $e){throw $e;}
             catch(\Throwable $e){
                 $reason=BeamOsm::failureReason($e);
-                $result['requests'][]=['group'=>$group,'status'=>'unavailable','reason'=>$reason];
+                $result['requests'][]=['group'=>$group,'status'=>'unavailable','reason'=>$reason,'query_sha256'=>hash('sha256',$query),'provider_detail'=>$e instanceof DownloadFailure?$e->providerDetail:null];
                 $progress('Roadside '.$group.' unavailable: '.$reason.'. Continuing with other mapped details.');
             }
         }

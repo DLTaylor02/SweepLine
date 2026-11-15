@@ -44,7 +44,7 @@ final class BeamOsm
                     $progress($message);
                     // Retain legacy wording used by callers and diagnostics.
                     if($e->retryable)$message=$provider.' remained unavailable after 3 attempts: '.$reason;
-                    throw new DownloadFailure($message,$e->retryable);
+                    throw new DownloadFailure($message,$e->retryable,$e->providerDetail);
                 }
                 $seconds=$attempt*5;$progress($provider.' temporarily unavailable ('.$reason.'); retrying in '.$seconds.' seconds (attempt '.($attempt+1).'/3)');
                 for($i=0;$i<$seconds;$i++){$progress(null);$sleep();}
