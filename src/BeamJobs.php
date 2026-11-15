@@ -4,6 +4,12 @@ namespace SweepLine;
 use PDO;
 final class BeamJobs
 {
+    public const USER_QUEUE_LIMIT=7;
+    public const GLOBAL_QUEUE_LIMIT=20;
+    public static function checkCapacity(int $own,int $total):void{
+        if($own>=self::USER_QUEUE_LIMIT)throw new HttpException(429,'You already have 7 active BeamNG exports. Finish or cancel one before adding another.');
+        if($total>=self::GLOBAL_QUEUE_LIMIT)throw new HttpException(429,'The shared BeamNG export queue is full. Please try again shortly.');
+    }
     public const ENQUEUE_LOCK=73019425;
     public const MAINTENANCE_LOCK=73019426;
     public function __construct(private PDO $db,private ?\Closure $rasterSource=null,private ?string $storageRoot=null) {}
@@ -58,8 +64,8 @@ final class BeamJobs
             $q=$this->db->prepare("SELECT id FROM beamng_exports WHERE user_id=? AND fingerprint=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1");
             $q->execute([$user,$fingerprint]);$id=$q->fetchColumn();
             if(!$id) {
-                $q=$this->db->prepare("SELECT count(*) FROM beamng_exports WHERE status IN ('queued','running') AND (user_id=? OR (SELECT count(*) FROM beamng_exports WHERE status IN ('queued','running'))>=20)");
-                $q->execute([$user]);if((int)$q->fetchColumn()>=3)throw new HttpException(429,'Export queue is busy. Finish or cancel an existing BeamNG export first.');
+                $q=$this->db->prepare("SELECT count(*) FILTER (WHERE user_id=?) AS own,count(*) AS total FROM beamng_exports WHERE status IN ('queued','running')");
+                $q->execute([$user]);$counts=$q->fetch(PDO::FETCH_ASSOC);self::checkCapacity((int)$counts['own'],(int)$counts['total']);
                 $id=bin2hex(random_bytes(16));
                 $this->db->prepare('INSERT INTO beamng_exports(id,user_id,fingerprint,name,payload) VALUES (?,?,?,?,?::jsonb)')->execute([$id,$user,$fingerprint,$plan['name'],$payload]);
             }
@@ -71,6 +77,15 @@ final class BeamJobs
         self::validId($id);
         $q=$this->db->prepare("SELECT id,name,status,progress,error,expires_at,file_bytes,cancel_requested,report,jsonb_array_length(COALESCE(payload->'bridges','[]'::jsonb)) AS bridge_count,jsonb_array_length(COALESCE(payload->'tunnels','[]'::jsonb)) AS tunnel_count FROM beamng_exports WHERE id=? AND user_id=?");
         $q->execute([$id,$user]);$row=$q->fetch(PDO::FETCH_ASSOC)?:throw new \OutOfBoundsException('Export not found.');
+        $row['queue_position']=null;$row['queue_total']=null;
+        if(in_array($row['status'],['queued','running'],true)){
+            $position=$this->db->prepare("WITH active AS (
+                SELECT id,row_number() OVER (ORDER BY (status='running') DESC,created_at,id) AS position,count(*) OVER () AS total
+                FROM beamng_exports WHERE status='running' OR (status='queued' AND cancel_requested=false))
+                SELECT position,total FROM active WHERE id=?");
+            $position->execute([$id]);$queue=$position->fetch(PDO::FETCH_ASSOC);
+            if($queue){$row['queue_position']=(int)$queue['position'];$row['queue_total']=(int)$queue['total'];}
+        }
         if($row['status']==='complete' && strtotime($row['expires_at'])<=time()){$row['status']='expired';$row['progress']='Download expired. Generate a new export.';}
         $row['report']=$row['report']?json_decode($row['report'],true,512,JSON_THROW_ON_ERROR):null;
         $row['stages']=BeamStages::LABELS;$row['stage']=$row['status']==='complete'?count(BeamStages::LABELS):(int)($row['report']['progress_stage']??BeamStages::index($row['progress']));

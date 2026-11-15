@@ -1,7 +1,7 @@
 async function testBeamControls(source){
   let checks=0;const check=(x,m)=>{if(!x)throw Error(m);checks++;};
   class Element{constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.classList={toggle:(key,on)=>{this[key]=on;}};}append(...n){this.children.push(...n);}setAttribute(k,v){this.attrs[k]=v;}removeAttribute(k){delete this.attrs[k];}insertAdjacentElement(_,n){this.status=n;}}
-  const requests=[],tasks=[],window={SweepLineAccount:{user:{id:1}},sessionStorage:{getItem:()=>null,setItem:()=>{}},sweeplineRequest:async(path,options)=>{requests.push({path,options});return options?{id:"a".repeat(32),status:"queued",progress:"Queued"}:{status:"complete",download_url:"/private.zip",progress:"Ready"};}};
+  const requests=[],tasks=[],window={SweepLineAccount:{user:{id:1}},sessionStorage:{getItem:()=>null,setItem:()=>{}},sweeplineRequest:async(path,options)=>{requests.push({path,options});return options?{id:"a".repeat(32),status:"queued",progress:"Queued",queue_position:2,queue_total:7}:{status:"complete",download_url:"/private.zip",progress:"Ready"};}};
   new Function("window","document","setTimeout","clearTimeout",source)(window,{createElement:t=>new Element(t)},fn=>{tasks.push(fn);return tasks.length;},()=>{});
   const row=new Element("div");window.sweeplineBeamExport(row,{id:42},{orientation:"reverse",preferredName:"Chosen Alias"});
   check(row.children.length===2&&row.children[0].tag==="a","Single inline export action");
@@ -9,6 +9,7 @@ async function testBeamControls(source){
   const payload=JSON.parse(requests[0].options.body);check(payload.resolution===2048&&payload.padding_miles===0.5&&payload.orientation==="reverse"&&payload.preferred_name==="Chosen Alias"&&payload.terrain_style==="stock","Fixed high-detail defaults");
   check(action.textContent.includes("Generating")&&action.attrs["aria-disabled"]==="true","Busy state visible");
 
+  check(row.children[1].children[1].textContent==='In queue 2 of 7','Waiting export shows its position including the running export');
   const progress=row.children[1].children[3];
   check(!progress.hidden&&progress.children[0].textContent.includes('Step 1 of 13')&&progress.children[1].children.length===13,'Queued export shows thirteen stage segments without a percentage');
 
@@ -24,8 +25,8 @@ async function testBeamControls(source){
   check(!errorBox.hidden&&errorBox["beam-error"]&&errorText.textContent.includes("mapped bridge or tunnel"),"Rejection reason remains visible in inline error panel");
   check(errorBox.children[0].hidden&&errorBox.children[2].hidden&&errorText.attrs.role==="alert","Failure hides spinner and cancellation and announces error");
   const reopened=new Element("div");window.sweeplineBeamExport(reopened,{id:91});check(!reopened.children[1].hidden&&reopened.children[1].children[1].textContent.includes("mapped bridge"),"Reopening road preserves rejection reason");
-  window.sweeplineRequest=async(path,options)=>options?{id:"b".repeat(32),status:"queued",progress:"Queued"}:{status:"failed",error:"USGS elevation: provider unavailable"};
-  tasks.length=0;await reopened.children[0].onclick({preventDefault(){}});check(!reopened.children[1]["beam-error"]&&reopened.children[1].children[1].textContent==="Queued","Retry clears old rejection and shows new progress");
+  window.sweeplineRequest=async(path,options)=>options?{id:"b".repeat(32),status:"queued",progress:"Queued",queue_position:2,queue_total:7}:{status:"failed",error:"USGS elevation: provider unavailable"};
+  tasks.length=0;await reopened.children[0].onclick({preventDefault(){}});check(!reopened.children[1]["beam-error"]&&reopened.children[1].children[1].textContent==="In queue 2 of 7","Retry clears old rejection and shows new progress");
   await tasks.shift()();check(reopened.children[1]["beam-error"]&&reopened.children[1].children[1].textContent.includes("USGS elevation"),"Background failure keeps provider reason visible");
 
   check(!errorBox.children[3].hidden,'Rejected export retains a static last-stage bar alongside its error');

@@ -80,3 +80,6 @@ check($emptyRails['report']['fetch_status']==='complete'&&isset($emptyRails['rep
 
 $nearProtected=[[0,0],[50,0],[100,20]];
 check(BeamCurve::smooth($nearProtected,[[29,0]])===$nearProtected,'Larger curve rounds cannot intrude into the protected junction neighborhood from an adjacent corner');
+
+\SweepLine\BeamJobs::checkCapacity(6,19);check(true,'Seventh personal BeamNG export is admitted below shared capacity');
+foreach([[7,7],[0,20]] as [$own,$total]){$blocked=false;try{\SweepLine\BeamJobs::checkCapacity($own,$total);}catch(\SweepLine\HttpException $e){$blocked=true;}check($blocked,'BeamNG personal/shared queue capacities are enforced');}

@@ -4,6 +4,9 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.159.0:** Allow seven active BeamNG exports per user, including the running job. Show live shared-queue positions with the running export counted first; retain the existing 20-export shared-host limit, duplicate-request reuse and serialized processing.
+
+
 - **0.158.0:** Add optional server-side Mapillary Graph v4 map-feature acquisition for traffic signs, utility poles, streetlights, benches and bollards. Add bounded corridor requests, pagination, retries, cancellation, one-week caching, OSM-preferred duplicate matching and provider attribution/diagnostics. Add SuperAdmin-only Manage controls to save/replace/remove the private token without returning its value to the browser. Requires a private access token; raw detections and unsupported line geometry are not reconstructed.
 
 

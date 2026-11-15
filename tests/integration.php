@@ -259,3 +259,5 @@ require __DIR__.'/mapped-signs-integration.php';
 require __DIR__.'/roadside-context-integration.php';
 
 require __DIR__.'/mapillary-integration.php';
+
+require __DIR__.'/beam-queue-integration.php';

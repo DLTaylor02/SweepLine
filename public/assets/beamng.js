@@ -58,6 +58,7 @@
 
       status.setAttribute('role',failed?'alert':'status');status.setAttribute('aria-live',failed?'assertive':'polite');
       status.textContent=failed?'BeamNG export could not be generated. '+(job.error||job.progress||'No reason was returned. Please retry; if it persists, ask a SuperAdmin to check Manage.'):(cancelled?'Export cancelled. Last activity: '+(job.progress||steps[stage]):(job.progress||''));
+      if(busy&&Number.isInteger(job.queue_position)&&Number.isInteger(job.queue_total))status.textContent=(job.status==='queued'?'In queue ':'Processing ')+job.queue_position+' of '+job.queue_total+(job.status==='running'&&job.progress?' · '+job.progress:'');
       if(failed&&job.progress)status.textContent+=' Last activity: '+job.progress;
       if(busy&&job.cancel_requested)status.textContent='Cancellation requested. Last activity: '+(job.progress||steps[stage]);
       if(!failed&&job.warning)status.textContent+=' '+job.warning;
