@@ -16,18 +16,38 @@ final class BeamSigns {
         return [$lon+rad2deg(atan2(sin($b)*sin($a)*cos($p),cos($a)-sin($p)*sin($q))),rad2deg($q)];
     }
     public static function parse(array $data): array {
-        $signs=[];$skipped=[];$seen=[];
+        $signs=[];$skipped=[];$seen=[];$truncated=false;
         foreach(array_slice($data['elements']??[],0,1000) as $e){
-            $reason=null;$tags=$e['tags']??[];$code=$tags['traffic_sign']??'';
-            if(($e['type']??'')!=='node'||!isset($e['id'],$e['lat'],$e['lon'])||!(is_int($e['id'])&&$e['id']>0||is_string($e['id'])&&preg_match('/^[1-9][0-9]{0,15}$/D',$e['id']))||!is_numeric($e['lat'])||!is_numeric($e['lon'])||abs((float)$e['lat'])>90||abs((float)$e['lon'])>180)$reason='invalid_location';
-            elseif(!is_string($code)||!preg_match('/^US:(R1-[12]|W1-[1-5][LR]|W1-8[LR]|R2-1\[([1-9][0-9]?|100)(?: mph)?\])$/D',$code,$m))$reason='unsupported_or_ambiguous_sign_type';
-            $bearing=self::bearing($tags['traffic_sign:direction']??$tags['direction']??null);
-            if($reason===null&&$bearing===null)$reason='missing_absolute_facing';
-            if($reason!==null){$skipped[$reason]=($skipped[$reason]??0)+1;continue;}
-            $key=(string)$e['id'];if(isset($seen[$key]))continue;$seen[$key]=true;
-            $signs[]=['id'=>$key,'code'=>$m[1],'bearing'=>$bearing,'speed'=>isset($m[2])?(int)$m[2]:null,'lon'=>(float)$e['lon'],'lat'=>(float)$e['lat'],'timestamp'=>$e['timestamp']??null,'source'=>'OpenStreetMap','location_accuracy'=>'mapped; not independently surveyed'];
+            $tags=$e['tags']??[];$raw=$tags['traffic_sign']??'';
+            if(($e['type']??'')!=='node'||!isset($e['id'],$e['lat'],$e['lon'])||!is_numeric($e['id'])||$e['id']<=0||!is_numeric($e['lat'])||!is_numeric($e['lon'])||abs((float)$e['lat'])>90||abs((float)$e['lon'])>180){$skipped['invalid_location']=($skipped['invalid_location']??0)+1;continue;}
+            if(!is_string($raw)||trim($raw)===''||strlen($raw)>1024){$skipped['invalid_sign_label']=($skipped['invalid_sign_label']??0)+1;continue;}
+            $parts=preg_split('/[;,](?![^\[]*\])/',$raw);$parts=array_values(array_unique(array_filter(array_map('trim',$parts))));
+            $bearing=self::bearing($tags['traffic_sign:direction']??$tags['direction']??null);$country='';$truncated=$truncated||count($parts)>8;
+            foreach(array_slice($parts,0,8) as $panel=>$part){
+                if(preg_match('/^([A-Z]{2}):(.+)$/s',$part,$m)){$country=$m[1];$code=$m[2];}
+                else{$code=$part;}
+                $code=match(strtolower($code)){'stop'=>'R1-1','yield','give_way'=>'R1-2',default=>$code};
+                if($country!==''&&$country!=='US')$code=$country.':'.$code;
+                $code=preg_replace('/[\x00-\x1f\x7f]/','',$code);if($code==='')continue;
+                $key=(string)$e['id'].($panel?'_p'.$panel:'');if(isset($seen[$key]))continue;$seen[$key]=true;
+                preg_match('/^R2-1\[([0-9]+)(?: mph)?\]$/D',$code,$speed);
+                $signs[]=['id'=>$key,'osm_id'=>(string)$e['id'],'code'=>$code,'country'=>$country,'original_tag'=>$raw,'panel_index'=>$panel,'bearing'=>$bearing,'speed'=>isset($speed[1])?(int)$speed[1]:null,'lon'=>(float)$e['lon'],'lat'=>(float)$e['lat'],'timestamp'=>$e['timestamp']??null,'source'=>'OpenStreetMap','location_accuracy'=>'mapped assembly; side-by-side panel offsets estimated'];
+                if(count($signs)>=1000)break 2;
+            }
         }
-        return ['signs'=>$signs,'skipped'=>$skipped,'truncated'=>count($data['elements']??[])>1000];
+        return ['signs'=>$signs,'skipped'=>$skipped,'truncated'=>count($data['elements']??[])>1000||count($signs)>=1000||$truncated];
+    }
+    /** First meaningful bend ahead, viewed in the approaching traffic direction. */
+    public static function curveDirection(array $hit,float $facing):?string {
+        $points=$hit['line']['points'];$travel=sin(deg2rad($facing))*$hit['dx']+cos(deg2rad($facing))*$hit['dy']<0?1:-1;
+        $previous=[$hit['dx']*$travel,$hit['dy']*$travel];$a=$points[$hit['segment']-1];$b=$points[$hit['segment']];$fraction=$hit['fraction']??0.;$distance=hypot($b[0]-$a[0],$b[1]-$a[1])*($travel>0?1-$fraction:$fraction);$angle=0.;
+        $i=$travel>0?$hit['segment']:$hit['segment']-1;
+        while(isset($points[$i],$points[$i+$travel])&&$distance<300){
+            $a=$points[$i];$b=$points[$i+$travel];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy);$i+=$travel;if($length<.01)continue;
+            $next=[$dx/$length,$dy/$length];$angle+=atan2($previous[0]*$next[1]-$previous[1]*$next[0],$previous[0]*$next[0]+$previous[1]*$next[1]);$distance+=$length;
+            if(abs($angle)>=deg2rad(10))return $angle>0?'L':'R';$previous=$next;
+        }
+        return null;
     }
     public static function merge(array $a,array $b): array {
         $records=[];foreach(array_merge($a['signs']??[],$b['signs']??[]) as $s)$records[$s['source'].':'.$s['id']]=$s;
@@ -48,9 +68,9 @@ final class BeamSigns {
             $result=self::parse($data);
             if($result['signs']){
                 $q=$db->prepare('SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?),4326),CAST(? AS integer)),6)');
-                $q->execute([json_encode(['type'=>'MultiPoint','coordinates'=>array_merge(...array_map(static fn($s)=>[[$s['lon'],$s['lat']],self::facingPoint($s['lon'],$s['lat'],$s['bearing'])],$result['signs']))],JSON_THROW_ON_ERROR),$plan['epsg']]);
+                $q->execute([json_encode(['type'=>'MultiPoint','coordinates'=>array_merge(...array_map(static fn($s)=>[[$s['lon'],$s['lat']],self::facingPoint($s['lon'],$s['lat'],$s['bearing']??0.)],$result['signs']))],JSON_THROW_ON_ERROR),$plan['epsg']]);
                 $points=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['coordinates'];
-                foreach($result['signs'] as $i=>&$sign){$p=$points[2*$i];$tip=$points[2*$i+1];$sign['point']=[$p[0]-$plan['bounds'][0],$p[1]-$plan['bounds'][1]];$sign['grid_bearing']=fmod(rad2deg(atan2($tip[0]-$p[0],$tip[1]-$p[1]))+360,360.);}unset($sign);
+                foreach($result['signs'] as $i=>&$sign){$p=$points[2*$i];$tip=$points[2*$i+1];$sign['point']=[$p[0]-$plan['bounds'][0],$p[1]-$plan['bounds'][1]];$sign['grid_bearing']=$sign['bearing']===null?null:fmod(rad2deg(atan2($tip[0]-$p[0],$tip[1]-$p[1]))+360,360.);}unset($sign);
             }
             return $result+['fetch_status'=>'complete','source'=>'OpenStreetMap physical traffic_sign nodes','coverage'=>'Partial: absence of records is not proof that no signs exist.'];
         }catch(JobCancelled $e){throw $e;}
@@ -67,7 +87,22 @@ final class BeamSigns {
             if(!$hit||$hit['raw']<0||$hit['raw']>1)$reason='outside_supported_road_corridor';
             else{
                 $profile=$hit['line']['profiles'][$hit['segment']]??$hit['line']['profiles'][0];
-                $half=$profile['width_m']/2;$edge=$hit['distance']-$half;
+                $half=$profile['width_m']/2;
+                $sign['source_point']=$point;
+                if(($sign['panel_index']??0)>0&&$hit['distance']>0){
+                    $a=$hit['line']['points'][$hit['segment']-1];$side=$hit['dx']*($point[1]-$a[1])-$hit['dy']*($point[0]-$a[0]);$offset=1.2*$sign['panel_index']*($side>=0?1:-1);
+                    $point=[$point[0]-$hit['dy']*$offset,$point[1]+$hit['dx']*$offset];$hit=$index->nearest($point,90);
+                    if(!$hit){$rejected['panel_outside_corridor']=($rejected['panel_outside_corridor']??0)+1;continue;}
+                    $profile=$hit['line']['profiles'][$hit['segment']]??$hit['line']['profiles'][0];$half=$profile['width_m']/2;
+                }
+                $edge=$hit['distance']-$half;
+                if(($sign['bearing']??null)===null){
+                    $a=$hit['line']['points'][$hit['segment']-1];
+                    $side=$hit['dx']*($point[1]-$a[1])-$hit['dy']*($point[0]-$a[0]);
+                    $direction=$side>0?1.:-1.;
+                    $sign['grid_bearing']=fmod(rad2deg(atan2($direction*$hit['dx'],$direction*$hit['dy']))+360,360.);
+                    $sign['facing_source']='inferred_right_side_of_travel';
+                }else{$sign['facing_source']='explicit_osm';}
                 $facing=[sin(deg2rad($sign['grid_bearing']??$sign['bearing'])),cos(deg2rad($sign['grid_bearing']??$sign['bearing']))];
                 $dot=$facing[0]*$hit['dx']+$facing[1]*$hit['dy'];
                 if($edge<0.3)$reason='mapped_position_on_pavement';
@@ -86,7 +121,10 @@ final class BeamSigns {
                 if(abs($roadZ-$z)>4)$reason='mounting_height_unresolved';
             }
             if($reason!==null){$rejected[$reason]=($rejected[$reason]??0)+1;continue;}
-            $code=$sign['code'];$key=preg_replace('/[^A-Za-z0-9]/','_',$code);$material=$prefix.'_sign_'.$key;
+            $code=$sign['code'];
+            if(preg_match('/^W1-(?:[1-5]|8)$/D',$code)){$turn=self::curveDirection($hit,$sign['grid_bearing']??$sign['bearing']);if($turn){$code.=$turn;$sign['curve_direction_source']='road_geometry';}else{$sign['curve_direction_source']='unresolved_generic_face';}}
+            $sign['rendered_code']=$code;$sign['rendered_point']=$point;
+            $key=preg_replace('/[^A-Za-z0-9]/','_',substr($code,0,48));if(!preg_match('/^(?:R1-[12]|R2-1\[[0-9]+(?: mph)?\]|W1-(?:[1-5]|8)[LR])$/D',$code))$key.='_'.substr(hash('sha256',$code),0,8);$material=$prefix.'_sign_'.$key;
             if(!isset($meshes[$key])){
                 $file='art/signs/'.$key;
                 $put($file.'.color.png',BeamSignFace::png($code));
@@ -105,6 +143,6 @@ final class BeamSigns {
             $materials[$post]=['class'=>'Material','name'=>$post,'mapTo'=>$post,'version'=>1,'Stages'=>[['diffuseColor'=>[0.5,0.52,0.54,1]]]];
             $put('art/signs/main.materials.json',json_encode($materials,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES));
         }
-        return ['objects'=>$objects,'report'=>['provider'=>$data['source']??'OpenStreetMap','fetch_status'=>$data['fetch_status']??'not_requested','warning'=>$data['warning']??(($data['fetch_status']??'')==='complete'&&!$placed?'No mapped signs met the type, facing and placement requirements; no sign locations were invented.':null),'parsed'=>count($data['signs']??[]),'placed'=>count($placed),'records'=>$placed,'skipped_parse'=>$data['skipped']??[],'skipped_placement'=>$rejected,'truncated'=>$data['truncated']??false,'coverage'=>'Mapped explicit signs only; missing types, facings and coverage are skipped.','geometry'=>'Generic dimensions/posts and terrain-derived mounting elevation; coordinates and face types are source-derived.']];
+        return ['objects'=>$objects,'report'=>['provider'=>$data['source']??'OpenStreetMap','fetch_status'=>$data['fetch_status']??'not_requested','warning'=>$data['warning']??(($data['fetch_status']??'')==='complete'&&!$placed?'No mapped signs met the type, facing and placement requirements; no sign locations were invented.':null),'parsed'=>count($data['signs']??[]),'placed'=>count($placed),'records'=>$placed,'skipped_parse'=>$data['skipped']??[],'skipped_placement'=>$rejected,'truncated'=>$data['truncated']??false,'coverage'=>'All mapped sign labels accepted; unknown artwork uses labeled generic panels. Facing and curve handedness may be inferred; ambiguous road associations remain skipped.','geometry'=>'Generic dimensions/posts and terrain-derived mounting elevation; coordinates and face types are source-derived.']];
     }
 }

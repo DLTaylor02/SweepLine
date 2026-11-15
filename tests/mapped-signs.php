@@ -3,12 +3,17 @@ use SweepLine\{BeamSigns,BeamSignFace,BeamRaster};
 (function():void{
     $node=static fn($id,$type,$direction='270')=>['type'=>'node','id'=>$id,'lon'=>-100.,'lat'=>40.,'timestamp'=>'2026-01-01T00:00:00Z','tags'=>['traffic_sign'=>$type,'direction'=>$direction]];
     $data=BeamSigns::parse(['elements'=>[$node(1,'US:W1-2L'),$node(1,'US:W1-2L'),$node(2,'US:R2-1[45]'),$node(3,'US:W1-2'),$node(4,'US:W1-1R','forward'),$node(5,'maxspeed'),$node(6,'US:R1-1;US:R2-1[35]')]]);
-    check(count($data['signs'])===2&&$data['signs'][1]['speed']===45,'Explicit typed signs and values parse; physical IDs deduplicate');
-    check(($data['skipped']['unsupported_or_ambiguous_sign_type']??0)===3&&($data['skipped']['missing_absolute_facing']??0)===1,'Unknown arrow types, compounds and relative directions are skipped');
+    check(count($data['signs'])===7&&$data['signs'][1]['speed']===45,'All mapped sign types and compound panels parse; physical panel IDs deduplicate');
+    check($data['skipped']===[],'Unknown artwork and relative-facing records are retained for fallback treatment');
     check(BeamSigns::bearing('NW')===315.&&BeamSigns::bearing('360')===0.&&BeamSigns::bearing('both')===null,'Cardinal and numeric face bearings are explicit');
+    $generic=imagecreatefromstring(BeamSignFace::png('CUSTOM:parking'));check($generic!==false,'Unknown sign types receive a valid generic labeled face');imagedestroy($generic);
+    $hit=['dx'=>1.,'dy'=>0.,'segment'=>1,'line'=>['points'=>[[0,0],[100,0],[200,100]]]];
+    check(BeamSigns::curveDirection($hit,270)==='L','Unsigned curve face follows the first left bend ahead');
+    $hit['line']['points'][2]=[200,-100];check(BeamSigns::curveDirection($hit,270)==='R','Unsigned curve face follows a right bend ahead');
+    $hit['line']['points'][2]=[200,0];check(BeamSigns::curveDirection($hit,270)===null,'Straight geometry does not invent a curve arrow');
     $north=BeamSigns::facingPoint(-100,40,0);$east=BeamSigns::facingPoint(-100,40,90);
     check($north[1]>40&&$east[0]> -100,'Face direction projection preserves geographic north/east');
-    $merged=BeamSigns::merge($data,$data);check(count($merged['signs'])===2,'Overlapping carriageway corridors do not duplicate signs');
+    $merged=BeamSigns::merge($data,$data);check(count($merged['signs'])===7,'Overlapping carriageway corridors do not duplicate signs');
     foreach(['R1-1','R1-2','R2-1[45]','W1-1L','W1-2R','W1-3L','W1-4R','W1-5L','W1-8R'] as $code){
         $im=imagecreatefromstring(BeamSignFace::png($code));check(imagesx($im)===64&&imagesy($im)===64,'Generated face is a real PNG for '.$code);imagedestroy($im);
         $xml=BeamSignFace::mesh('test_sign',$code);check(simplexml_load_string($xml)!==false&&str_contains($xml,'test_sign_back'),'Sign mesh includes front, back and thickness for '.$code);
@@ -25,6 +30,21 @@ use SweepLine\{BeamSigns,BeamSignFace,BeamRaster};
         $rejected=BeamSigns::write(['signs'=>[array_replace($record,['point'=>$p])]],$lines,$raster,0,'test','/levels/test/',$put,static function($m){});
         check($rejected['report']['placed']===0,'On-road and distant records are not shifted into invented positions');
     }
+    $missing=$node(90,'US:R1-1');unset($missing['tags']['direction']);
+    $parsed=BeamSigns::parse(['elements'=>[$missing]]);
+    check(count($parsed['signs'])===1&&$parsed['signs'][0]['bearing']===null,'Missing sign facing is retained for roadside inference');
+    foreach([[109,90.],[91,270.]] as [$y,$expected]){
+        $s=$parsed['signs'][0]+['point'=>[200,$y]];
+        $inferred=BeamSigns::write(['signs'=>[$s]],$lines,$raster,0,'test','/levels/test/',$put,static function($m){});
+        check($inferred['report']['placed']===1&&abs($inferred['report']['records'][0]['grid_bearing']-$expected)<1e-7&&$inferred['report']['records'][0]['facing_source']==='inferred_right_side_of_travel','Sign face serves traffic with sign on its right, on either roadside');
+        $reverse=$lines;$reverse[0]['points']=array_reverse($reverse[0]['points']);
+        $again=BeamSigns::write(['signs'=>[$s]],$reverse,$raster,0,'test','/levels/test/',$put,static function($m){});
+        check($again['report']['placed']===1&&abs($again['report']['records'][0]['grid_bearing']-$expected)<1e-7,'Reversing road geometry does not reverse inferred sign facing');
+    }
+    check($result['report']['records'][0]['bearing']===270.&&$result['report']['records'][0]['facing_source']==='explicit_osm','Explicit facing overrides roadside inference');
+    $panels=array_map(static fn($s)=>$s+['point'=>[200,109]],array_values(array_filter($data['signs'],static fn($s)=>$s['osm_id']==='6')));
+    $assembly=BeamSigns::write(['signs'=>$panels],$lines,$raster,0,'test','/levels/test/',$put,static function($m){});
+    check($assembly['report']['placed']===2&&abs($assembly['objects'][2]['position'][1]-$assembly['objects'][0]['position'][1]-1.2)<1e-7,'Compound sign faces are placed side by side outward from their mapped assembly');
     $ambiguous=$lines;$ambiguous[]=['name'=>'parallel road','points'=>[[0,118,10],[600,118,10]],'profiles'=>$lines[0]['profiles']];
     $r=BeamSigns::write(['signs'=>[$record]],$ambiguous,$raster,0,'test','/levels/test/',$put,static function($m){});
     check(($r['report']['skipped_placement']['ambiguous_road_association']??0)===1,'Signs equally associated with two roads are skipped');

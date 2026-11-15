@@ -4,6 +4,12 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.157.1:** Accept mapped sign labels beyond the initial whitelist, split compound tags into adjacent panels, infer missing curve handedness from approaching road geometry, and retain generic labeled faces where exact artwork is unavailable. Record original tags, rendered faces, panel positions and inferred direction.
+
+
+- **0.157.0:** Infer missing sign facing from the side of the associated road, serving traffic with the sign on its right. Preserve explicit OSM facing, one-way checks and ambiguous-association safeguards; report inferred orientation separately.
+
+
 - **0.156.2:** Fix missing statement terminators in all three roadside Overpass query unions, confirmed by export (48) parser diagnostics. Add regression checks for each query group.
 
 - **0.156.1:** Split mapped roadside acquisition into independently retried utilities, barriers/rail and amenity requests. Preserve successful groups on partial failure, retry malformed JSON responses, and expose safe failure reasons and per-group outcomes in progress and build reports. Shorten BeamNG export UI notices while retaining actionable warnings and full diagnostics. Restore the v0.147.4 asphalt material by removing the detail-map shader feature introduced in v0.152.0 to address the reported tire-mark regression; in-game confirmation remains pending. Preserve bounded Overpass HTTP 400 parser diagnostics and query fingerprints in roadside build reports.

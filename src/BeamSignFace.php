@@ -14,9 +14,13 @@ final class BeamSignFace {
             $poly([20,6,44,6,58,20,58,44,44,58,20,58,6,44,6,20],$red);$text('STOP',23,$white);
         }elseif($code==='R1-2'){
             imagefill($im,0,0,$red);$poly([9,8,55,8,32,53],$white);$text('YIELD',18,$red,3);
-        }elseif(str_starts_with($code,'R2-1')){
+        }elseif(preg_match('/^R2-1\[[0-9]+(?: mph)?\]$/D',$code)){
             imagerectangle($im,2,2,61,61,$black);$text('SPEED',6,$black,3);$text('LIMIT',19,$black,3);
             preg_match('/\[([0-9]+)/',$code,$m);$text($m[1],39,$black);
+        }elseif(!preg_match('/^W1-(?:[1-5]|8)[LR]$/D',$code)){
+            imagerectangle($im,2,2,61,61,$black);
+            $label=preg_replace('/[^\x20-\x7e]/','?',substr($code,0,56));
+            foreach(str_split($label,8) as $i=>$row)$text($row,5+$i*8,$black,1);
         }else{
             imagesetthickness($im,2);if(str_starts_with($code,'W1-8'))imagerectangle($im,2,2,61,61,$black);else imagepolygon($im,[32,3,61,32,32,61,3,32],$black);
             $right=str_ends_with($code,'R');$flip=static fn($x)=>$right?64-$x:$x;
