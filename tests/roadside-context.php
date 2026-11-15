@@ -78,3 +78,7 @@ use SweepLine\{BeamRoadsideData,BeamRoadside,BeamRoadsideAssets,BeamRaster};
     }catch(\SweepLine\DownloadFailure $e){check($e->providerDetail===$detail&&!$e->retryable,'Retry wrapper preserves parser details on permanent HTTP 400 rejection');}
     finally{unlink($file);}
 })();
+
+foreach(\SweepLine\BeamRoadsideData::queries('(poly:"40 -100 40.01 -100 40 -100.01")') as $group=>$query){
+    check(str_ends_with($query,';);'),'Overpass '.$group.' union terminates its final statement before closing');
+}

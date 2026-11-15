@@ -39,9 +39,9 @@ final class BeamRoadsideData {
     }
     public static function queries(string $area):array{
         return [
-            'utilities'=>'way[power~"^(line|minor_line)$"]'.$area.'->.power;(.power;node(w.power)[power~"^(pole|tower)$"];node[power~"^(pole|tower)$"]'.$area.';node[highway=street_lamp]'.$area.');',
-            'barriers_rail'=>'(nwr[barrier~"^(fence|wall|retaining_wall|hedge|gate|lift_gate|bollard)$"]'.$area.';way[railway=rail]'.$area.';node[railway=level_crossing]'.$area.');',
-            'amenities'=>'(node[highway=milestone]'.$area.';node[highway=bus_stop]'.$area.';nwr[amenity~"^(shelter|bench|parking)$"]'.$area.');',
+            'utilities'=>'way[power~"^(line|minor_line)$"]'.$area.'->.power;(.power;node(w.power)[power~"^(pole|tower)$"];node[power~"^(pole|tower)$"]'.$area.';node[highway=street_lamp]'.$area.';);',
+            'barriers_rail'=>'(nwr[barrier~"^(fence|wall|retaining_wall|hedge|gate|lift_gate|bollard)$"]'.$area.';way[railway=rail]'.$area.';node[railway=level_crossing]'.$area.';);',
+            'amenities'=>'(node[highway=milestone]'.$area.';node[highway=bus_stop]'.$area.';nwr[amenity~"^(shelter|bench|parking)$"]'.$area.';);',
         ];
     }
     /** Independent requests retain successful groups when another fails. */

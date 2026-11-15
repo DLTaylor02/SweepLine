@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.156.2:** Fix missing statement terminators in all three roadside Overpass query unions, confirmed by export (48) parser diagnostics. Add regression checks for each query group.
+
 - **0.156.1:** Split mapped roadside acquisition into independently retried utilities, barriers/rail and amenity requests. Preserve successful groups on partial failure, retry malformed JSON responses, and expose safe failure reasons and per-group outcomes in progress and build reports. Shorten BeamNG export UI notices while retaining actionable warnings and full diagnostics. Restore the v0.147.4 asphalt material by removing the detail-map shader feature introduced in v0.152.0 to address the reported tire-mark regression; in-game confirmation remains pending. Preserve bounded Overpass HTTP 400 parser diagnostics and query fingerprints in roadside build reports.
 
 - **0.156.0:** Fetch mapped utility supports/lines, streetlights, barriers, railways/crossings, milestones, bus stops, shelters, benches and parking footprints near BeamNG roads. Prefer fitting base-game models and stock hedge vegetation, with bounded generated fallback geometry and limited working lights; retain source IDs/dates and report unsupported geometry. Preserve source placement and existing collision; generic model dimensions, cable sag and rail details remain estimates.
