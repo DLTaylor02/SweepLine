@@ -32,9 +32,38 @@ final class BeamRoadsideData {
         $items=[];$points=0;foreach(array_merge($a['features']??[],$b['features']??[]) as $f)$items[$f['id']]=$f;
         $a['features']=[];foreach($items as $f){$points+=count($f['points']);if($points>40000||count($a['features'])>=2000){$a['truncated']=true;break;}$a['features'][]=$f;}
         $a['truncated']=($a['truncated']??false)||($b['truncated']??false);
+        $a['requests']=array_merge($a['requests']??[],$b['requests']??[]);
         foreach($b['skipped']??[] as $key=>$n)$a['skipped'][$key]=($a['skipped'][$key]??0)+$n;
         if(isset($b['warning'])){$a['warning']=trim(($a['warning']??'').' '.$b['warning']);$a['fetch_status']='partial';}
         return $a;
+    }
+    public static function queries(string $area):array{
+        return [
+            'utilities'=>'way[power~"^(line|minor_line)$"]'.$area.'->.power;(.power;node(w.power)[power~"^(pole|tower)$"];node[power~"^(pole|tower)$"]'.$area.';node[highway=street_lamp]'.$area.');',
+            'barriers_rail'=>'(nwr[barrier~"^(fence|wall|retaining_wall|hedge|gate|lift_gate|bollard)$"]'.$area.';way[railway=rail]'.$area.';node[railway=level_crossing]'.$area.');',
+            'amenities'=>'(node[highway=milestone]'.$area.';node[highway=bus_stop]'.$area.';nwr[amenity~"^(shelter|bench|parking)$"]'.$area.');',
+        ];
+    }
+    /** Independent requests retain successful groups when another fails. */
+    public static function acquire(string $area,string $dir,callable $progress,?callable $download=null,?callable $sleep=null):array{
+        $result=['features'=>[],'skipped'=>[],'truncated'=>false,'requests'=>[]];$ok=0;
+        foreach(self::queries($area) as $group=>$body){
+            $query='[out:json][timeout:60][maxsize:16777216];'.$body.'out meta geom 3001;';
+            $file=$dir.'/roadside-'.$group.'-'.substr(hash('sha256',$query),0,12).'.json';
+            try{
+                $parsed=self::parse(BeamOsm::download(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$file,http_build_query(['data'=>$query]),$progress,$download,$sleep,'roadside '.$group));
+                $result=self::merge($result,$parsed);$ok++;
+                $result['requests'][]=['group'=>$group,'status'=>'complete','features'=>count($parsed['features'])];
+            }catch(JobCancelled $e){throw $e;}
+            catch(\Throwable $e){
+                $reason=BeamOsm::failureReason($e);
+                $result['requests'][]=['group'=>$group,'status'=>'unavailable','reason'=>$reason];
+                $progress('Roadside '.$group.' unavailable: '.$reason.'. Continuing with other mapped details.');
+            }
+        }
+        $result['fetch_status']=$ok===3?'complete':($ok?'partial':'unavailable');
+        if($ok<3)$result['warning']='Mapped roadside infrastructure is incomplete: '.implode('; ',array_map(static fn($r)=>$r['group'].' ('.$r['reason'].')',array_values(array_filter($result['requests'],static fn($r)=>$r['status']==='unavailable')))).'. Successful groups were retained; missing locations were not invented.';
+        return $result;
     }
     public static function fetch(\PDO $db,array $plan,string $dir,callable $progress,?callable $download=null):array{
         try{
@@ -43,9 +72,7 @@ final class BeamRoadsideData {
             $q->execute([json_encode(['type'=>'LineString','coordinates'=>$plan['points']],JSON_THROW_ON_ERROR),$plan['epsg']]);
             $ring=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['coordinates'];$poly=implode(' ',array_map(static fn($p)=>$p[1].' '.$p[0],$ring));
             if(strlen($poly)>100000)throw new \RuntimeException('Roadside corridor exceeds budget.');$area='(poly:"'.$poly.'")';
-            $query='[out:json][timeout:60][maxsize:16777216];way[power~"^(line|minor_line)$"]'.$area.'->.power;(.power;node(w.power)[power~"^(pole|tower)$"];node[power~"^(pole|tower)$"]'.$area.';node[highway=street_lamp]'.$area.';nwr[barrier~"^(fence|wall|retaining_wall|hedge|gate|lift_gate|bollard)$"]'.$area.';way[railway=rail]'.$area.';node[railway=level_crossing]'.$area.';node[highway=milestone]'.$area.';node[highway=bus_stop]'.$area.';nwr[amenity~"^(shelter|bench|parking)$"]'.$area.');out meta geom 3001;';
-            $file=$dir.'/roadside-'.substr(hash('sha256',$query),0,12).'.json';
-            $result=self::parse(BeamOsm::download(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$file,http_build_query(['data'=>$query]),$progress,$download,null,'roadside infrastructure'));
+            $result=self::acquire($area,$dir,$progress,$download);
             if($result['features']){
                 $q=$db->prepare('SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?),4326),CAST(? AS integer)),6)');
                 $q->execute([json_encode(['type'=>'GeometryCollection','geometries'=>array_map(static fn($f)=>['type'=>count($f['points'])===1?'Point':'LineString','coordinates'=>count($f['points'])===1?$f['points'][0]:$f['points']],$result['features'])],JSON_THROW_ON_ERROR),$plan['epsg']]);
@@ -54,6 +81,6 @@ final class BeamRoadsideData {
             }
             return $result+['fetch_status'=>'complete','source'=>'OpenStreetMap explicit roadside features'];
         }catch(JobCancelled $e){throw $e;}
-        catch(\Throwable $e){return ['features'=>[],'fetch_status'=>'unavailable','warning'=>'Mapped roadside infrastructure was unavailable; no feature locations were invented.','failure_kind'=>$e instanceof DownloadFailure?'provider':'processing'];}
+        catch(\Throwable $e){$progress('Roadside infrastructure processing failed: '.BeamOsm::failureReason($e));return ['features'=>[],'fetch_status'=>'unavailable','warning'=>'Mapped roadside infrastructure was unavailable: '.BeamOsm::failureReason($e).'. No feature locations were invented.','failure_kind'=>'processing','requests'=>$result['requests']??[]];}
     }
 }

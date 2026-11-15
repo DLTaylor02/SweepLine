@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.156.1:** Split mapped roadside acquisition into independently retried utilities, barriers/rail and amenity requests. Preserve successful groups on partial failure, retry malformed JSON responses, and expose safe failure reasons and per-group outcomes in progress and build reports. Shorten BeamNG export UI notices while retaining actionable warnings and full diagnostics. Restore the v0.147.4 asphalt material by removing the detail-map shader feature introduced in v0.152.0 to address the reported tire-mark regression; in-game confirmation remains pending.
+
 - **0.156.0:** Fetch mapped utility supports/lines, streetlights, barriers, railways/crossings, milestones, bus stops, shelters, benches and parking footprints near BeamNG roads. Prefer fitting base-game models and stock hedge vegetation, with bounded generated fallback geometry and limited working lights; retain source IDs/dates and report unsupported geometry. Preserve source placement and existing collision; generic model dimensions, cable sag and rail details remain estimates.
 
 - **0.155.0:** Add state-independent OSM physical roadside-sign acquisition and conservative BeamNG placement for explicit US curve/turn warnings, chevrons, stop/yield and encoded speed-limit faces. Require mapped coordinates and absolute facing; skip ambiguous types, centerline positions and unresolved mounting. Generate generic signs/posts and report source dates, omissions and provider failures without inventing sign locations.

@@ -44,3 +44,24 @@ use SweepLine\{BeamRoadsideData,BeamRoadside,BeamRoadsideAssets,BeamRaster};
     check(abs(BeamRoadside::height(['height'=>'10 ft'],1)-3.048)<1e-8,'Mapped object heights support feet and metres');
     $im=imagecreatefromstring(BeamRoadside::label('12.5',false));check(imagesx($im)===128,'Mapped marker values have generated readable faces');imagedestroy($im);
 })();
+
+(function():void{
+    $dir=sys_get_temp_dir().'/sl-roadside-retries-'.bin2hex(random_bytes(5));mkdir($dir,0700);$attempts=[];$waits=0;$messages=[];
+    try{
+        $transport=static function($url,$file,$limit,$post,$progress)use(&$attempts):void{
+            parse_str($post,$body);$query=$body['data'];$key=str_contains($query,'way[power')?'utilities':(str_contains($query,'way[railway')?'barriers_rail':'amenities');
+            $attempts[$key]=($attempts[$key]??0)+1;
+            if($key==='utilities')throw new \SweepLine\DownloadFailure('Synthetic HTTP 504',true);
+            file_put_contents($file,json_encode(['elements'=>[['type'=>'node','id'=>$key==='amenities'?77:78,'lon'=>-100,'lat'=>40,'tags'=>$key==='amenities'?['amenity'=>'bench']:['barrier'=>'bollard']]]]));
+        };
+        $data=\SweepLine\BeamRoadsideData::acquire('(poly:"40 -100 40.01 -100 40 -100.01 40 -100")',$dir,static function($m)use(&$messages){$messages[]=$m;},$transport,static function()use(&$waits){$waits++;});
+        check($attempts===['utilities'=>3,'barriers_rail'=>1,'amenities'=>1]&&$waits===15,'Roadside groups retry independently with bounded backoff');
+        check($data['fetch_status']==='partial'&&count($data['features'])===2,'Failed utilities preserve successful barrier and amenity data');
+        check($data['requests'][0]['reason']==='HTTP 504'&&str_contains($data['warning'],'utilities'),'Roadside report identifies failed group and safe failure reason');
+        check(count(array_filter($messages,static fn($m)=>is_string($m)&&str_contains($m,'exhausted 3 attempts')))===1,'Retry exhaustion is explicitly recorded in progress');
+        $attempt=0;$file=$dir.'/invalid.json';
+        $result=\SweepLine\BeamOsm::download('https://example.invalid',$file,'test',static fn($m)=>null,static function($u,$p)use(&$attempt){file_put_contents($p,++$attempt===1?'<html>temporary response</html>':'{"elements":[]}');},static fn()=>null);
+        check($attempt===2&&$result===['elements'=>[]],'Malformed provider JSON receives a bounded retry');
+        check(\SweepLine\BeamOsm::failureReason(new RuntimeException('secret https://user:password@example.test/?token=private'))==='response or local processing failed','Failure diagnostics do not expose arbitrary provider text or credentials');
+    }finally{foreach(glob($dir.'/*') as $f)unlink($f);rmdir($dir);}
+})();

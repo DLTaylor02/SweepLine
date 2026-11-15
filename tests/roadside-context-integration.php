@@ -4,7 +4,7 @@
     $dir=sys_get_temp_dir().'/sl-roadside-'.bin2hex(random_bytes(6));mkdir($dir,0700);
     try{
         $download=static function($url,$file,$limit,$post,$progress):void{
-            parse_str($post,$query);check(str_contains($query['data'],'node[highway=street_lamp]')&&str_contains($query['data'],'way[railway=rail]'),'Roadside acquisition requests explicit mapped infrastructure');
+            parse_str($post,$query);check(str_contains($query['data'],'node[highway=street_lamp]')||str_contains($query['data'],'way[railway=rail]')||str_contains($query['data'],'node[highway=milestone]'),'Roadside acquisition requests explicit mapped infrastructure');
             file_put_contents($file,json_encode(['elements'=>[
                 ['type'=>'node','id'=>99002,'lon'=>-119.8001,'lat'=>39.51,'tags'=>['amenity'=>'bench']],
                 ['type'=>'way','id'=>99003,'geometry'=>[['lon'=>-119.8001,'lat'=>39.51],['lon'=>-119.8002,'lat'=>39.5101]],'tags'=>['barrier'=>'fence']]

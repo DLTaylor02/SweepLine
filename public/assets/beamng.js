@@ -61,6 +61,8 @@
       if(failed&&job.progress)status.textContent+=' Last activity: '+job.progress;
       if(busy&&job.cancel_requested)status.textContent='Cancellation requested. Last activity: '+(job.progress||steps[stage]);
       if(!failed&&job.warning)status.textContent+=' '+job.warning;
+      // Keep actionable warnings; omit repetitive data-provenance reassurances, including saved jobs.
+      status.textContent=status.textContent.replace(/(;\s*|\s+)(?:no (?:feature locations|sign locations|sign positions|replacement water) (?:were|was) invented|missing locations were not invented|no (?:fabricated imagery|synthetic terrain|guessed buildings|inferred roadside barriers) (?:were|was) substituted)\./gi,(_,separator)=>separator.trim()===';'?'.':'').trim();
       if(stopped){try{window.sessionStorage?.setItem(noticeKey,JSON.stringify({status:job.status,error:job.error,progress:job.progress,stage:lastStage}));}catch(_){}section.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
       else if(busy||ready){try{window.sessionStorage?.removeItem(noticeKey);}catch(_){}}
       if(ready&&expires)timer=setTimeout(poll,Math.max(1000,expires-Date.now()+100));
