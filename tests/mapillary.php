@@ -36,7 +36,7 @@
         $attempts=0;$failed=\SweepLine\BeamMapillary::collect($boxes,$directory,'bad-token',static fn($m)=>null,static function()use(&$attempts){$attempts++;throw new \SweepLine\DownloadFailure('Mapillary HTTP 401',false);},static fn()=>null,$cache);
         check($attempts===1&&$failed['status']==='unavailable'&&$failed['requests'][0]['reason']==='HTTP 401','Invalid credentials stop promptly with safe diagnostics');
         $loop=\SweepLine\BeamMapillary::collect($boxes,$directory,'loop-token',static fn($m)=>null,static fn()=>['data'=>[],'paging'=>['next'=>'ignored','cursors'=>['after'=>'repeat']]],static fn()=>null,$cache);
-        check($loop['truncated']&&count($loop['requests'])===2,'Repeated pagination cursors stop with incomplete coverage');
+        check($loop['truncated']&&!$loop['acquisition_complete']&&count(array_filter($loop['requests'],static fn($r)=>$r['status']==='complete'))===2,'Repeated pagination cursors stop with incomplete coverage');
         $cancelled=false;try{\SweepLine\BeamMapillary::collect($boxes,$directory,'cancel-token',static fn($m)=>null,static function(){throw new \SweepLine\JobCancelled('fixture');},static fn()=>null,$cache);}catch(\SweepLine\JobCancelled $e){$cancelled=true;}
         check($cancelled,'Mapillary cancellation propagates rather than becoming an optional-provider warning');
         $plan=['traffic_sign_data'=>['signs'=>[],'fetch_status'=>'complete'],'roadside_data'=>['features'=>[],'fetch_status'=>'complete']];
@@ -46,6 +46,21 @@
         $raster=new \SweepLine\BeamRaster(64,640,str_repeat(pack('g',10),4096),str_repeat(chr(100),12288));
         $rendered=\SweepLine\BeamRoadside::write(['features'=>[$point]],[['points'=>[[0,100,10],[600,100,10]],'profiles'=>array_fill(0,2,['width_m'=>8])]],$raster,0,'test','/levels/test/',static fn($n,$b)=>null,static fn($m)=>null);
         check($rendered['report']['placed_features']['power_pole']===1&&$rendered['report']['records'][0]['source']==='Mapillary','Mapillary poles use stock placement and retain provider provenance');
+        $areas=[];for($i=0;$i<70;$i++)$areas[]=[-119.8+$i*.00001,39.5,-119.799+$i*.00001,39.501];
+        $many=\SweepLine\BeamMapillary::collect($areas,$directory,'many-areas',static fn($m)=>null,static fn()=>['data'=>[]],static fn()=>null,$cache);
+        check($many['acquisition_complete']&&$many['areas_complete']===70&&count($many['requests'])===70,'Mapillary requests all corridor areas beyond the previous 64-area cap');
+        $page=0;
+        $late=\SweepLine\BeamMapillary::collect($boxes,$directory,'late-feature',static fn($m)=>null,static function()use(&$page,$row){
+            $page++;$rows=[];for($i=0;$i<500;$i++)$rows[]=$row($page*1000+$i,'object--wire-group');
+            if($page===5)$rows[499]=$row(99999,'object--bench');
+            return ['data'=>$rows]+($page<5?['paging'=>['next'=>'ignored','cursors'=>['after'=>'page-'.$page]]]:[]);
+        },static fn()=>null,$cache);
+        check($late['acquisition_complete']&&$page===5&&count($late['features'])===1,'A useful object beyond 2000 raw records is still acquired');
+        $corner=\SweepLine\BeamMapillary::corners([[[0,0],[100,0],[100,100]]]);
+        check(count($corner)===1&&$corner[0]===[100,0],'A meaningful road bend produces a priority corner box centre');
+        check(\SweepLine\BeamMapillary::corners([[[0,0],[100,0],[200,0]]])===[],'Straight sections do not generate priority corner requests');
+        $additional=\SweepLine\BeamMapillary::normalize([$row(301,'object--bus-stop'),$row(302,'object--shelter'),$row(303,'object--mile-marker'),$row(304,'object--power-tower')]);
+        check(array_column($additional['features'],'kind')===['bus_stop','shelter','mile_marker','power_tower'],'Additional applicable positioned Mapillary classes normalize when returned');
     }finally{foreach(glob($directory.'/cache/*') as $f)unlink($f);rmdir($directory.'/cache');foreach(glob($directory.'/*') as $f)unlink($f);rmdir($directory);}
 })();
 

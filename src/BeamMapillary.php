@@ -7,7 +7,7 @@ final class BeamMapillary {
     public const FIELDS='id,geometry,object_type,object_value,first_seen_at,last_seen_at';
     public static function normalize(array $rows):array {
         $signs=[];$features=[];$seen=[];$skipped=0;
-        $kinds=['object--support--utility-pole'=>'power_pole','object--street-light'=>'streetlight','object--bench'=>'bench','object--bollard'=>'bollard'];
+        $kinds=['object--support--utility-pole'=>'power_pole','object--street-light'=>'streetlight','object--bench'=>'bench','object--bollard'=>'bollard','construction--barrier--bollard'=>'bollard','object--bus-stop'=>'bus_stop','object--shelter'=>'shelter','object--mile-marker'=>'mile_marker','object--power-tower'=>'power_tower'];
         foreach(array_slice($rows,0,2000) as $r){
             $id=(string)($r['id']??'');$p=$r['geometry']['coordinates']??[];$value=$r['object_value']??'';
             if(!preg_match('/^[0-9]{1,24}$/D',$id)||isset($seen[$id])||($r['geometry']['type']??'')!=='Point'||count($p)!==2||!is_numeric($p[0])||!is_numeric($p[1])||!is_finite((float)$p[0])||!is_finite((float)$p[1])||abs((float)$p[0])>180||abs((float)$p[1])>90||!is_string($value)||strlen($value)>200){$skipped++;continue;}
@@ -23,7 +23,7 @@ final class BeamMapillary {
                 // Numeric speed classes do not establish units; preserve the label.
                 $signs[]=$base+['code'=>$code,'original_tag'=>$value,'bearing'=>null,'grid_bearing'=>null,'panel_index'=>0,'speed'=>null,'lon'=>(float)$p[0],'lat'=>(float)$p[1]];
             }elseif(isset($kinds[$value])){
-                $kind=$kinds[$value];$tags=match($kind){'power_pole'=>['power'=>'pole'],'streetlight'=>['highway'=>'street_lamp'],'bench'=>['amenity'=>'bench'],'bollard'=>['barrier'=>'bollard']};
+                $kind=$kinds[$value];$tags=match($kind){'power_pole'=>['power'=>'pole'],'streetlight'=>['highway'=>'street_lamp'],'bench'=>['amenity'=>'bench'],'bollard'=>['barrier'=>'bollard'],'bus_stop'=>['highway'=>'bus_stop'],'shelter'=>['amenity'=>'shelter'],'mile_marker'=>['highway'=>'milestone'],'power_tower'=>['power'=>'tower']};
                 $features[]=$base+['kind'=>$kind,'tags'=>$tags,'points'=>[[(float)$p[0],(float)$p[1]]],'node_ids'=>[]];
             }else{$skipped++;}
         }
@@ -50,13 +50,13 @@ final class BeamMapillary {
         if(!is_string($cursor)||strlen($cursor)>2048)$cursor=null;
         return ['data'=>$rows,'has_next'=>!empty($data['paging']['next'])||!empty($data['has_next']),'after'=>$cursor??($data['after']??null)];
     }
-    public static function collect(array $boxes,string $dir,string $token,callable $progress,?callable $transport=null,?callable $sleep=null,?BeamResourceCache $cache=null):array {
-        $rows=[];$ids=[];$requests=[];$truncated=count($boxes)>64;$deadline=microtime(true)+180;$pages=0;$failed=0;
+    public static function collect(array $boxes,string $dir,string $token,callable $progress,?callable $transport=null,?callable $sleep=null,?BeamResourceCache $cache=null,?callable $filter=null):array {
+        $items=['signs'=>[],'features'=>[]];$ids=[];$requests=[];$truncated=false;$failed=0;$unsupported=0;$classes=[];$omitted=0;$outside=0;$areas=0;
         $cache??=new BeamResourceCache();$transport??=[self::class,'request'];$sleep??=static fn()=>usleep(1000000);
-        foreach(array_slice($boxes,0,64) as $box){
-            $after=null;$cursors=[];
+        foreach($boxes as $area=>$box){
+            $after=null;$cursors=[];$page=0;$areaComplete=true;
             do{
-                if(++$pages>64||count($rows)>=2000||microtime(true)>$deadline){$truncated=true;break 2;}
+                $page++;$progress('Mapillary area '.($area+1).' of '.count($boxes).' · page '.$page);
                 $params=['bbox'=>implode(',',$box),'fields'=>self::FIELDS,'limit'=>500];if($after!==null)$params['after']=$after;
                 $file=$dir.'/mapillary-'.substr(hash('sha256',json_encode($params)),0,16).'.json';
                 try{
@@ -71,17 +71,66 @@ final class BeamMapillary {
                         },
                         static function($path){$data=json_decode(file_get_contents($path),true,512,JSON_THROW_ON_ERROR);if(!is_array($data['data']??null)||(isset($data['paging'])||isset($data['error'])))throw new \RuntimeException('Invalid Mapillary cache.');},$progress);
                     $data=json_decode(file_get_contents($file),true,512,JSON_THROW_ON_ERROR);
-                    $requests[]=['status'=>'complete','features'=>count($data['data']),'bbox'=>$box];
-                    foreach($data['data'] as $r){$id=(string)($r['id']??'');if(!isset($ids[$id])){$ids[$id]=true;$rows[]=$r;if(count($rows)>=2000){$truncated=true;break;}}}
+                    $requests[]=['status'=>'complete','features'=>count($data['data']),'bbox'=>$box,'page'=>$page];
+                    foreach($data['data'] as $r){$value=$r['object_value']??'unknown';if(is_string($value)&&strlen($value)<=200){if(isset($classes[$value])||count($classes)<4096)$classes[$value]=($classes[$value]??0)+1;}}
+                    $parsed=self::normalize($data['data']);$unsupported+=$parsed['unsupported_or_invalid'];
+                    if($filter){$parsed=$filter($parsed);$outside+=$parsed['outside_corridor']??0;}
+                    foreach(['signs'=>1000,'features'=>2000] as $key=>$limit)foreach($parsed[$key] as $r){
+                        $id=$r['id'];if(isset($ids[$id]))continue;
+                        // Rendering budgets remain unchanged; keep fetching every remaining page.
+                        if(count($items[$key])>=$limit){$omitted++;$truncated=true;continue;}
+                        $ids[$id]=true;$items[$key][]=$r;
+                    }
                     $next=$data['after']??null;
-                    if(!empty($data['has_next'])&&(!$next||isset($cursors[$next]))){$truncated=true;break;}
+                    if(!empty($data['has_next'])&&(!is_string($next)||$next===''||isset($cursors[$next]))){$failed++;$truncated=true;$areaComplete=false;$requests[]=['status'=>'unavailable','reason'=>'missing or repeated pagination cursor','bbox'=>$box];break;}
                     if($next)$cursors[$next]=true;$after=!empty($data['has_next'])?$next:null;
                 }catch(JobCancelled $e){throw $e;}
-                catch(\Throwable $e){$failed++;$reason=BeamOsm::failureReason($e);$requests[]=['status'=>'unavailable','reason'=>$reason,'bbox'=>$box];$progress('Mapillary map features unavailable: '.$reason);if($e instanceof DownloadFailure&&!$e->retryable)break 2;if($failed>=3)break 2;break;}
+                catch(\Throwable $e){$failed++;$areaComplete=false;$reason=BeamOsm::failureReason($e);$requests[]=['status'=>'unavailable','reason'=>$reason,'bbox'=>$box];$progress('Mapillary map features unavailable: '.$reason);if($e instanceof DownloadFailure&&!$e->retryable)break 2;break;}
             }while($after!==null);
+            if($areaComplete)$areas++;
         }
-        $out=self::normalize($rows);$out['status']=$failed?($rows?'partial':'unavailable'):'complete';$out['truncated']=$truncated;
-        $out['requests']=$requests;$out['warning']=$failed?'Mapillary coverage is incomplete; see provider diagnostics.':($truncated?'Mapillary reached its request or feature limit; coverage may be incomplete.':null);
+        return $items+['unsupported_or_invalid'=>$unsupported,'source_classes'=>$classes,'outside_corridor'=>$outside,'render_budget_omitted'=>$omitted,
+            'areas_total'=>count($boxes),'areas_complete'=>$areas,'acquisition_complete'=>$failed===0&&$areas===count($boxes),
+            'status'=>$failed?($items['signs']||$items['features']?'partial':'unavailable'):'complete','truncated'=>$truncated,
+            'requests'=>$requests,'warning'=>$failed?'Mapillary coverage is incomplete; see provider diagnostics.':($truncated?'Mapillary acquisition completed, but some objects exceeded the unchanged rendering budget.':null)];
+    }
+    /** Per-page projection/filtering prevents unrelated city objects consuming render budgets. */
+    public static function project(\PDO $db,array $plan,array $data,array $lines):array {
+        $all=array_merge(array_map(static fn($s)=>[$s['lon'],$s['lat']],$data['signs']),array_map(static fn($f)=>$f['points'][0],$data['features']));
+        if(!$all)return $data;
+        $q=$db->prepare("WITH input AS (SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?),4326),CAST(? AS integer)) p,ST_SetSRID(ST_GeomFromGeoJSON(?),CAST(? AS integer)) road)
+            SELECT d.path[1] idx,ST_X(d.geom) x,ST_Y(d.geom) y,ST_DWithin(d.geom,input.road,90) keep FROM input CROSS JOIN LATERAL ST_Dump(input.p) d ORDER BY d.path");
+        $q->execute([json_encode(['type'=>'MultiPoint','coordinates'=>$all],JSON_THROW_ON_ERROR),$plan['epsg'],json_encode(['type'=>'MultiLineString','coordinates'=>$lines],JSON_THROW_ON_ERROR),$plan['epsg']]);
+        $projected=$q->fetchAll(\PDO::FETCH_ASSOC);$i=0;$out=$data;$out['signs']=[];$out['features']=[];$out['outside_corridor']=0;
+        foreach(['signs','features'] as $key)foreach($data[$key] as $record){
+            $p=$projected[$i++];if(!in_array($p['keep'],[true,1,'t','1'],true)){$out['outside_corridor']++;continue;}
+            $point=[(float)$p['x']-$plan['bounds'][0],(float)$p['y']-$plan['bounds'][1]];
+            if($key==='signs')$record['point']=$point;else $record['points']=[$point];$out[$key][]=$record;
+        }
+        return $out;
+    }
+    /** Rank bends from 30 m approach/departure chords; suppress overlapping corner boxes. */
+    public static function corners(array $lines):array {
+        $candidates=[];
+        foreach($lines as $points){
+            $chain=[0.];for($i=1;$i<count($points);$i++)$chain[]=$chain[$i-1]+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);
+            $at=static function(float $distance)use($points,$chain):array{
+                $lo=0;$hi=count($chain)-1;while($hi-$lo>1){$m=intdiv($lo+$hi,2);if($chain[$m]<$distance)$lo=$m;else $hi=$m;}
+                $t=($distance-$chain[$lo])/max(.000001,$chain[$hi]-$chain[$lo]);return [$points[$lo][0]+$t*($points[$hi][0]-$points[$lo][0]),$points[$lo][1]+$t*($points[$hi][1]-$points[$lo][1])];
+            };
+            for($i=1;$i<count($points)-1;$i++){
+                if($chain[$i]<15||end($chain)-$chain[$i]<15)continue;
+                $a=$at(max(0,$chain[$i]-30));$b=$points[$i];$c=$at(min(end($chain),$chain[$i]+30));
+                $u=[$b[0]-$a[0],$b[1]-$a[1]];$v=[$c[0]-$b[0],$c[1]-$b[1]];$length=hypot(...$u)*hypot(...$v);if($length<1)continue;
+                $angle=rad2deg(acos(max(-1,min(1,($u[0]*$v[0]+$u[1]*$v[1])/$length))));
+                if($angle>=12)$candidates[]=['point'=>[$b[0],$b[1]],'angle'=>$angle];
+            }
+        }
+        usort($candidates,static fn($a,$b)=>$b['angle']<=>$a['angle']);$out=[];$grid=[];
+        foreach($candidates as $c){$p=$c['point'];$x=(int)floor($p[0]/90);$y=(int)floor($p[1]/90);$near=false;
+            for($dx=-1;$dx<=1;$dx++)for($dy=-1;$dy<=1;$dy++)foreach($grid[($x+$dx).':'.($y+$dy)]??[] as $v)if(hypot($p[0]-$v[0],$p[1]-$v[1])<90)$near=true;
+            if(!$near){$out[]=$p;$grid[$x.':'.$y][]=$p;}
+        }
         return $out;
     }
     public static function fetch(\PDO $db,array $plan,string $dir,callable $progress,?callable $transport=null,?BeamResourceCache $cache=null):array {
@@ -89,18 +138,19 @@ final class BeamMapillary {
         if($token==='')return ['signs'=>[],'features'=>[],'status'=>'not_configured','requests'=>[],'truncated'=>false,'warning'=>null];
         try{
             $q=$db->prepare("WITH corridor AS (SELECT ST_Transform(ST_Buffer(ST_SetSRID(ST_GeomFromGeoJSON(?),CAST(? AS integer)),90),4326) g)
-                SELECT ST_XMin(t.geom) w,ST_YMin(t.geom) s,ST_XMax(t.geom) e,ST_YMax(t.geom) n FROM corridor c CROSS JOIN LATERAL ST_SquareGrid(0.02,c.g) t WHERE ST_Intersects(t.geom,c.g) ORDER BY t.i,t.j LIMIT 65");
+                SELECT ST_XMin(piece.g) w,ST_YMin(piece.g) s,ST_XMax(piece.g) e,ST_YMax(piece.g) n FROM corridor c CROSS JOIN LATERAL ST_SquareGrid(0.005,c.g) t CROSS JOIN LATERAL (SELECT ST_Envelope(ST_Intersection(t.geom,c.g)) g) piece WHERE ST_Intersects(t.geom,c.g) AND ST_Area(piece.g)>0 ORDER BY t.i,t.j");
             $lines=[$plan['points']];foreach($plan['carriageways']??[] as $track)$lines[]=$track['points'];
             $q->execute([json_encode(['type'=>'MultiLineString','coordinates'=>$lines],JSON_THROW_ON_ERROR),$plan['epsg']]);
             $boxes=array_map(static fn($r)=>array_map('floatval',[$r['w'],$r['s'],$r['e'],$r['n']]),$q->fetchAll(\PDO::FETCH_ASSOC));
-            $result=self::collect($boxes,$dir,$token,$progress,$transport,null,$cache);
-            $all=array_merge(array_map(static fn($s)=>[$s['lon'],$s['lat']],$result['signs']),array_map(static fn($f)=>$f['points'][0],$result['features']));
-            if($all){
-                $q=$db->prepare('SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?),4326),CAST(? AS integer)),6)');
-                $q->execute([json_encode(['type'=>'MultiPoint','coordinates'=>$all],JSON_THROW_ON_ERROR),$plan['epsg']]);$p=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['coordinates'];$i=0;
-                foreach($result['signs'] as &$s){$s['point']=[$p[$i][0]-$plan['bounds'][0],$p[$i][1]-$plan['bounds'][1]];$i++;}unset($s);
-                foreach($result['features'] as &$f){$f['points']=[[$p[$i][0]-$plan['bounds'][0],$p[$i][1]-$plan['bounds'][1]]];$i++;}unset($f);
+            $corners=self::corners($lines);$cornerBoxes=[];
+            if($corners){
+                $q=$db->prepare('SELECT ST_XMin(b.g) w,ST_YMin(b.g) s,ST_XMax(b.g) e,ST_YMax(b.g) n FROM ST_Dump(ST_SetSRID(ST_GeomFromGeoJSON(?),CAST(? AS integer))) d CROSS JOIN LATERAL (SELECT ST_Envelope(ST_Transform(ST_Buffer(d.geom,90),4326)) g) b ORDER BY d.path');
+                $q->execute([json_encode(['type'=>'MultiPoint','coordinates'=>$corners],JSON_THROW_ON_ERROR),$plan['epsg']]);
+                $cornerBoxes=array_map(static fn($r)=>array_map('floatval',[$r['w'],$r['s'],$r['e'],$r['n']]),$q->fetchAll(\PDO::FETCH_ASSOC));
             }
+            $unique=[];$boxes=array_values(array_filter(array_merge($cornerBoxes,$boxes),static function($box)use(&$unique){$key=implode(',',array_map(static fn($v)=>sprintf('%.7F',$v),$box));if(isset($unique[$key]))return false;$unique[$key]=true;return true;}));
+            $result=self::collect($boxes,$dir,$token,$progress,$transport,null,$cache,static fn($page)=>self::project($db,$plan,$page,$lines));
+            $result['request_strategy']='Corner boxes first, then complete corridor; 90 m centreline buffer covers 200 ft beyond supported pavement edges.';$result['corner_boxes']=count($cornerBoxes);
             return $result;
         }catch(JobCancelled $e){throw $e;}
         catch(\Throwable $e){return ['signs'=>[],'features'=>[],'status'=>'unavailable','requests'=>[],'truncated'=>false,'warning'=>'Mapillary map features could not be prepared.'];}
@@ -125,7 +175,7 @@ final class BeamMapillary {
         $features=self::append($plan['roadside_data']['features']??[],$data['features'],false);
         $plan['traffic_sign_data']['signs']=array_slice($signs['items'],0,1000);$plan['roadside_data']['features']=array_slice($features['items'],0,2000);
         $report=array_diff_key($data,array_flip(['signs','features']));
-        $report+=['signs'=>count($data['signs']),'point_features'=>count($data['features']),'duplicates'=>$signs['duplicates']+$features['duplicates'],'attribution'=>'Mapillary','location_method'=>'Computer-vision estimated map features; source dates retained.'];
+        $report+=['signs'=>count($data['signs']),'point_features'=>count($data['features']),'duplicates'=>$signs['duplicates']+$features['duplicates'],'attribution'=>'Mapillary','location_method'=>'Computer-vision estimated map features; source dates retained.','capabilities'=>['point_objects'=>'Signs, utility poles, towers, streetlights, bollards, benches, bus stops, shelters and mile markers when positioned classes are returned.','paths'=>'The Graph map-feature datasource supplies points, not continuous guardrail, wire, fence, wall, hedge or railway paths or parking polygons. Those remain sourced from OSM.']];
         $plan['mapillary_data']=$report;
         if($data['signs']){$plan['traffic_sign_data']['source']='OpenStreetMap and Mapillary map features';if(($plan['traffic_sign_data']['fetch_status']??'')!=='complete')$plan['traffic_sign_data']['fetch_status']='partial';}
         if($data['features']&&($plan['roadside_data']['fetch_status']??'')!=='complete')$plan['roadside_data']['fetch_status']='partial';

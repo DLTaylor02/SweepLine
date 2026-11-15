@@ -4,6 +4,9 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.160.0:** Request Mapillary data through small corridor-clipped bounding boxes, prioritizing tight bends while covering both 200-foot roadsides along the full exported road, remove fixed acquisition time/page/raw-feature cutoffs, and process/project/filter each page without retaining all raw responses in memory. Keep existing rendering limits and report acquisition completion, excluded classes and render omissions separately. Normalize additional applicable positioned point classes when supplied; continuous guardrail and other path geometry remains dependent on OSM.
+
+
 - **0.159.0:** Allow seven active BeamNG exports per user, including the running job. Show live shared-queue positions with the running export counted first; retain the existing 20-export shared-host limit, duplicate-request reuse and serialized processing.
 
 
