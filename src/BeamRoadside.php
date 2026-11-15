@@ -33,7 +33,7 @@ final class BeamRoadside {
                 $road=$a[2]+($b[2]-$a[2])*$hit['fraction'];if($hit['distance']<=$profile['width_m']/2+.2&&abs($road-$z)<1)$z=max($z,$road);
             }return $z;
         };
-        foreach($features as $f)if(in_array($f['kind'],['power_pole','power_tower'],true)&&count($f['points'])===1)$supports[$f['osm_id']]=['point'=>$f['points'][0],'height'=>self::height($f['tags'],$f['kind']==='power_tower'?20:8)];
+        foreach($features as $f)if(isset($f['osm_id'])&&in_array($f['kind'],['power_pole','power_tower'],true)&&count($f['points'])===1)$supports[$f['osm_id']]=['point'=>$f['points'][0],'height'=>self::height($f['tags'],$f['kind']==='power_tower'?20:8)];
         foreach($features as $i=>$f){
             if($i%25===0)$progress(null);if($mesh->limited||$samples>=24000){$skip('geometry_budget');break;}
             $kind=$f['kind'];$p=$f['points'];$tags=$f['tags'];$made=0;
@@ -122,7 +122,7 @@ final class BeamRoadside {
                     if($object&&$edge+$radius<=60.96&&($overhead||$edge>=$radius+.2)){
                         $objects[]=$object;$stockInstances++;$stockCounts[$asset]=($stockCounts[$asset]??0)+1;foreach(BeamRoadsideAssets::libraries($asset) as $library)$libraries[$library]=true;
                         if(($kind==='streetlight'||($tags['highway']??'')==='street_lamp')&&$lights<64)$objects[]=['class'=>'PointLight','name'=>'mapped_streetlight_'.($lights++),'__parent'=>'MissionGroup','position'=>[$point[0],$point[1],$z+$height-.2],'radius'=>12,'brightness'=>.7,'color'=>[1,.9,.75,1],'castShadows'=>false];
-                        $counts[$kind]=($counts[$kind]??0)+1;$records[]=['id'=>$f['id'],'kind'=>$kind,'timestamp'=>$f['timestamp'],'source'=>'OpenStreetMap','asset'=>$asset,'shape'=>$spec['shape'],'height_m'=>$height,'model_dimensions_estimated'=>true,'orientation_estimated'=>true];
+                        $counts[$kind]=($counts[$kind]??0)+1;$records[]=['id'=>$f['id'],'kind'=>$kind,'timestamp'=>$f['timestamp'],'source'=>$f['source']??'OpenStreetMap','source_class'=>$f['source_class']??null,'asset'=>$asset,'shape'=>$spec['shape'],'height_m'=>$height,'model_dimensions_estimated'=>true,'orientation_estimated'=>true];
                         continue;
                     }
                     $modelPolicy['stock_did_not_fit']=($modelPolicy['stock_did_not_fit']??0)+1;
@@ -170,7 +170,7 @@ final class BeamRoadside {
                 }else{$skip('unsupported_geometry');continue;}
                 $made=1;
             }
-            if($made){$counts[$kind]=($counts[$kind]??0)+1;$records[]=['id'=>$f['id'],'kind'=>$kind,'timestamp'=>$f['timestamp'],'source'=>'OpenStreetMap','model_dimensions_estimated'=>true,'ref'=>$tags['ref']??null,'orientation_estimated'=>!isset($tags['direction'])];}
+            if($made){$counts[$kind]=($counts[$kind]??0)+1;$records[]=['id'=>$f['id'],'kind'=>$kind,'timestamp'=>$f['timestamp'],'source'=>$f['source']??'OpenStreetMap','source_class'=>$f['source_class']??null,'model_dimensions_estimated'=>true,'ref'=>$tags['ref']??null,'orientation_estimated'=>!isset($tags['direction'])];}
             else $skip('no_renderable_corridor_geometry');
         }
         $result=$mesh->finish();$objects=array_merge($result['objects'],$objects);
@@ -179,6 +179,6 @@ final class BeamRoadside {
         $materials[$prefix.'_parking']['Stages'][0]=['baseColorMap'=>BeamRoadMaterials::TEXTURES.'_b.color.dds','normalMap'=>BeamRoadMaterials::TEXTURES.'_nm.normal.dds','roughnessMap'=>BeamRoadMaterials::TEXTURES.'_r.data.dds','roughnessFactor'=>.9,'metallicFactor'=>0];
         foreach($labels as $key=>$label){$materials[$key]=['class'=>'Material','name'=>$key,'mapTo'=>$key,'version'=>1.5,'Stages'=>[['baseColorMap'=>$path.$label['file'].'.color.png','roughnessFactor'=>.9]]];$materials[$key.'_back']=['class'=>'Material','name'=>$key.'_back','mapTo'=>$key.'_back','version'=>1,'Stages'=>[['diffuseColor'=>[.5,.5,.5,1]]]];}
         if($result['mesh_parts']||$labels)$put('art/context/main.materials.json',json_encode($materials,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES));
-        return ['objects'=>$objects,'material_libraries'=>array_merge(($result['mesh_parts']||$labels)?[$path.'art/context/main.materials.json']:[],array_keys($libraries)),'report'=>['fetch_status'=>$data['fetch_status']??'not_requested','warning'=>$data['warning']??null,'requests'=>$data['requests']??[],'source'=>'OpenStreetMap mapped roadside infrastructure','placed_features'=>$counts,'records'=>$records,'crossings'=>$crossings,'skipped'=>$skipped,'skipped_parse'=>$data['skipped']??[],'truncated'=>($data['truncated']??false)||$result['limited']||$samples>=24000,'mesh_parts'=>$result['mesh_parts'],'primitives'=>$result['primitives'],'lights'=>$lights,'hedge_instances'=>$hedges,'stock_assets'=>$stockCounts,'stock_instances'=>$stockInstances,'stock_policy'=>$modelPolicy,'model_policy'=>'Stock models first when the mapped type, footprint, dimensions and slope fit; generated geometry for unsupported models or exact paths.','collision'=>'Visual-only; existing road/terrain collision unchanged.','limits'=>'200 ft from road edges; 2,000 features, 40,000 source points, 24,000 samples, 12,000 mesh primitives, 500 hedge instances, 1,500 stock instances and 64 lights.','estimates'=>'Dimensions, materials, foundations, orientation where absent, cable sag and railway gauge/sleeper spacing may be estimated. No new feature locations or crossings are invented.']];
+        return ['objects'=>$objects,'material_libraries'=>array_merge(($result['mesh_parts']||$labels)?[$path.'art/context/main.materials.json']:[],array_keys($libraries)),'report'=>['fetch_status'=>$data['fetch_status']??'not_requested','warning'=>$data['warning']??null,'requests'=>$data['requests']??[],'source'=>'Mapped roadside infrastructure; per-record provider retained','placed_features'=>$counts,'records'=>$records,'crossings'=>$crossings,'skipped'=>$skipped,'skipped_parse'=>$data['skipped']??[],'truncated'=>($data['truncated']??false)||$result['limited']||$samples>=24000,'mesh_parts'=>$result['mesh_parts'],'primitives'=>$result['primitives'],'lights'=>$lights,'hedge_instances'=>$hedges,'stock_assets'=>$stockCounts,'stock_instances'=>$stockInstances,'stock_policy'=>$modelPolicy,'model_policy'=>'Stock models first when the mapped type, footprint, dimensions and slope fit; generated geometry for unsupported models or exact paths.','collision'=>'Visual-only; existing road/terrain collision unchanged.','limits'=>'200 ft from road edges; 2,000 features, 40,000 source points, 24,000 samples, 12,000 mesh primitives, 500 hedge instances, 1,500 stock instances and 64 lights.','estimates'=>'Dimensions, materials, foundations, orientation where absent, cable sag and railway gauge/sleeper spacing may be estimated. No new feature locations or crossings are invented.']];
     }
 }

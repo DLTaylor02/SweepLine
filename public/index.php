@@ -23,11 +23,11 @@ header('X-Content-Type-Options: nosniff');
 try {
     if ($path==='/api/setup') { throw new OutOfBoundsException('Endpoint not found'); }
     $method=$_SERVER['REQUEST_METHOD']??'GET';
-    $postPaths=['/api/admin/regions/action','/api/elevations','/api/custom-roads','/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/beamng'];
+    $postPaths=['/api/admin/regions/action','/api/elevations','/api/custom-roads','/api/search','/api/search-diagnostics','/api/login','/api/logout','/api/admin/users','/api/favorites','/api/password/change','/api/admin/password-policy','/api/admin/session-settings','/api/admin/mapillary-settings','/api/beamng'];
     $expected=in_array($path,$postPaths,true)?'POST':'GET';
     if(preg_match('#^/api/admin/search-jobs/[1-9]\\d{0,17}/cancel$#',$path))$expected='POST';
     if ($path==='/api/admin/storage' && $method==='PATCH') {$expected='PATCH';}
-    if ($path==='/api/admin/session-settings' && $method==='GET') {$expected='GET';}
+    if (in_array($path,['/api/admin/session-settings','/api/admin/mapillary-settings'],true) && $method==='GET') {$expected='GET';}
     if ($path==='/api/admin/users' && $method==='GET') { $expected='GET'; }
     if (preg_match('#^/api/admin/users/[1-9]\\d{0,17}$#',$path)) { $expected='POST'; }
     if (preg_match('#^/api/admin/tasks/[1-9]\\d{0,17}/(?:retry|cancel)$#',$path)) { $expected='POST'; }
@@ -75,6 +75,7 @@ try {
             elseif(preg_match('#^/api/admin/beamng/([a-f0-9]{32})/cancel$#',$path,$m)){$result=(new SweepLine\BeamJobs($db))->cancel($m[1]);}
             elseif ($path==='/api/profiles') {$result=SweepLine\Scorer::profiles();}
             elseif ($path==='/api/password-policy') {$result=(new SweepLine\PasswordPolicy($db))->read();}
+            elseif ($path==='/api/admin/mapillary-settings') {$settings=new SweepLine\MapillarySettings($db);$result=$method==='GET'?$settings->read():$settings->save($input);}
             elseif ($path==='/api/admin/session-settings') {$settings=new SweepLine\SessionSettings($db);$result=$method==='GET'?$settings->read():$settings->save($input);}
             elseif ($path==='/api/admin/password-policy') {$result=(new SweepLine\PasswordPolicy($db))->save($input);}
             elseif ($path==='/api/password/change') {$result=$auth->changePassword($input);}

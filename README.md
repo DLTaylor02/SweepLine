@@ -34,7 +34,7 @@ If executable permissions were lost, run `chmod +x setup.sh` first. See [install
 - **Visible progress:** staged search/export progress and colored map regions showing data preparation.
 - **History and favorites:** private saved roads with map thumbnails and reusable searches.
 - **Road exports:** GPX, KMZ and printable PDF maps with geometry-based bend notes.
-- **BeamNG.drive exports:** playable road maps with estimated terrain, stock trees/grass and asphalt detail, mapped lakes/rivers, explicitly mapped roadside signs where type/facing data is available, mapped roadside infrastructure with stock models where suitable, structures, intersections, start/finish spawns and forward/reverse time trials; downloaded source resources are cached for one week.
+- **BeamNG.drive exports:** playable road maps with estimated terrain, stock trees/grass and asphalt detail, mapped lakes/rivers, explicitly mapped roadside signs where type/facing data is available, mapped roadside infrastructure with stock models where suitable and optional Mapillary sign/point-feature supplementation, structures, intersections, start/finish spawns and forward/reverse time trials; downloaded source resources are cached for one week.
 - **Account management:** SuperAdmin, Admin and User roles, configurable password policies, password changes and session timeouts.
 - **Server management:** background job monitoring, cancellation/retries, storage controls and a map for refreshing or discarding regional road data.
 - **Adaptive appearance:** automatic light/dark mode with manual theme selection.

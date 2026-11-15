@@ -79,6 +79,7 @@ final class BeamJobs
         if(!empty($row['report']['building_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['building_data']['warning']);
         if(!empty($row['report']['intersection_context']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['intersection_context']['warning']);
         if(!empty($row['report']['time_trials']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['time_trials']['warning']);
+        if(!empty($row['report']['mapillary_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['mapillary_data']['warning']);
         if(!empty($row['report']['water_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['water_data']['warning']);
         if(!empty($row['report']['roadside_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['roadside_data']['warning']);
         if(!empty($row['report']['traffic_sign_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['traffic_sign_data']['warning']);
@@ -179,6 +180,7 @@ final class BeamJobs
                 if(count($context['branches'])>$contextBudget){$context['branches']=array_slice($context['branches'],0,$contextBudget);$context['warning']=trim(($context['warning']??'').' Intersecting-road context reached the shared 256-branch budget.');}
                 $contextBudget-=count($context['branches']);$plan['carriageways'][$i]['intersection_data']=$context;
             }
+            if(!$this->rasterSource)BeamMapillary::apply($plan,BeamMapillary::fetch($this->db,$plan,$dir,$progress));
             if(isset($plan['guardrail_data']['lines'])){$railIds=[];foreach($plan['guardrail_data']['lines'] as $line)foreach($line['osm_ids']??[] as $osmId)$railIds[$osmId]=true;$plan['guardrail_data']['source_ways']=count($railIds);}
             if(!$this->rasterSource)$plan['water_data']=BeamWaterSources::fetch($this->db,$plan,$dir,$progress);
             foreach(scandir($dir) as $inputFile)if(preg_match('/\\.(tif|json|bin|hdr|xml)$/i',$inputFile))$buildLog->artifact($inputFile,$dir.'/'.$inputFile);

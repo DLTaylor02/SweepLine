@@ -257,6 +257,9 @@
       });
       if(data) {
       renderStorage(data.storage);
+      if(!el('mapillary-token').dataset.loaded){
+        try{const config=await window.sweeplineRequest('/api/admin/mapillary-settings');el('mapillary-settings-status').textContent=config.configured?'Mapillary token configured. Enter a replacement or remove it to disable.':'Mapillary is not configured.';el('mapillary-token').dataset.loaded='true';}catch(e){el('mapillary-settings-status').textContent=e.message;}
+      }
       if(data.settings && !el('database-budget').dataset.loaded) {
         el('database-budget').value=String(data.settings.database_budget_mb);
         el('database-budget').dataset.loaded='true';
@@ -313,6 +316,17 @@
       form.reset();form.password.oninput?.();el('admin-status').textContent=result.warning || 'User created.';await refreshAdmin();
     } catch(e) {el('admin-status').textContent=e.message;}
   };
+  const saveMapillary=async clear=>{
+    el('mapillary-save').disabled=true;el('mapillary-clear').disabled=true;
+    try{
+      const result=await window.sweeplineRequest('/api/admin/mapillary-settings',{method:'POST',body:JSON.stringify(clear?{clear_token:true}:{access_token:el('mapillary-token').value})});
+      el('mapillary-token').value='';el('mapillary-token').dataset.loaded='true';
+      el('mapillary-settings-status').textContent=result.message;
+    }catch(e){el('mapillary-settings-status').textContent=e.message;}
+    finally{el('mapillary-token').value='';el('mapillary-save').disabled=false;el('mapillary-clear').disabled=false;}
+  };
+  el('mapillary-settings').onsubmit=event=>{event.preventDefault();return saveMapillary(false);};
+  el('mapillary-clear').onclick=()=>saveMapillary(true);
   el('session-settings').onsubmit=async event=>{
     event.preventDefault();el('session-save').disabled=true;
     try {

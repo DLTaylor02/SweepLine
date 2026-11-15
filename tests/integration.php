@@ -257,3 +257,5 @@ require __DIR__.'/bridge-approaches-integration.php';
 require __DIR__.'/mapped-signs-integration.php';
 
 require __DIR__.'/roadside-context-integration.php';
+
+require __DIR__.'/mapillary-integration.php';
