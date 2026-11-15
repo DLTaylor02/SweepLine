@@ -1,5 +1,16 @@
 <?php
 (function()use($db,$api,$mainId):void{
+
+    $previous=$db->query("SELECT value FROM app_settings WHERE key='mapillary_access_token'")->fetchColumn();
+    try{
+        $settings=new \SweepLine\MapillarySettings($db);$saved=$settings->save(['access_token'=>'fixture-private-token']);
+        check($saved['configured']&&!str_contains(json_encode($saved),'fixture-private-token')&&$settings->token()==='fixture-private-token','Mapillary settings persist a token without returning its value');
+        $settings->save(['access_token'=>'']);check($settings->token()==='fixture-private-token','Blank token submission preserves the existing credential');
+        $settings->save(['clear_token'=>true]);check(!$settings->read()['configured']&&$settings->token()==='','Removing token explicitly disables environment fallback');
+    }finally{
+        if($previous===false)$db->exec("DELETE FROM app_settings WHERE key='mapillary_access_token'");
+        else $db->prepare("UPDATE app_settings SET value=? WHERE key='mapillary_access_token'")->execute([$previous]);
+    }
     $saved=getenv('MAPILLARY_ACCESS_TOKEN');putenv('MAPILLARY_ACCESS_TOKEN=integration-fixture-token');
     $dir=sys_get_temp_dir().'/sl-mapillary-db-'.bin2hex(random_bytes(5));mkdir($dir,0700);mkdir($dir.'/cache',0700);
     try{

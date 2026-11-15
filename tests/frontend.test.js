@@ -58,6 +58,7 @@ async function testFrontend(sources) {
     else if(path==='/api/coverage')data=[];
     else if(path==='/api/admin/users')data=[{id:2,name:'Test member',username:'member',email:null,role:'member',active:true,must_change_password:true}];
     else if(path==='/api/password-policy')data={minimum_length:12,strength:'standard',screen_compromised:true};
+    else if(path==='/api/admin/mapillary-settings')data={configured:false,message:'Mapillary token saved.'};
     else if(path==='/api/admin/session-settings')data=JSON.parse(options.body);
     else if(path==='/api/password/change')data={changed:true,redirect:'/'};
     else if(path==='/api/admin/password-policy')data=JSON.parse(options.body);

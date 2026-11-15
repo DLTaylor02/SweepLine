@@ -48,3 +48,6 @@
         check($rendered['report']['placed_features']['power_pole']===1&&$rendered['report']['records'][0]['source']==='Mapillary','Mapillary poles use stock placement and retain provider provenance');
     }finally{foreach(glob($directory.'/cache/*') as $f)unlink($f);rmdir($directory.'/cache');foreach(glob($directory.'/*') as $f)unlink($f);rmdir($directory);}
 })();
+
+check(\SweepLine\MapillarySettings::validate('MLY|valid-example')==='MLY|valid-example','Mapillary settings accept a header-safe token');
+foreach(["bad\r\nInjected: value",'token with spaces',str_repeat('x',4097),['secret']] as $bad)check(rejects(static fn()=>\SweepLine\MapillarySettings::validate($bad)),'Mapillary settings reject unsafe or oversized credentials without echoing them');
