@@ -31,8 +31,13 @@ final class BeamMapillary {
     }
     /** OAuth header only; responses are scrubbed before caching to remove paging URLs. */
     public static function request(array $params,string $token,callable $progress):array {
+        return self::sanitize(self::graph('map_features',$params,$token,$progress));
+    }
+    /** Shared bounded, authenticated Graph transport; callers allowlist/cache their own response fields. */
+    public static function graph(string $endpoint,array $params,string $token,callable $progress):array {
+        if(!preg_match('/^(?:images|map_features|[0-9]{1,24})$/D',$endpoint))throw new \InvalidArgumentException('Unsupported Mapillary endpoint.');
         if($token===''||preg_match('/[\r\n]/',$token))throw new DownloadFailure('Mapillary token is invalid.',false);
-        $url='https://graph.mapillary.com/map_features?'.http_build_query($params);
+        $url='https://graph.mapillary.com/'.$endpoint.'?'.http_build_query($params);
         $curl=curl_init($url);$body='';$oversized=false;$last=0;
         curl_setopt_array($curl,[CURLOPT_PROTOCOLS=>CURLPROTO_HTTPS,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_TIMEOUT=>25,CURLOPT_SSL_VERIFYPEER=>true,CURLOPT_SSL_VERIFYHOST=>2,CURLOPT_HTTPHEADER=>['Authorization: OAuth '.$token,'Accept: application/json'],CURLOPT_USERAGENT=>'SweepLine Mapillary integration',
             CURLOPT_WRITEFUNCTION=>static function($h,$chunk)use(&$body,&$oversized){if(strlen($body)+strlen($chunk)>4194304){$oversized=true;return 0;}$body.=$chunk;return strlen($chunk);},
@@ -40,7 +45,8 @@ final class BeamMapillary {
         try{$ok=curl_exec($curl);$status=(int)curl_getinfo($curl,CURLINFO_HTTP_CODE);
             if(!$ok||$status!==200)throw new DownloadFailure($oversized?'Mapillary response exceeds size limit.':'Mapillary HTTP '.$status,!$oversized&&($status===0||in_array($status,[408,429,500,502,503,504],true)));
             try{$data=json_decode($body,true,512,JSON_THROW_ON_ERROR);}catch(\JsonException $e){throw new DownloadFailure('Mapillary invalid JSON response.',true);}
-            return self::sanitize($data);
+            if(!is_array($data)||isset($data['error']))throw new DownloadFailure('Mapillary rejected the request.',false);
+            return $data;
         }finally{curl_close($curl);}
     }
     public static function sanitize(array $data):array {

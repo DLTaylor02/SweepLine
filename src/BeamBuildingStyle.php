@@ -21,7 +21,7 @@ final class BeamBuildingStyle
         '/assets/materials/tileable/wood/eca_bld_woodcladding_old/eca_bld_woodcladding_01_d.dds',
         '/assets/materials/tileable/wood/eca_bld_wood/eca_bld_wood_d.dds'
     ];
-    public static function appearance(string $category,string $identity,array $tags=[]): array
+    public static function appearance(string $category,string $identity,array $tags=[],?array $photo=null): array
     {
         $variant=(int)hexdec(substr(hash('sha256',$identity),0,6))%15;
         $texture=$category==='residential'?self::SIDING_VARIANTS[$variant%3]:self::TEXTURES[$category];
@@ -31,10 +31,15 @@ final class BeamBuildingStyle
         $wallColor=BeamBuildingAttributes::color($tags['building:colour']??$tags['building:color']??null);
         $roofColor=BeamBuildingAttributes::color($tags['roof:colour']??$tags['roof:color']??null);
         $roofTexture=match(strtolower((string)($tags['roof:material']??''))){'metal','steel','tin'=>self::TEXTURES['industrial'],'wood'=>self::TEXTURES['residential'],'concrete'=>self::MAPPED_TEXTURES['concrete'],'stone','slate'=>self::MAPPED_TEXTURES['stone'],default=>null};
-        $texture=$explicit??$texture;$custom=$tags?'_'.substr(hash('sha256',json_encode([$explicit,$wallColor,$roofColor,$roofTexture])),0,10):'';
+        $materialSource=$explicit?'building:material':'estimated category texture';$colorSource=$wallColor?'building:colour':'estimated palette';
+        if(!$explicit&&in_array($photo['material']??null,['brick','wood','plaster'],true)){
+            $explicit=match($photo['material']){'brick'=>self::TEXTURES['commercial'],'wood'=>self::TEXTURES['residential'],default=>self::TEXTURES['generic']};$materialSource='Mapillary two-view material estimate';
+        }
+        if(!$wallColor&&isset($photo['color'])&&count($photo['color'])===3){$wallColor=$photo['color'];$colorSource='Mapillary two-view color estimate';}
+        $texture=$explicit??$texture;$custom=($tags||$photo)?'_'.substr(hash('sha256',json_encode([$explicit,$wallColor,$roofColor,$roofTexture])),0,10):'';
         return ['key'=>$category.'_v'.$variant.$custom,'texture'=>$texture,'normal'=>$material==='glass'?null:str_replace('_d.dds','_n.dds',$texture),'specular'=>str_replace('_d.dds','_s.dds',$texture),
             'color'=>$wallColor??$colors[intdiv($variant,3)],'roof'=>($variant%3).$custom,'roof_texture'=>$roofTexture,'roof_color'=>$roofColor??[[0.22,0.24,0.26],[0.32,0.28,0.24],[0.35,0.36,0.35]][$variant%3],
-            'sources'=>['facade_material'=>$explicit?'building:material':'estimated category texture','facade_color'=>$wallColor?'building:colour':'estimated palette','roof_material'=>$roofTexture?'roof:material':'estimated plain roof','roof_color'=>$roofColor?'roof:colour':'estimated palette']];
+            'sources'=>['facade_material'=>$materialSource,'facade_color'=>$colorSource,'roof_material'=>$roofTexture?'roof:material':'estimated plain roof','roof_color'=>$roofColor?'roof:colour':'estimated palette']];
     }
     private static function category(string $value): ?string
     {

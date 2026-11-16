@@ -44,13 +44,32 @@ final class BeamScenery
         }
         return false;
     }
-    public function polygonReason(array $points): ?string
+    public function polygonReason(array $points,bool $wholeFootprint=true): ?string
     {
         foreach($this->water as $water){foreach($points as $p)if(BeamWaterGeometry::contains($p,$water['rings']))return 'mapped_water_overlap';foreach($water['rings'] as $ring)for($i=0;$i<count($ring);$i++)for($j=0;$j<count($points);$j++)if((BeamPolygon::cross($ring[$i],$ring[($i+1)%count($ring)],$points[$j])*BeamPolygon::cross($ring[$i],$ring[($i+1)%count($ring)],$points[($j+1)%count($points)])<0&&BeamPolygon::cross($points[$j],$points[($j+1)%count($points)],$ring[$i])*BeamPolygon::cross($points[$j],$points[($j+1)%count($points)],$ring[($i+1)%count($ring)])<0))return 'mapped_water_overlap';if(BeamPolygon::inside($water['rings'][0][0],$points))return 'mapped_water_overlap';}
         if($this->polygonHitsRoad($points))return 'pavement_overlap';
         foreach($this->exclusions as $road)if($road->polygonHitsRoad($points))return 'pavement_overlap';
-        foreach($points as $p)if($this->edgeDistance($p[0],$p[1])>self::RANGE_M)return 'outside_roadside_range';
+        if($wholeFootprint){
+            foreach($points as $p)if($this->edgeDistance($p[0],$p[1])>self::RANGE_M)return 'outside_roadside_range';
+        }elseif(!$this->polygonInRange($points))return 'outside_roadside_range';
         return null;
+    }
+
+    /** Exact polygon/variable-width segment-capsule distance, including edge interiors and end caps. */
+    public function polygonInRange(array $points): bool
+    {
+        $seen=[];$range=self::RANGE_M;
+        for($x=(int)floor((min(array_column($points,0))-$range)/64);$x<=(int)floor((max(array_column($points,0))+$range)/64);$x++)
+            for($y=(int)floor((min(array_column($points,1))-$range)/64);$y<=(int)floor((max(array_column($points,1))+$range)/64);$y++)
+                foreach($this->index[$x.':'.$y]??[] as $id)$seen[$id]=true;
+        foreach(array_keys($seen) as $id){
+            [$a,$b,$half]=$this->segments[$id];$limit=$range+$half;
+            if(BeamPolygon::inside($a,$points)||BeamPolygon::inside($b,$points))return true;
+            foreach($points as $i=>$p){$q=$points[($i+1)%count($points)];
+                if(BeamPolygon::cross($a,$b,$p)*BeamPolygon::cross($a,$b,$q)<0&&BeamPolygon::cross($p,$q,$a)*BeamPolygon::cross($p,$q,$b)<0)return true;
+                if(min(BeamLanes::distance($p,$a,$b)[0],BeamLanes::distance($q,$a,$b)[0],BeamLanes::distance($a,$p,$q)[0],BeamLanes::distance($b,$p,$q)[0])<=$limit+1e-8)return true;
+            }
+        }return false;
     }
 
     public static function radius(string $kind,float $scale,?string $asset=null): float

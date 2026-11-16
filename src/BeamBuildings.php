@@ -7,7 +7,7 @@ final class BeamBuildings
     {
         $progress('Fetching mapped roadside buildings and land use');
         try{
-            $q=$db->prepare("SELECT ST_AsGeoJSON(ST_Transform(ST_ExteriorRing(ST_SimplifyPreserveTopology(ST_Buffer(ST_SetSRID(ST_GeomFromGeoJSON(?),CAST(? AS integer)),90,'quad_segs=2'),3)),4326),6)");
+            $q=$db->prepare("SELECT ST_AsGeoJSON(ST_Transform(ST_ExteriorRing(ST_SimplifyPreserveTopology(ST_Buffer(ST_SetSRID(ST_GeomFromGeoJSON(?),CAST(? AS integer)),240,'quad_segs=2'),3)),4326),6)");
             $q->execute([json_encode(['type'=>'LineString','coordinates'=>$plan['points']],JSON_THROW_ON_ERROR),$plan['epsg']]);
             $ring=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['coordinates'];$poly=implode(' ',array_map(static fn($p)=>$p[1].' '.$p[0],$ring));
             if(strlen($poly)>100000)throw new \RuntimeException('Building query corridor is too complex.');
@@ -90,7 +90,7 @@ final class BeamBuildings
             if(BeamPolygon::area($points)<12||BeamPolygon::area($points)>5000||$radius>75){$reject('size');continue;}
             $bounds=false;foreach($points as $p)if($p[0]<0||$p[1]<0||$p[0]>=$raster->side||$p[1]>=$raster->side)$bounds=true;
             if($bounds){$reject('outside_map');continue;}
-            $reason=$geometry->polygonReason($points);if($reason!==null){$reject($reason);continue;}
+            $reason=$geometry->polygonReason($points,false);if($reason!==null){$reject($reason);continue;}
             $ground=array_map(static fn($p)=>$raster->height($p[0],$p[1]),$points);$variation=max($ground)-min($ground);
             if($variation>3){$reject('ground_variation');continue;}
             $overlap=false;foreach($out as $existing)if(($footprint['assembly']??$footprint['osm_id']??null)!==($existing['assembly']??'unrelated')&&BeamPolygon::overlaps($points,$existing['world_footprint'])){$overlap=true;break;}
@@ -101,7 +101,7 @@ final class BeamBuildings
                 'holes'=>array_map(static fn($r)=>array_map($local,$r),$footprint['holes']??[]),
                 'roof_triangles'=>array_map(static fn($r)=>array_map($local,$r),$footprint['roof_triangles']??[]),
                 'osm_id'=>$footprint['osm_id']??null,'assembly'=>$footprint['assembly']??null,'part'=>$footprint['part']??false,
-                'attributes'=>$attributes,'inherited_tags'=>array_keys($footprint['inherited_tags']??[]),
+                'attributes'=>$attributes,'photo_match'=>$footprint['photo_match']??null,'inherited_tags'=>array_keys($footprint['inherited_tags']??[]),
                 'levels'=>$attributes['levels'],'style'=>$footprint['style']??BeamBuildingStyle::classify($tags),'world_footprint'=>$points,
                 'radius'=>$radius,'height'=>$height+$variation,'foundation_height_m'=>$variation,'mapped'=>true];
         }

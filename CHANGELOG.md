@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.165.0:** Retain complete building footprints when any part intersects the 200-foot roadside corridor. Add optional Mapillary panorama-informed facade color/material matching with two-view agreement, explicit OSM precedence, seven-day private resource caching, bounded acquisition, cancellation, failure fallbacks and per-image attribution. Record matching/rejection diagnostics and preserve generic appearance where evidence is insufficient; direct facade projection remains future work.
+
 - **0.164.0:** Improve mapped OSM buildings with measured heights and floor counts, raised building parts, pitched roofs and orientation, explicit facade/roof materials and colors, open multipolygon courtyards and parent/wing footprint replacement. Preserve generic fallbacks and record attribute provenance, inherited values and unsupported geometry in BeamNG reports/build logs. Add offline mesh and native PostGIS regression coverage.
 
 - **0.163.0:** Style recognized sign families with warning/construction diamonds, regulatory speed numerals, advisory values, red prohibition symbols and green/blue/brown guide/service/recreation panels. Add fitted font hierarchy and wider guide meshes; retain generic fallbacks, source provenance and unchanged sign locations/facing.

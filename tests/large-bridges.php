@@ -27,6 +27,10 @@ $largePlan['building_data']=['footprints'=>[[
  'points'=>[[200,830],[220,830],[220,845],[200,845]],'osm_id'=>'way/99004',
  'tags'=>['building'=>'house','height'=>'18','roof:height'=>'3','roof:shape'=>'gabled','building:material'=>'brick','building:colour'=>'#d4b08a','roof:colour'=>'#444444']
 ]]];
+$photoSources=[['image_id'=>'101','creator'=>'Fixture photographer','captured_at'=>1700000000000,'url'=>'https://www.mapillary.com/app/?pKey=101'],['image_id'=>'102','creator'=>'Fixture photographer','captured_at'=>1700000000000,'url'=>'https://www.mapillary.com/app/?pKey=102']];
+$largePlan['building_data']['footprints'][]=['points'=>[[250,850],[270,850],[270,865],[250,865]],'osm_id'=>'way/99005','tags'=>['building'=>'yes'],
+ 'photo_match'=>['color'=>[.7,.6,.5],'material'=>'wood','confidence'=>'two_view_heuristic','sources'=>$photoSources]];
+$largePlan['building_data']['photo_analysis']=['status'=>'complete','matched'=>1,'image_sources'=>$photoSources];
 $largeFile=tempnam(sys_get_temp_dir(),'sl-large-bridge-');
 try{
  $largeReport=BeamMap::build($largePlan,$largeRaster,str_repeat('8',32),$largeFile,static function($m){});
@@ -34,8 +38,10 @@ try{
  $largeObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($largeZip->getFromName($largeBase.'main/MissionGroup/items.level.json'))));
  check($largeZip->getFromName($largeBase.'art/roads/variation.color.png')===false&&!str_contains($largeZip->getFromName($largeBase.'art/roads/main.materials.json'),'variation.color.png')&&$largeReport['surface_appearance']['asphalt_variation_strength']===0,'Archive uses restored asphalt without the regressed detail-map shader');
  check($largeReport['traffic_sign_data']['placed']===1&&$largeZip->getFromName($largeBase.'art/signs/W1_2L.dae')!==false&&$largeZip->getFromName($largeBase.'art/signs/W1_2L.color.png')!==false,'Generated BeamNG archive contains mapped sign objects, source report and face assets');
- check($largeReport['building_data']['placed']===1&&$largeReport['building_data']['attribute_evidence'][0]['height_m']===18.0&&$largeReport['building_data']['attribute_evidence'][0]['roof_shape']==='gabled','Finished archive retains mapped building height and roof-shape evidence');
+ check($largeReport['building_data']['placed']===2&&$largeReport['building_data']['attribute_evidence'][0]['height_m']===18.0&&$largeReport['building_data']['attribute_evidence'][0]['roof_shape']==='gabled','Finished archive retains mapped building height and roof-shape evidence');
  check($largeZip->getFromName($largeBase.'art/shapes/building_0.dae')!==false&&$largeReport['building_data']['attribute_evidence'][0]['appearance_sources']['facade_material']==='building:material','Finished archive contains the mapped building mesh and explicit material provenance');
+ check($largeReport['building_data']['placed_photo_matches']===1&&str_contains($largeReport['building_data']['attribute_evidence'][1]['appearance_sources']['facade_material'],'Mapillary'),'Archive uses photo-informed stock building materials alongside explicit OSM materials');
+ check(str_contains($largeZip->getFromName('BUILDING-PHOTO-ATTRIBUTION.txt'),'Fixture photographer')&&str_contains($largeZip->getFromName('BUILDING-PHOTO-ATTRIBUTION.txt'),'CC BY-SA 4.0'),'Photo-derived appearance includes source attribution and license in the finished ZIP');
  check($largeReport['bridges'][0]['large']&&abs($largeReport['bridges'][0]['length_m']-700)<0.01,'Complete ZIP supports a seven hundred metre viaduct');
  check(abs($largeRaster->height(750,800)-60)<0.01,'Large bridge preserves native valley terrain');
  check(count(array_filter($largeObjects,static fn($o)=>str_starts_with($o['name']??'','bridge_0_pier_')))>15,'Large bridge generates bounded intermediate supports');
