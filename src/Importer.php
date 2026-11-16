@@ -7,7 +7,7 @@ use XMLReader;
 
 final class Importer
 {
-    private const CLASSES = ['motorway','trunk','primary','secondary','tertiary','unclassified','residential','living_street','service'];
+    private const CLASSES = ['motorway','motorway_link','trunk','trunk_link','primary','primary_link','secondary','secondary_link','tertiary','tertiary_link','unclassified','residential','living_street','service'];
     private bool $allowEmpty=false;
     private int $jobId=0;
     private float $lastCheck=0;

@@ -133,7 +133,7 @@ final class DataWorker
         // A small halo improves continuity around cell boundaries; only the core is advertised as covered.
         $halo=CoveragePlanner::halo($tile);
         $bbox=implode(',', [max(-90,$s-$halo),max(-180,$w-$halo),min(90,$n+$halo),min(180,$e+$halo)]);
-        $selector='way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service)$"]('.$bbox.');';
+        $selector='way[highway~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service)$"]('.$bbox.');';
         if(CoveragePlanner::canSplit($tile)){
             $countPath=$dir.'/roads-'.$id.'-count.osm';$count=null;
             $this->progress($id,'Checking road density before downloading geometry');
@@ -146,7 +146,7 @@ final class DataWorker
             if($count!==null&&$count>=12000)throw new \RuntimeException('Road density limit exceeded: '.$count.' ways; splitting before geometry download.');
             if($count===null&&max($e-$w,$n-$s)>0.25)throw new \RuntimeException('Road density limit exceeded: estimate unavailable for a large area; splitting conservatively.');
         }
-        $query='[out:xml][timeout:180][maxsize:134217728];way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service)$"]('.$bbox.');(._;>;);out body;';
+        $query='[out:xml][timeout:180][maxsize:134217728];way[highway~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service)$"]('.$bbox.');(._;>;);out body;';
         $path=$dir.'/roads-'.$id.'.osm';
         try {
             $this->download(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$path,104857600,
@@ -154,7 +154,7 @@ final class DataWorker
             $this->db->beginTransaction();
             $q=$this->db->prepare('INSERT INTO regions(slug,name) VALUES (?,?) ON CONFLICT(slug) DO UPDATE SET name=excluded.name RETURNING id');
             $q->execute([$tile['key'],'Roads near '.round(($s+$n)/2,3).', '.round(($w+$e)/2,3)]); $region=$q->fetchColumn();
-            $q=$this->db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage,allow_empty,started_at) VALUES (?,'running',?,ST_MakeEnvelope(?,?,?,?,4326),true,now()) RETURNING *");
+            $q=$this->db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage,allow_empty,started_at,ramp_context_version) VALUES (?,'running',?,ST_MakeEnvelope(?,?,?,?,4326),true,now(),1) RETURNING *");
             $q->execute([$region,$path,$w,$s,$e,$n]); $job=$q->fetch(PDO::FETCH_ASSOC);
             $this->db->prepare('UPDATE data_tasks SET import_job_id=? WHERE id=?')->execute([$job['id'],$id]);
             $this->db->commit(); $this->progress($id,'Analyzing connected roads and driving profiles');

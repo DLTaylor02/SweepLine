@@ -3,7 +3,7 @@
     $db->beginTransaction();
     try{
         $region=$db->query("INSERT INTO regions(slug,name) VALUES ('synthetic-ramp-network','Synthetic ramp network') RETURNING id")->fetchColumn();
-        $q=$db->prepare("INSERT INTO import_jobs(region_id,status,source_path) VALUES (?,'complete','offline ramp fixture') RETURNING id");$q->execute([$region]);$job=$q->fetchColumn();
+        $q=$db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage) VALUES (?,'complete','offline ramp fixture',ST_MakeEnvelope(-85,40,-83,42,4326)) RETURNING id");$q->execute([$region]);$job=$q->fetchColumn();
         $db->prepare('UPDATE regions SET active_job_id=? WHERE id=?')->execute([$job,$region]);
         $nodes=[1=>[700000,4500100],2=>[700100,4500100],3=>[700800,4500100],4=>[700200,4500105],5=>[700300,4500140],6=>[700400,4500200],7=>[700400,4500300],8=>[700200,4500300],9=>[700600,4500300]];
         $q=$db->prepare('INSERT INTO osm_nodes(job_id,osm_id,lon,lat,tags) SELECT ?,?,ST_X(g),ST_Y(g),?::jsonb FROM (SELECT ST_Transform(ST_SetSRID(ST_MakePoint(?,?),32616),4326) g) p');
