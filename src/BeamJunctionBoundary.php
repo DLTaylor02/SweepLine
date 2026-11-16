@@ -79,7 +79,7 @@ final class BeamJunctionBoundary
         return $out;
     }
 
-    public static function trim(array $vertices,array $triangles,array $road,array $profiles,?array $surfaceSections=null,bool $weldBoundary=true): array
+    public static function trim(array $vertices,array $triangles,array $road,array $profiles,?array $surfaceSections=null,bool $weldBoundary=true,?float $verticalGap=null): array
     {
         $cutters=self::cutters($road,$profiles,$vertices,$surfaceSections);$s=$surfaceSections??self::sections($road,$profiles);$result=[];$out=[];$lookup=[];$edges=[];
         $xs=array_column($vertices,0);$ys=array_column($vertices,1);if(!$xs)return [$vertices,$triangles];
@@ -97,6 +97,10 @@ final class BeamJunctionBoundary
                 foreach($pieces as $piece){
                     $px=array_column($piece,0);$py=array_column($piece,1);$cx=array_column($cut,0);$cy=array_column($cut,1);
                     if(max($px)<=min($cx)||min($px)>=max($cx)||max($py)<=min($cy)||min($py)>=max($cy)){$next[]=$piece;continue;}
+                    if($verticalGap!==null){
+                        $pz=array_column($piece,2);$cz=array_column($cut,2);
+                        if(min($pz)>max($cz)+$verticalGap||min($cz)>max($pz)+$verticalGap){$next[]=$piece;continue;}
+                    }
                     array_push($next,...self::subtract($piece,$cut));
                 }
                 $pieces=$next;if(!$pieces)break;
@@ -111,7 +115,7 @@ final class BeamJunctionBoundary
                     foreach($edges as [$a,$b]){$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$l=$dx*$dx+$dy*$dy;if($l<1e-12)continue;
                         $t=max(0,min(1,(($p[0]-$a[0])*$dx+($p[1]-$a[1])*$dy)/$l));
                         $distance=hypot($p[0]-$a[0]-$t*$dx,$p[1]-$a[1]-$t*$dy);
-                        if($distance<$nearest){$nearest=$distance;$height=$a[2]+$t*($b[2]-$a[2]);}
+                        if($distance<$nearest&&($verticalGap===null||abs($a[2]+$t*($b[2]-$a[2])-$p[2])<=$verticalGap)){$nearest=$distance;$height=$a[2]+$t*($b[2]-$a[2]);}
                     }
                     if($height!==null){$t=$nearest<1e-6?0:$nearest/self::HEIGHT_BLEND_M;$weight=1-$t*$t*(3-2*$t);$p[2]+=($height-$p[2])*$weight;}
                 }unset($p);

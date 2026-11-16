@@ -70,7 +70,7 @@ final class BeamTrack
             $sections=BeamJunctionBoundary::renderSections($road,$profiles,$render['points']);
             $deck=BeamBridgeDeck::build($render['points'],$sections,$track['bridges'],$bridgeMaterial);$file='art/shapes/'.$key.'-deck.dae';$put($file,$deck['xml']);$objects[]=$static($key.'_deck',$file,[0,0,0],'None');
             foreach($track['bridges'] as $bi=>$span){[$first,$last]=BeamStructures::indices($track['chain'],$span);
-                foreach(BeamBridgeDeck::barriers($render['points'],$sections,$span,$bridgeMaterial) as $railSide=>$xml){
+                foreach(BeamBridgeDeck::barriers($render['points'],$sections,$span,$bridgeMaterial,$context['junctions']) as $railSide=>$xml){
                     $file='art/shapes/'.$key.'-bridge-'.$bi.'-'.$railSide.'.dae';$put($file,$xml);$objects[]=$static($key.'_bridge_'.$bi.'_rail_'.$railSide,$file,[0,0,0]);
                 }
                 $lastPier=-INF;for($i=$first;$i<=$last;$i++)if($track['chain'][$i]-$lastPier>=25){

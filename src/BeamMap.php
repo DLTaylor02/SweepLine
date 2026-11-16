@@ -98,8 +98,16 @@ final class BeamMap
         }unset($track);
         if(count($road)+array_sum(array_map(static fn($t)=>count($t['road']),$carriageways))>20000)throw new \RuntimeException('Combined carriageway geometry exceeds 20,000 samples. Select a shorter stretch.');
         $intersectionData=$plan['intersection_data']??['branches'=>[]];
+        $intersectionData['main_surfaces']=[['name'=>'primary','points'=>$road,'source_points'=>$plan['points'],'profiles'=>$profiles,'spans'=>$coveredSpans]];
+        foreach($carriageways as $track)$intersectionData['main_surfaces'][]=['name'=>$track['name'],'points'=>$track['road'],'source_points'=>$track['points'],'profiles'=>$track['profiles'],'spans'=>array_merge($track['bridges'],$track['tunnels'])];
         $preparedIntersections=BeamIntersections::prepare($intersectionData,$road,$profiles,$raster,$plan['bounds'],$origin,$coveredSpans,$progress);
+        foreach($carriageways as &$track)$track['context']['junctions']=array_merge($track['context']['junctions'],$preparedIntersections['external_junctions'][$track['name']]??[]);unset($track);
         $preparedIntersections=BeamTraffic::turnarounds($preparedIntersections,$road,$profiles,$raster,$origin,$progress,$plan['building_data']['footprints']??[]);
+        $networkStructures=BeamNetworkStructures::tracks($preparedIntersections);
+        $networkBridgeCount=array_sum(array_map(static fn($t)=>count($t['bridges']),$networkStructures));
+        if(count($bridges)+array_sum(array_map(static fn($t)=>count($t['bridges']),$carriageways))+$networkBridgeCount>16)
+            throw new \RuntimeException('Combined highway and interchange network exceeds the 16-bridge export limit.');
+        $tunnelTracks=array_merge($carriageways,$networkStructures);
         $explicitPavement=(bool)$carriageways||(bool)$tunnels||(bool)$preparedIntersections['roads']||$rounded!==$plan['points']||$world!==$sourceWorld;
         $progress('Shaping the road corridor while preserving surrounding terrain');
 
@@ -114,7 +122,8 @@ final class BeamMap
         }
         $mainStructureMask=$bridgeMask;$companionMask=str_repeat("\0",$n*$n);
         foreach($carriageways as &$track){$track['structure_mask']=BeamTrack::mask($track,$raster,str_repeat("\0",$n*$n),$progress);$companionMask=$companionMask|$track['structure_mask'];}unset($track);
-        $bridgeMask=$bridgeMask|$companionMask;
+        foreach($networkStructures as $structureTrack)$mainStructureMask=BeamTrack::mask($structureTrack,$raster,$mainStructureMask,$progress);
+        $bridgeMask=$bridgeMask|$mainStructureMask|$companionMask;
         if($carriageways){
             $surfaces=[['points'=>$road,'profiles'=>$profiles,'bridges'=>$coveredSpans]];
             foreach($carriageways as $track)$surfaces[]=['points'=>$track['road'],'profiles'=>$track['profiles'],'bridges'=>array_merge($track['bridges'],$track['tunnels'])];
@@ -157,7 +166,9 @@ final class BeamMap
         foreach($carriageways as $track)$bridgeMask=BeamRoadSurface::primaryContactMask($track['road'],$track['profiles'],$raster,$bridgeMask);
         $preparedIntersections['aprons']=[];
         foreach($preparedIntersections['roads'] as $branch){$contact=BeamPavement::contact($branch,$road,$profiles);if($contact!==null){$contact['owner']=$branch['name'];$preparedIntersections['aprons'][]=$contact;}}
+        $preparedIntersections['structure_mask']=$mainStructureMask|$companionMask;
         $intersectionShaping=$preparedIntersections['roads']?BeamIntersections::shape($preparedIntersections,$road,$profiles,$raster,$origin,$bridgeMask,$progress):[];
+        BeamNetworkStructures::approaches($networkStructures,$preparedIntersections['main_surfaces']??[],$raster,$origin,$progress);
         $preparedIntersections=BeamIntersections::conform($preparedIntersections,$raster,$origin,$progress,$road,$profiles,$bridgeMask);
         // Final exact check follows every corridor-shaping pass.
         $terrainCorrection['exact_pavement']=BeamTerrainContact::clear($road,$profiles,$raster,$origin,$mainStructureMask|$companionMask,$progress,BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']);
@@ -170,11 +181,12 @@ final class BeamMap
         $median=BeamMedian::build($road,$profiles,$carriageways,$coveredSpans,$raster,$origin,$medianMask,$progress);
         $waterTracks=[['road'=>$road,'profiles'=>$profiles,'bridges'=>$bridges,'tunnels'=>$tunnels]];
         foreach($carriageways as $track)$waterTracks[]=$track;
-        foreach(array_merge([$preparedIntersections],array_column($carriageways,'context')) as $context)foreach($context['roads'] as $branch)$waterTracks[]=['road'=>$branch['points'],'profiles'=>$branch['profiles']];
+        foreach(array_merge([$preparedIntersections],array_column($carriageways,'context')) as $context)foreach($context['roads'] as $branch)$waterTracks[]=['road'=>$branch['points'],'profiles'=>$branch['profiles'],'bridges'=>$branch['bridges']??[],'tunnels'=>$branch['tunnels']??[]];
         $water=BeamWater::build($plan['water_data']??[],$waterSource??$raster,$raster,$origin,$waterTracks,$progress);unset($waterSource,$waterTracks,$mainStructureMask,$companionMask,$bridgeMask,$medianMask,$other,$surfaces,$approach);
         foreach($carriageways as &$track)unset($track['structure_mask']);unset($track);
         $repairSurfaces=[['name'=>'primary','road'=>$road,'profiles'=>$profiles,'spans'=>$coveredSpans,'render'=>BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']]];
         foreach($carriageways as $track)$repairSurfaces[]=['name'=>$track['name'],'road'=>$track['road'],'profiles'=>$track['profiles'],'obstacles'=>[['road'=>$road,'profiles'=>$profiles,'weld_boundary'=>false]],'spans'=>array_merge($track['bridges'],$track['tunnels']),'render'=>BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']];
+        foreach($preparedIntersections['roads'] as $branch)$repairSurfaces[]=['name'=>$branch['name'],'road'=>$branch['points'],'profiles'=>$branch['profiles'],'spans'=>array_merge($branch['bridges']??[],$branch['tunnels']??[])];
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
 
         // libzip keeps addFromString buffers until close; large terrain meshes
@@ -190,7 +202,7 @@ final class BeamMap
             $progress('Building bridges, tunnels and median terrain');
             $groundLayers=$categories;
             $prefix='sl_'.substr($id,0,12);$materials=[];$terrainNames=[];$ground=['GRASS','DIRT','ROCK','CONCRETE','DIRT'];
-            $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways,$maxHeight,true);
+            $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$tunnelTracks,$maxHeight,true);
             $contactRepair=BeamTerrainContact::repairCorridors($repairSurfaces,$raster,$origin,$progress,$tunnelGeometry['layers']);
             // Native shaping remains the broad base; exact median ground no longer depends on grid fitting.
             $median['report']['contact_passes']=[];
@@ -199,7 +211,7 @@ final class BeamMap
             $contactRepair['tunnel_patch_rebuilt']=false;
             if($tunnelGeometry['shell']!==null&&(array_sum(array_column($contactRepair['roads'],'lowered_vertices'))>0||$contactRepair['median_contact_refined'])){
                 unset($tunnelGeometry);$progress('Updating tunnel seams after final terrain clearance checks');
-                $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$carriageways,$maxHeight,true);$contactRepair['tunnel_patch_rebuilt']=true;
+                $tunnelGeometry=BeamTunnels::build($road,$profiles,$tunnels,$raster,$origin,$categories,$prefix.'_tunnel',$prefix.'_tunnel_terrain',$progress,$tunnelTracks,$maxHeight,true);$contactRepair['tunnel_patch_rebuilt']=true;
             }
             $categories=$tunnelGeometry['layers'];unset($tunnelGeometry['layers']);
             $tunnelGround=null;
@@ -266,7 +278,7 @@ final class BeamMap
                 $put('art/shapes/bridge.materials.json',self::json([$bridgeMaterial=>['class'=>'Material','name'=>$bridgeMaterial,'mapTo'=>$bridgeMaterial,'version'=>1,'groundType'=>'CONCRETE','Stages'=>[['diffuseColor'=>[0.48,0.49,0.5,1]]]]]));
                 foreach($bridges as $bi=>$bridge){[$first,$last]=BeamStructures::indices($chain,$bridge);if($last<=$first)throw new \RuntimeException('Bridge span is too short for reliable deck geometry.');
                     $bridgeSections=BeamJunctionBoundary::sections($road,$profiles);
-                    foreach(BeamBridgeDeck::barriers($road,$bridgeSections,$bridge,$bridgeMaterial) as $railSide=>$xml){
+                    foreach(BeamBridgeDeck::barriers($road,$bridgeSections,$bridge,$bridgeMaterial,$preparedIntersections['junctions']) as $railSide=>$xml){
                         $file='art/shapes/bridge-'.$bi.'-'.$railSide.'.dae';$put($file,$xml);
                         $objects[]=['class'=>'TSStatic','name'=>'bridge_'.$bi.'_rail_'.$railSide,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None','castShadows'=>true];
                     }
@@ -277,6 +289,7 @@ final class BeamMap
                 }
             }
 
+            $objects=array_merge($objects,BeamNetworkStructures::writeBridges($networkStructures,$prefix,$path,$put,$raster,$origin,array_merge($preparedIntersections['main_surfaces']??[],$preparedIntersections['roads'])));
             $roadMaterials=BeamLanePaint::materials($prefix);
             $mainRendering=BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions']);
             $renderRoads=array_merge([['name'=>'road']+$mainRendering],$preparedIntersections['roads']);
@@ -482,7 +495,11 @@ final class BeamMap
             $put('spawn-start.png',BeamPreview::render($raster,$road,$plan['name'],$start['position'],'START'));
             $put('spawn-end.png',BeamPreview::render($raster,$road,$plan['name'],$end['position'],'END'));
             if(!empty($preparedIntersections['final_clearance']['limited_branches']))$intersectionData['warning']=trim(($intersectionData['warning']??'').' Some side-road stretches were shortened or omitted where coarse terrain could not meet pavement without disturbing primary-road support.');
-            unset($intersectionData['branches']);$intersectionData['rendered_branches']=count(array_filter($preparedIntersections['roads'],static fn($r)=>!isset($r['turnaround_for'])));$intersectionData['skipped_branches']=$preparedIntersections['skipped'];$intersectionData['surface_method']='Shared explicit primary ribbon and clipped side-road surfaces; original sampled centreline, elevations and widths preserved';$intersectionData['pavement_meshes']=$pavementReports;$unjoined=count(array_filter($pavementReports,static fn($p)=>$p['connector_expected']&&!$p['connector']));if($unjoined)$intersectionData['warning']=trim(($intersectionData['warning']??'').' '.$unjoined.' side-road entrances could not be matched to primary pavement.');$intersectionData['terrain_shaping']=$intersectionShaping;$intersectionData['final_clearance']=$preparedIntersections['final_clearance'];$intersectionData['turnarounds']=$preparedIntersections['turnarounds'];$intersectionData['navigation_nodes']=count($navigation['objects']);$intersectionData['navigation_edges']=count($navigation['segments']);
+            unset($intersectionData['branches'],$intersectionData['main_surfaces']);
+            $intersectionData['structures']=array_map(static fn($t)=>['name'=>$t['name'],'bridges'=>$t['bridges'],'tunnels'=>$t['tunnels']],$networkStructures);
+            $intersectionData['network_manifest']=$preparedIntersections['network_manifest']??null;
+            $intersectionData['network_verification']=$preparedIntersections['network_verification']??null;
+            $intersectionData['rendered_branches']=count(array_filter($preparedIntersections['roads'],static fn($r)=>!isset($r['turnaround_for'])));$intersectionData['skipped_branches']=$preparedIntersections['skipped'];$intersectionData['surface_method']='Shared explicit primary ribbon and clipped side-road surfaces; original sampled centreline, elevations and widths preserved';$intersectionData['pavement_meshes']=$pavementReports;$unjoined=count(array_filter($pavementReports,static fn($p)=>$p['connector_expected']&&!$p['connector']));if($unjoined)$intersectionData['warning']=trim(($intersectionData['warning']??'').' '.$unjoined.' side-road entrances could not be matched to primary pavement.');$intersectionData['terrain_shaping']=$intersectionShaping;$intersectionData['final_clearance']=$preparedIntersections['final_clearance'];$intersectionData['turnarounds']=$preparedIntersections['turnarounds'];$intersectionData['navigation_nodes']=count($navigation['objects']);$intersectionData['navigation_edges']=count($navigation['segments']);
             $report=['mapillary_data'=>$plan['mapillary_data']??['status'=>'not_requested'],'roadside_data'=>$roadside['report'],'traffic_sign_data'=>$trafficSigns['report'],'mapped_merge_profile_samples'=>count(array_filter($profiles,static fn($p)=>!empty($p['mapped_merge_aligned']))),'median'=>$median['report'],'lane_widening'=>'Fixed travel-left edge; additional width expands to travel-right','terrain_contact_repair'=>$contactRepair,'lane_transition_paint'=>$paintReport,'carriageways'=>['tracks'=>$carriagewayReports,'mapped_junction_links'=>$carriagewayLinks,'matching'=>$plan['carriageway_data']??null],'bridge_deck_shell'=>$underdeck??null,'tunnels'=>$tunnels,'tunnel_data'=>$tunnelGeometry['report'],'cpu_processing'=>$compute->report(),'paved_shoulder_each_side_ft'=>2,'curve_smoothing'=>['method'=>'Bounded quadratic corner rounds; endpoints, junctions, structures and sharp turns protected','max_deviation_m'=>BeamCurve::MAX_DEVIATION_M,'rounded'=>$rounded!==$plan['points'],'explicit_pavement'=>$explicitPavement],'water_data'=>$water['report'],'guardrail_data'=>$guardrails['report'],'shadow_correction'=>$shadowCorrection,'intersection_context'=>$intersectionData,'target'=>'BeamNG.drive v0.40','orientation'=>$plan['orientation']??'forward','in_game_verified'=>false,'map_side_m'=>$side,'scale'=>'1:1 local UTM meters','epsg'=>$plan['epsg'],'bounds'=>$plan['bounds'],'padding_miles'=>$plan['padding_miles'],'terrain_resolution'=>$n,'elevation_sampling_resolution'=>$raster->elevationResolution(),'terrain_spacing_m'=>$step,'elevation_origin_m'=>$origin,'alternate_names'=>$plan['alternate_names'],'bridges'=>$bridges,'bridge_warning'=>$bridges?'Bridge deck heights, supports and guardrails are generic estimates derived from approaches; not surveyed structures.':null,'lane_estimated_samples'=>$estimated,'road_samples'=>count($road),'scenery_objects'=>$count,'scenery_placement'=>$scenery,'vegetation_assets'=>$vegetationAssets,'stock_scenery_assets'=>$vegetationAssets,'vegetation_material_libraries'=>BeamVegetation::materialLibraries($vegetationAssets),'vegetation_pipeline'=>'Stock Forest meshes for trees, bushes, rocks and grass; no generated scenery placeholders.','building_data'=>$buildingData,'visible_distance_m'=>16000,'terrain_saturation'=>BeamRaster::TERRAIN_SATURATION,'surface_appearance'=>['asphalt_detail_repeat_m'=>BeamPng::ROAD_TEXTURE_LENGTH_M,'asphalt_variation_repeat_m'=>null,'asphalt_variation_strength'=>0,'asphalt_wear'=>'Stock asphalt only; v0.147.4 material configuration restored','lane_paint_repeat_m'=>BeamPng::PAINT_REPEAT_LENGTH_M,'terrain_tint'=>'Local aerial chroma with bounded 35-m neighborhood illumination blending','terrain_tint_limits'=>BeamTerrain::TINT_LIMITS],'terrain_style'=>$terrainStyle,'terrain_material_method'=>$terrainStyle==='stock'?'Bounded aerial/palette blended base colors plus stock PBR detail; v0.40 terrain shader layout':'Aerial base','terrain_classification'=>$terrainClassification,'stock_terrain_assets'=>$terrainStyle==='stock'?BeamTerrain::paths():[],'lane_taper_each_side_ft'=>100,'terrain_overlap_correction'=>$terrainCorrection,'shoulder_transition'=>$shoulders,'bridge_approach_correction'=>$bridgeApproachCorrection,
                 'sources'=>['elevation'=>'USGS 3DEP bare-earth elevation','aerial'=>'USGS/USDA NAIP imagery','roads'=>'OpenStreetMap contributors'],
                 'limitations'=>['Road elevation is sampled from bare-earth terrain, then smoothed; banking and road engineering are estimated.','Aerial colors and regional heuristics estimate scenery; they do not reconstruct individual real objects.','Fixed beam/slab bridges and viaducts up to 2000 meters use estimated approach-derived decks. Complex bridges and unsupported tunnel types are refused. Simple tunnel profiles, clearance and portals are estimated from approaches; not surveyed. Unmapped structures may be inaccurate.','Navigation includes the primary road, side branches and supported synthetic return loops. Enable traffic in-game; maneuvers require in-game validation.','Requires in-game v0.40 validation.']];

@@ -7,10 +7,12 @@ final class BeamTraffic
 {
     public static function turnarounds(array $prepared,array $main,array $profiles,BeamRaster $raster,float $origin,callable $progress,array $buildings=[]): array
     {
-        $created=0;$skipped=0;$original=$prepared['roads'];$avoidWidths=[];
+        $created=0;$skipped=0;$original=$prepared['roads'];$avoidWidths=[];$degree=[];
+        foreach($original as $r)if(!empty($r['network']))foreach(['start_node','end_node'] as $key)$degree[$r[$key]]=($degree[$r[$key]]??0)+1;
         foreach($original as $r)$avoidWidths[$r['name']]=max(array_column($r['profiles'],'width_m'))/2+3;
         foreach($original as $branch){
             $progress(null);$points=$branch['points'];$end=end($points);$before=$points[count($points)-2];$profile=end($branch['profiles']);
+            if(!empty($branch['network'])&&($degree[$branch['end_node']]??0)>1){$skipped++;continue;}
             if($profile['oneway']){$skipped++;continue;}
             $dx=$end[0]-$before[0];$dy=$end[1]-$before[1];$length=hypot($dx,$dy);if($length<0.1){$skipped++;continue;}$dx/=$length;$dy/=$length;
             $candidate=null;
@@ -46,6 +48,7 @@ final class BeamTraffic
     }
     public static function graph(array $main,array $profiles,array $prepared): array
     {
+        if(!empty($prepared['network']))return self::networkGraph($main,$profiles,$prepared);
         $waypoints=[];$segments=[];$sequence=[];$along=0.0;
         foreach($main as $i=>$p){if($i)$along+=hypot($p[0]-$main[$i-1][0],$p[1]-$main[$i-1][1]);$sequence[]=['point'=>$p,'profile'=>$profiles[$i],'along'=>$along];}
         foreach($prepared['junctions'] as $j)$sequence[]=['point'=>[$j['x'],$j['y'],$j['z']],'profile'=>$profiles[min(count($profiles)-1,$j['segment'])],'along'=>$j['along']];
@@ -88,5 +91,42 @@ final class BeamTraffic
             $link('turn_'.$index.'_return',$last,$parent,$profile,3);
         }
         return ['objects'=>$waypoints,'segments'=>$segments,'turnarounds'=>$prepared['turnarounds']??['created'=>0]];
+    }
+    /** Reuse shared OSM endpoint waypoints so forks, merges and cycles are real navigation junctions. */
+    private static function networkGraph(array $main,array $profiles,array $prepared): array
+    {
+        $legacy=$prepared;$legacy['network']=false;$legacy['roads']=array_values(array_filter($prepared['roads'],static fn($r)=>empty($r['network'])));
+        $out=self::graph($main,$profiles,$legacy);$names=[];$ends=[];$objects=&$out['objects'];$segments=&$out['segments'];
+        $node=static function(string $key,array $p,float $width)use(&$names,&$objects):string{
+            if(isset($names[$key]))return $names[$key];
+            foreach($objects as $o)if(hypot($o['position'][0]-$p[0],$o['position'][1]-$p[1])<.05&&abs($o['position'][2]-$p[2])<.05)return $names[$key]=$o['name'];
+            $name='sl_network_'.substr(hash('sha256',$key),0,20);
+            $objects[]=['class'=>'BeamNGWaypoint','name'=>$name,'__parent'=>'MissionGroup','position'=>$p,'scale'=>array_fill(0,3,max(.5,$width/2))];
+            return $names[$key]=$name;
+        };
+        $link=static function($key,$a,$b,$p)use(&$segments){
+            if($a===$b)return;
+            if($p['oneway']&&!($p['legal_forward']??true))[$a,$b]=[$b,$a];
+            $segments[$key]=['nodes'=>[$a,$b],'drivability'=>1,'oneWay'=>$p['oneway'],'autoLanes'=>false,'lanesLeft'=>$p['backward'],'lanesRight'=>$p['forward'],'autoJunction'=>false,'hiddenInNavi'=>false];
+        };
+        foreach($prepared['roads'] as $i=>$branch){
+            if(empty($branch['network']))continue;
+            $p=$branch['profiles'][0];$join=$branch['join'];$start=[$join['x'],$join['y'],$join['z']];
+            $last=$node('osm:'.$branch['start_node'],$start,$p['width_m']);$previous=$start;
+            $path=array_merge($branch['connector']??[],$branch['points']);$n=count($path);
+            foreach($path as $j=>$point){
+                if(hypot($point[0]-$previous[0],$point[1]-$previous[1])<.05&&$j!==$n-1)continue;
+                $name=$node($j===$n-1?'osm:'.$branch['end_node']:'edge:'.$branch['context_id'].':'.$j,$point,$p['width_m']);
+                $profile=$branch['profiles'][min(count($branch['profiles'])-1,max(0,$j-count($branch['connector']??[])))];
+                $link('network_'.$i.'_'.$j,$last,$name,$profile);$last=$name;$previous=$point;
+            }
+            $ends[$branch['name']]=$last;
+        }
+        foreach($prepared['roads'] as $i=>$branch)if(isset($branch['turnaround_for'],$ends[$branch['turnaround_for']])){
+            $parent=$ends[$branch['turnaround_for']];$last=$parent;$p=$branch['profiles'][0];
+            foreach($branch['points'] as $j=>$point){$name=$node('turn:'.$i.':'.$j,$point,3);$link('network_turn_'.$i.'_'.$j,$last,$name,$p);$last=$name;}
+            $link('network_turn_'.$i.'_end',$last,$parent,$p);
+        }
+        return $out;
     }
 }

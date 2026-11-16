@@ -19,5 +19,14 @@
         $result=SweepLine\BeamIntersections::fetch($db,$plan,static fn($m)=>null);
         check($result['ramp_network']['ramps']===1&&$result['ramp_network']['receiving_arms']===2,'Native indexed OSM junction query discovers a shallow ramp and follows it across way IDs');
         check(count($result['branches'])===3&&SweepLine\BeamRampNetwork::length($result['branches'][0]['points'])>400,'Native ramp fetch includes full connected ramp plus its receiving-road arms');
+
+        // A fork at node 4 is inside way 101, not an OSM-way endpoint.
+        $ids=[4,8];$coords=array_map(static fn($id)=>$nodes[$id],$ids);
+        $q->execute([$job,104,'motorway_link',0,json_encode($ids),json_encode(['highway'=>'motorway_link','lanes'=>'1']),json_encode(['type'=>'LineString','coordinates'=>$coords])]);$segment=$q->fetchColumn();
+        foreach($ids as $i=>$node)$connect->execute([$job,$node,$segment,$i]);
+        $plan['context_lines']=[$plan['points'],[[700000,4500090],[700800,4500090]]];
+        $forked=SweepLine\BeamIntersections::fetch($db,$plan,static fn($m)=>null);
+        $sources=[];foreach($forked['branches'] as $branch)array_push($sources,...($branch['source_way_ids']??[]));
+        check(in_array(104,$sources,true)&&$forked['ramp_network']['ramps']>=3,'Native batched node query retains an internal-way fork with shared carriageway context');
     }finally{$db->rollBack();}
 })($db);

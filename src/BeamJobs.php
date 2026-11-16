@@ -171,14 +171,14 @@ final class BeamJobs
             if(!$this->rasterSource){
                 $rampIngestion=BeamRampBackfill::ensure($this->db,$plan,$dir,$progress);
                 $progress('Matching road network and ramp connections');$networkProgress=static fn($m)=>$progress(null);
-                try{$plan['intersection_data']=BeamIntersections::fetch($this->db,array_replace($plan,['ramp_budget_m'=>BeamRampNetwork::share(BeamRampNetwork::TOTAL_RAMP_M,1+count($plan['carriageways']??[]))]),$networkProgress);}catch(JobCancelled $e){throw $e;}catch(\Throwable $e){$plan['intersection_data']=['branches'=>[],'warning'=>'Local ramp/intersection context was unavailable.'];}
+                $networkPlan=$plan;$networkPlan['context_lines']=[$plan['points']];
+                foreach($plan['carriageways']??[] as $track){$networkPlan['context_lines'][]=$track['points'];array_push($networkPlan['sources'],...$track['sources']);}
+                try{$plan['intersection_data']=BeamIntersections::fetch($this->db,$networkPlan,$networkProgress);}
+                catch(JobCancelled|BeamInterchangeLimit $e){throw $e;}
+                catch(\Throwable $e){throw new \RuntimeException('Interchange connectivity could not be prepared. Retry the export; no partial interchange was published.',0,$e);}
                 $plan['intersection_data']['ramp_ingestion']=$rampIngestion;
                 if($rampIngestion['failures'])$plan['intersection_data']['warning']=trim(($plan['intersection_data']['warning']??'').' Some legacy ramp data could not be acquired; see ramp_ingestion in the build report.');
-                $remainingRamps=max(0,BeamRampNetwork::TOTAL_RAMP_M-($plan['intersection_data']['ramp_network']['total_ramp_m']??0));
-                foreach($plan['carriageways']??[] as $i=>$track){
-                    try{$plan['carriageways'][$i]['intersection_data']=BeamIntersections::fetch($this->db,array_replace($plan,['points'=>$track['points'],'sources'=>$track['sources'],'ramp_budget_m'=>BeamRampNetwork::share($remainingRamps,count($plan['carriageways'])-$i)]),$networkProgress);$remainingRamps=max(0,$remainingRamps-($plan['carriageways'][$i]['intersection_data']['ramp_network']['total_ramp_m']??0));}
-                    catch(JobCancelled $e){throw $e;}catch(\Throwable $e){$plan['carriageways'][$i]['intersection_data']=['branches'=>[],'warning'=>'Opposite ramp/intersection context was unavailable.'];}
-                }
+                foreach($plan['carriageways']??[] as $index=>$track)$plan['carriageways'][$index]['intersection_data']=['branches'=>[],'shared_network'=>true];
                 $plan['bounds']=BeamRampNetwork::extent($plan);
             }
             $raster=$this->rasterSource?($this->rasterSource)($plan,$dir,$progress):(new BeamSources())->fetch($plan,$dir,$progress);
@@ -188,7 +188,6 @@ final class BeamJobs
             catch(JobCancelled $e){throw $e;}
             catch(\Throwable $e){$plan['intersection_data']=['branches'=>[],'warning'=>'Local intersecting-road context could not be prepared.'];}
             $plan['intersection_data']=BeamCarriageways::filterContext($plan['intersection_data'],$plan['carriageways']??[]);
-            $contextBudget=max(0,256-count($plan['intersection_data']['branches']));
             foreach($plan['carriageways']??[] as $i=>$track){
                 $other=array_replace($plan,['points'=>$track['points'],'sources'=>$track['sources']]);
                 if(!$this->rasterSource){
@@ -205,8 +204,7 @@ final class BeamJobs
                 catch(JobCancelled $e){throw $e;}
                 catch(\Throwable $e){$context=['branches'=>[],'warning'=>'Opposite-carriageway intersection context was unavailable.'];}
                 $context=BeamCarriageways::filterContext($context,$plan['carriageways']);
-                if(count($context['branches'])>$contextBudget){$context['branches']=array_slice($context['branches'],0,$contextBudget);$context['warning']=trim(($context['warning']??'').' Intersecting-road context reached the shared 256-branch budget.');}
-                $contextBudget-=count($context['branches']);$plan['carriageways'][$i]['intersection_data']=$context;
+                $plan['carriageways'][$i]['intersection_data']=$context;
             }
             if(!$this->rasterSource){
                 BeamMapillary::apply($plan,BeamMapillary::fetch($this->db,$plan,$dir,$progress));

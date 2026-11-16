@@ -5,6 +5,7 @@ namespace SweepLine;
 /** Add missing link-road context to legacy active imports without replacing selected roads/candidates. */
 final class BeamRampBackfill
 {
+    public const VERSION=2;
     public static function parse(array $data): array
     {
         $ways=[];$vertices=0;
@@ -37,7 +38,7 @@ final class BeamRampBackfill
                 $id=$segment->fetchColumn();if($id===false)continue;
                 foreach($w['nodes'] as $i=>$n){$node->execute([$job,$n,$w['points'][$i][0],$w['points'][$i][1]]);$connect->execute([$job,$n,$id,$i]);}$added++;
             }
-            $db->prepare('UPDATE import_jobs SET ramp_context_version=1 WHERE id=?')->execute([$job]);$db->commit();return $added;
+            $db->prepare('UPDATE import_jobs SET ramp_context_version=2 WHERE id=?')->execute([$job]);$db->commit();return $added;
         }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
     }
     public static function ensure(\PDO $db,array $plan,string $dir,callable $progress,?callable $download=null): array
@@ -45,7 +46,7 @@ final class BeamRampBackfill
         $lines=[$plan['points']];foreach($plan['carriageways']??[] as $t)$lines[]=$t['points'];
         $q=$db->prepare("SELECT r.id region_id,j.id job_id,ST_AsGeoJSON(ST_ExteriorRing(j.coverage),6) ring,ST_Area(j.coverage::geography) area
             FROM regions r JOIN import_jobs j ON j.id=r.active_job_id
-            WHERE j.ramp_context_version<1 AND j.status='complete'
+            WHERE j.ramp_context_version<2 AND j.status='complete'
             AND j.coverage && ST_Transform(ST_Expand(ST_SetSRID(ST_GeomFromGeoJSON(?),CAST(? AS integer)),3500),4326)
             ORDER BY j.id LIMIT 65");
         $q->execute([json_encode(['type'=>'MultiLineString','coordinates'=>$lines],JSON_THROW_ON_ERROR),$plan['epsg']]);

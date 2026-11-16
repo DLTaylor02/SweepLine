@@ -4,6 +4,10 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.170.0:** Include mapped bridges and tunnels in ramp/receiving-road networks using the existing approach-based estimators. Protect structure geometry/terrain, sample connected approaches, generate bridge undersides/barriers/piers and tunnel interiors/openings/fixtures, preserve grade-separated pavement/paint and leave bridge-junction barrier openings. Record network structure diagnostics and fail explicitly for unsupported estimates. Add geometry and complete-ZIP regressions.
+
+- **0.169.0:** Build shared connected interchange graphs across both carriageways, follow forks and internal-way junctions, retain loops/rejoins, and replace the road-wide ramp allowance with per-path limits. Continue receiving roads across OSM ways, preserve network edges through terrain preparation, weld shared junctions and expose explicit resource/completeness failures. Recover tiny ramp connectors in existing imports. Add graph, terrain, navigation and ZIP regression coverage; mapped ramp structures remain an acquisition limitation.
+
 - **0.168.1:** Fix courtyard capability detection by testing triangulation rather than function presence. Use a GEOS-capable PostGIS CI image, fail native topology tests with the original database error, record safe rejection stages/SQLSTATE, and bypass unnecessary empty geometry subtraction for courtyard-only footprints. Reserve a fair share of the unchanged ramp geometry budget for each carriageway, carrying unused capacity forward. Replace concatenated export warnings with a short status and expandable, deduplicated notices. Preserve detailed build-report diagnostics; terrain/fork reconstruction limits are unchanged.
 
 - **0.167.0:** Fix missing highway ramps by including OSM link-road classes in regional density/download queries and XML ingestion. Automatically supplement legacy active regions before BeamNG ramp discovery, preserving existing roads/candidates and retrying incomplete supplements. Add import-job coverage markers, ingestion diagnostics and actual-import/backfill regression tests.

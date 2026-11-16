@@ -20,6 +20,8 @@ final class BeamPavement
     public static function build(array $branch,array $main,array $mainProfiles,string $prefix,?array $surfaceSections=null,array $obstacles=[]): array
     {
         if(!empty($branch['junction_parent'])){$obstacles[]=['road'=>$main,'profiles'=>$mainProfiles];$main=$branch['junction_parent']['points'];$mainProfiles=$branch['junction_parent']['profiles'];}
+        if(isset($branch['end_owner']['surface']))$obstacles[]=['road'=>$branch['end_owner']['surface']['points'],'profiles'=>$branch['end_owner']['surface']['profiles']];
+        array_push($obstacles,...($branch['junction_obstacles']??[]));
         $points=$branch['points'];$profiles=$branch['profiles'];$origin=$points[0];$vertices=[];$lookup=[];$triangles=[];$along=0.0;
         $vertex=static function($p)use(&$vertices,&$lookup){$key=implode(',',array_map(static fn($v)=>sprintf('%.7F',$v),$p));if(isset($lookup[$key]))return $lookup[$key];$id=count($vertices);$vertices[]=$p;$lookup[$key]=$id;return $id;};
         $quad=static function($a,$b,$c,$d,$material,$uv)use(&$triangles,$vertex){
@@ -32,14 +34,14 @@ final class BeamPavement
             $quad($sections[$i-1][0],$sections[$i-1][1],$sections[$i][1],$sections[$i][0],$material,[[0,$along/BeamPng::ROAD_TEXTURE_LENGTH_M],[1,$along/BeamPng::ROAD_TEXTURE_LENGTH_M],[1,$next/BeamPng::ROAD_TEXTURE_LENGTH_M],[0,$next/BeamPng::ROAD_TEXTURE_LENGTH_M]]);$along=$next;
         }
 
-        $rings=self::connectorRings($branch,$main,$mainProfiles);$connector=(bool)$rings;
+        $rings=self::connectorRings($branch,$main,$mainProfiles);$connector=(bool)$rings||(!empty($branch['network'])&&isset($branch['join']));
         foreach($rings as $i=>$r)if($i){
             $a=$rings[$i-1][0];$b=$rings[$i-1][1];$c=$r[1];$d=$r[0];
             $v0=($i-1-(count($rings)-1))/BeamPng::ROAD_TEXTURE_LENGTH_M;$v1=($i-(count($rings)-1))/BeamPng::ROAD_TEXTURE_LENGTH_M;
             $quad($a,$b,$c,$d,$prefix.'_road_'.self::key($profiles[0]),[[0,$v0],[1,$v0],[1,$v1],[0,$v1]]);
         }
-        if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles);
-        foreach($obstacles as $obstacle)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true);
+        if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null);
+        foreach($obstacles as $obstacle)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true,!empty($branch['network'])?1.:null);
         $independentHeight=(bool)array_filter($obstacles,static fn($obstacle)=>($obstacle['weld_boundary']??true)===false);
         return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge',array_merge($rings?array_slice($rings,0,-1):[],$sections)),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
             'connector_end_seam_m'=>($connector?0.0:null),'boundary_height_welding'=>!$independentHeight,'junction_height_blend_m'=>$independentHeight?0:BeamJunctionBoundary::HEIGHT_BLEND_M,'method'=>$independentHeight?'Exact XY overlap clipping; independent carriageway elevations preserved.':'Exact ribbon boundary; overlapping side pavement removed; junction heights blend continuously into the primary surface.'];
@@ -70,6 +72,7 @@ final class BeamPavement
     {
         if(!empty($branch['junction_parent'])){$main=$branch['junction_parent']['points'];$mainProfiles=$branch['junction_parent']['profiles'];}
         if(!isset($branch['join']))return [];
+        if(!empty($branch['network'])&&empty($branch['connector']))return [];
         if((($branch['kind']??'')==='ramp'||!empty($branch['junction_parent']))&&count($branch['connector']??[])>=2){
             $line=$branch['connector'];$last=$branch['points'][0];if(hypot(end($line)[0]-$last[0],end($line)[1]-$last[1])>.001)$line[]=$last;
             return BeamJunctionBoundary::sections($line,array_fill(0,count($line),$branch['profiles'][0]));

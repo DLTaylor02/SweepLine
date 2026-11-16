@@ -658,3 +658,27 @@ The unchanged 8 km ramp budget is shared across the selected and opposite carria
 ### Courtyard capability checks (0.168.1)
 
 Courtyard support is determined by executing a small constrained-triangulation probe; an existing PostGIS function can still be unusable when linked against GEOS older than 3.11. Unsupported installations retain the documented simple-building fallback. CI uses PostgreSQL 16/PostGIS 3.7 with a compatible GEOS runtime and checks this prerequisite before native geometry assertions. Strict integration topology mode preserves underlying database errors; production rejection records expose only the operation stage and SQLSTATE. Courtyard-only footprints are triangulated directly without subtracting an empty geometry collection.
+
+### Connected interchange networks (0.169.0)
+
+Ramp discovery now builds one node-connected graph shared by both carriageways. It follows every supported mapped fork, detects junctions inside OSM ways, deduplicates shared sections and handles loops/rejoins. Each ramp path has its own two-mile allowance; there is no shared eight-kilometre allowance. Receiving-road paths continue across OSM way boundaries for up to 600 feet per arm. These limits bound context, rather than promise a complete city street network.
+
+All discovered supported edges must survive pavement and terrain preparation. Network terrain uses the same pavement-edge blending and exact clearance treatment as the main road; the former half-metre terrain-cut truncation does not apply to this network. Main-road geometry takes priority. Shared junction elevations, clipped overlapping pavement, lane markings and minimap/AI links follow the connected graph. Artificial turnarounds are limited to terminal branches.
+
+Preflight permits up to 2,048 graph edges and 20,000 estimated samples within the existing maximum square map extent. Exceeding these limits, losing a prepared edge, or encountering an unresolvable protected-structure clearance conflict stops the export with an explicit error instead of publishing a silently truncated network. Acquisition restrictions and missing local data remain visible in ramp-network reasons and acquisition rejection records; network_manifest and network_verification record discovered/prepared counts and terrain losses.
+
+Mapped bridges and tunnels on ramp/receiving-road context are still excluded with recorded reasons; this release does not extend the selected-road structure estimator to them. Connectivity also depends on shared OSM nodes and available regional data. Consequently the network target does not guarantee every real-world interchange feature. Selected-road bridge/tunnel support remains unchanged.
+
+Imports retain very short link-road connectors. Existing active imports receive a version-two supplemental ramp check automatically, preserving existing candidates and using the existing seven-day acquisition cache. No additional package, service, migration or manual region refresh is required.
+
+### Bridges and tunnels in interchange context (0.170.0)
+
+Mapped ramp and receiving-road bridges/tunnels now remain in the connectivity graph. Their source tags and protected geometry feed the same bridge-deck and tunnel-profile estimators used for selected roads. Connected graph paths and the attached parent road provide up to 80 metres of real approach geometry for sampling at edge boundaries; an unavailable approach is an explicit error, not an invented extension.
+
+Ramp bridges include closed visual deck undersides, collision barriers and estimated piers. Barriers leave openings at mapped junctions; ramp bridge piers are omitted where they would obstruct an exported road beneath the deck. Pavement and lane-paint clipping respect vertical separation so an overpass is not cut away or welded down to the road underneath.
+
+Ramp tunnels participate in the shared native-terrain hole and replacement-ground pipeline, with textured concrete interiors, portals and light fixtures. Terrain shaping preserves bridge ground and tunnel overburden, repairs landward bridge approaches, and includes network structures in final corridor and water checks. Structure spans and sampled approach lengths appear in generated geometry/build.log; intersection_context.structures lists the resulting network spans.
+
+This supersedes the ramp-structure exclusion described for 0.169.0. Existing estimation safeguards still apply: fixed beam/slab bridges and viaducts, ordinary single-bore road tunnels, supported lengths/widths/grades, adequate approaches and no unsupported overlapping structure complexes. Junctions inside tunnel bores are explicitly rejected because branching tunnel interiors are not modeled. Limits of 16 bridges and four tunnels apply across the selected road, opposite carriageways and interchange network together. Resource or structure failures stop the export with a reason rather than silently removing a connected edge. These are approach-derived estimates, not surveyed structure elevations.
+
+No additional dependency, migration or server configuration is required. Fresh exports use the new handling; existing ZIPs are unchanged.
