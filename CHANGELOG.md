@@ -4,6 +4,9 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.161.0:** Rotate small utility pole models by 90 degrees while preserving truss towers. Render signs at 512×512 with antialiased TrueType lettering, readable wrapped class labels and corrected vertical Collada UV mapping. Install the Debian DejaVu font package when missing; preserve sign facing and placement.
+
+
 - **0.160.0:** Request Mapillary data through small corridor-clipped bounding boxes, prioritizing tight bends while covering both 200-foot roadsides along the full exported road, remove fixed acquisition time/page/raw-feature cutoffs, and process/project/filter each page without retaining all raw responses in memory. Keep existing rendering limits and report acquisition completion, excluded classes and render omissions separately. Normalize additional applicable positioned point classes when supplied; continuous guardrail and other path geometry remains dependent on OSM.
 
 

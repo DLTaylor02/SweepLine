@@ -112,6 +112,7 @@ final class BeamRoadside {
                 if(abs($roadZ-$z)>4){$skip('mounting_elevation_unresolved');continue;}
                 $bearing=BeamSigns::bearing($tags['direction']??null);$toward=atan2($a[1]+($b[1]-$a[1])*$hit['fraction']-$point[1],$a[0]+($b[0]-$a[0])*$hit['fraction']-$point[0]);
                 $yaw=$bearing===null?$toward+M_PI/2:deg2rad(180-$bearing);
+                if($kind==='power_pole')$yaw+=M_PI/2;
                 $asset=BeamRoadsideAssets::point($kind,$tags);
                 if($asset!==null&&$stockInstances<1500&&!(($tags['lamp_mount']??'')==='wall')){
                     $default=match($kind){'power_pole'=>8.,'power_tower'=>20.,'streetlight'=>7.,'bench'=>.85,'bollard'=>.9,'bus_stop'=>2.2,default=>2.4};
@@ -137,7 +138,7 @@ final class BeamRoadside {
                     if(($tags['lamp_mount']??'')==='wall'){$skip('wall_mounted_lamp');continue;}
                     $h=self::height($tags,$kind==='power_pole'?8:7);
                     $mesh->cylinder([$point[0],$point[1],$z],.12,$h,$kind==='power_pole'?(($tags['material']??'')==='concrete'?'concrete':'wood'):'steel');
-                    if($kind==='power_pole')$mesh->box([$point[0],$point[1],$z+$h-.25],2,.13,.15,'wood');
+                    if($kind==='power_pole')$mesh->box([$point[0],$point[1],$z+$h-.25],2,.13,.15,'wood',$yaw);
                     if($kind==='streetlight'||($tags['highway']??'')==='street_lamp'){
                         $mesh->box([$point[0],$point[1],$z+$h],.65,.4,.15,'lamp');
                         if($lights<64)$objects[]=['class'=>'PointLight','name'=>'mapped_streetlight_'.($lights++),'__parent'=>'MissionGroup','position'=>[$point[0],$point[1],$z+$h-.2],'radius'=>12,'brightness'=>.7,'color'=>[1,.9,.75,1],'castShadows'=>false];

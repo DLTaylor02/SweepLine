@@ -15,9 +15,14 @@ use SweepLine\{BeamSigns,BeamSignFace,BeamRaster};
     check($north[1]>40&&$east[0]> -100,'Face direction projection preserves geographic north/east');
     $merged=BeamSigns::merge($data,$data);check(count($merged['signs'])===7,'Overlapping carriageway corridors do not duplicate signs');
     foreach(['R1-1','R1-2','R2-1[45]','W1-1L','W1-2R','W1-3L','W1-4R','W1-5L','W1-8R'] as $code){
-        $im=imagecreatefromstring(BeamSignFace::png($code));check(imagesx($im)===64&&imagesy($im)===64,'Generated face is a real PNG for '.$code);imagedestroy($im);
+        $im=imagecreatefromstring(BeamSignFace::png($code));check(imagesx($im)===512&&imagesy($im)===512,'Generated face is a real PNG for '.$code);imagedestroy($im);
         $xml=BeamSignFace::mesh('test_sign',$code);check(simplexml_load_string($xml)!==false&&str_contains($xml,'test_sign_back'),'Sign mesh includes front, back and thickness for '.$code);
     }
+    $xml=BeamSignFace::mesh('orientation_test','CUSTOM');$doc=simplexml_load_string($xml);
+    $uvNodes=$doc->xpath('//*[local-name()="source"][@id="uv"]/*[local-name()="float_array"]');
+    $values=array_map('floatval',preg_split('/\s+/',trim((string)$uvNodes[0])));
+    check(abs($values[3]-1.)<1e-8&&abs($values[5])<1e-8,'Sign Collada UVs put upper lettering at V=1 and lower lettering at V=0');
+    check(abs($values[2])<1e-8&&abs($values[4])<1e-8,'Left edge lettering keeps its horizontal UV orientation');
     $raster=new BeamRaster(64,640,str_repeat(pack('g',10),4096),str_repeat(chr(100),12288));
     $lines=[['name'=>'test road','points'=>[[0,100,10],[600,100,10]],'profiles'=>array_fill(0,2,['width_m'=>8,'oneway'=>false])]];
     $record=$data['signs'][0]+['point'=>[200,109]];
