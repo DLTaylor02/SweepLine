@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgis/postgis:16-3.4
+        image: postgis/postgis:16-3.7
         env:
           POSTGRES_DB: sweepline_test
           POSTGRES_USER: sweepline_test

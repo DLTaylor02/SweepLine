@@ -58,7 +58,7 @@ final class BeamBuildings
             $geometryWarning=null;
             if($innerFeatures||array_filter($out,static fn($f)=>$f['part'])){
                 // A capability check avoids losing all ordinary buildings on older PostGIS installs.
-                $cap=$db->query("SELECT to_regprocedure('st_triangulatepolygon(geometry)') IS NOT NULL")->fetchColumn();
+                $cap=BeamBuildingGeometry::supportsCourtyards($db);
                 if(in_array($cap,[true,1,'1','t'],true)){
                     $out=BeamBuildingGeometry::topology($db,$out);$bad=array_filter($out,static fn($f)=>$f['geometry_rejected']??false);
                     if($bad)$geometryWarning=count($bad).' complex building geometries could not be processed and were omitted.';

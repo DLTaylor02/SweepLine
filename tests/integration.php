@@ -6,6 +6,7 @@ $db=Database::connect();
 if ($db->query("SELECT to_regclass('public.regions')")->fetchColumn()) { throw new RuntimeException('Integration database must be empty; refusing existing schema'); }
 Database::migrate($db); Database::migrate($db);
 require __DIR__.'/water-integration.php';
+if(!SweepLine\BeamBuildingGeometry::supportsCourtyards($db))throw new RuntimeException('Courtyard integration requires GEOS 3.11+ and PostGIS 3.3+. Actual database: '.$db->query('SELECT postgis_full_version()')->fetchColumn());
 require __DIR__.'/building-geometry-integration.php';
 require __DIR__.'/building-photos-integration.php';
 require __DIR__.'/ramps-integration.php';

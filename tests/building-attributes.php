@@ -59,3 +59,26 @@ foreach($roofFaces as $faces){
     for($i=0;$i<count($idx);$i+=3*$stride){$tri=[$xyz[$idx[$i]],$xyz[$idx[$i+$stride]],$xyz[$idx[$i+2*$stride]]];if($tri[0][2]===12.0)$solidArea+=abs(BP::area($tri));}
 }
 check(abs($solidArea-300)<1e-6,'Actual Collada roof excludes courtyard area rather than covering it with a collider');
+
+final class CourtyardProbeStatement extends PDOStatement {
+    public function __construct(private string $value){}
+    public function fetchColumn(int $column=0):mixed{return $this->value;}
+}
+final class CourtyardProbeDatabase extends PDO {
+    public function __construct(private string $value,private bool $unsupported=false){}
+    public function query(string $query,?int $fetchMode=null,mixed ...$fetchModeArgs):PDOStatement|false {
+        if($this->unsupported)throw new PDOException('Fixture GEOS operation unsupported');
+        return new CourtyardProbeStatement($this->value);
+    }
+    public function prepare(string $query,array $options=[]):PDOStatement|false {throw new PDOException('Fixture triangulation failure');}
+}
+check(SweepLine\BeamBuildingGeometry::supportsCourtyards(new CourtyardProbeDatabase('{"geometries":[{"type":"Polygon"}]}')),'Courtyard capability requires a successful triangulation operation');
+check(!SweepLine\BeamBuildingGeometry::supportsCourtyards(new CourtyardProbeDatabase('{}',true)),'Existing but unsupported GEOS operation is treated as unavailable');
+check(!SweepLine\BeamBuildingGeometry::supportsCourtyards(new CourtyardProbeDatabase('{"geometries":[]}')),'Empty triangulation does not count as supported courtyard geometry');
+$failedCourtyard=['osm_id'=>'relation/fixture','part'=>false,'points'=>[[0,0],[20,0],[20,20],[0,20]],'holes'=>[[[5,5],[15,5],[15,15],[5,15]]],'tags'=>[]];
+$rejectedCourtyard=SweepLine\BeamBuildingGeometry::topology(new CourtyardProbeDatabase('{}'),[$failedCourtyard]);
+check($rejectedCourtyard[0]['geometry_rejected']&&$rejectedCourtyard[0]['failure_stage']==='courtyard triangulation','Production rejection retains a safe diagnostic stage instead of inventing a solid courtyard');
+$strictFailure=false;
+try{SweepLine\BeamBuildingGeometry::topology(new CourtyardProbeDatabase('{}'),[$failedCourtyard],true);}
+catch(RuntimeException $e){$strictFailure=$e->getPrevious() instanceof PDOException&&str_contains($e->getMessage(),'courtyard triangulation');}
+check($strictFailure,'Native integration mode preserves the original database error before result-field assertions');

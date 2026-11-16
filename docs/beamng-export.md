@@ -651,6 +651,10 @@ Migration 024 adds an idempotent ramp_context_version marker to import jobs. New
 
 This repair runs in the existing export worker without waiting for a separate queued region refresh. It uses existing Overpass retries and the seven-day resource cache. Limits include 64 nearby legacy imports per export, 5,000 returned ways / 50,000 vertices per supplement and a 10,000-square-kilometre maximum legacy coverage area. Larger manual regions require a smaller import or explicit refresh. Apply the migration through sudo ./setup.sh; no manual region discard/refresh is needed for normal existing regional tiles.
 
-### Ramp budget and notices (0.168.0)
+### Ramp budget and notices (0.168.1)
 
 The unchanged 8 km ramp budget is shared across the selected and opposite carriageways. Each receives an equal share of the remaining budget; unused capacity passes forward. Completed exports show a short limitation notice with expandable, deduplicated Export notices. Detailed geometry/terrain/water reasons remain in reports and build.log. This changes allocation and presentation, not terrain cut limits or ambiguous-fork handling.
+
+### Courtyard capability checks (0.168.1)
+
+Courtyard support is determined by executing a small constrained-triangulation probe; an existing PostGIS function can still be unusable when linked against GEOS older than 3.11. Unsupported installations retain the documented simple-building fallback. CI uses PostgreSQL 16/PostGIS 3.7 with a compatible GEOS runtime and checks this prerequisite before native geometry assertions. Strict integration topology mode preserves underlying database errors; production rejection records expose only the operation stage and SQLSTATE. Courtyard-only footprints are triangulated directly without subtracting an empty geometry collection.

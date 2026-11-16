@@ -67,8 +67,18 @@ final class BeamBuildingGeometry
         }
         return $rings;
     }
+    /** Function presence alone does not establish the linked GEOS capability. */
+    public static function supportsCourtyards(\PDO $db): bool
+    {
+        try {
+            $value=$db->query("SELECT ST_AsGeoJSON(ST_TriangulatePolygon(ST_GeomFromText('POLYGON((0 0,1 0,1 1,0 0))',0)))")->fetchColumn();
+            if(!is_string($value))return false;
+            $geometry=json_decode($value,true,512,JSON_THROW_ON_ERROR);
+            return !empty($geometry['geometries']);
+        }catch(\PDOException|\JsonException $e){return false;}
+    }
     /** Part footprints replace only the covered area of their parent outline. */
-    public static function topology(\PDO $db,array $features): array
+    public static function topology(\PDO $db,array $features,bool $strict=false): array
     {
         $parts=array_filter($features,static fn($f)=>$f['part']??false);$out=[];$parents=[];
         foreach($parts as $part){
@@ -79,6 +89,7 @@ final class BeamBuildingGeometry
             }
         }
         foreach($features as $f){
+            $stage='part association';
             try {
             $parent=null;$cuts=[];
             if($f['part']??false){
@@ -96,14 +107,19 @@ final class BeamBuildingGeometry
             $f['assembly']??=$f['osm_id'];
             if(!$cuts&&empty($f['holes'])){$out[]=$f;continue;}
             $polygon=['type'=>'Polygon','coordinates'=>array_merge([self::close($f['points'])],array_map(self::close(...),$f['holes']??[]))];
+            $stage='footprint difference';
             $sql="WITH a AS (SELECT ST_GeomFromGeoJSON(?) g), b AS (SELECT ST_UnaryUnion(ST_GeomFromGeoJSON(?)) g),
                 c AS (SELECT ST_CollectionExtract(ST_Difference(a.g,b.g),3) g FROM a,b)
                 SELECT ST_AsGeoJSON((d).geom) FROM (SELECT ST_Dump(g) d FROM c) s";
-            $q=$db->prepare($sql);$q->execute([json_encode($polygon,JSON_THROW_ON_ERROR),json_encode(['type'=>'GeometryCollection','geometries'=>$cuts],JSON_THROW_ON_ERROR)]);
-            foreach($q->fetchAll(\PDO::FETCH_COLUMN) as $json){
+            if($cuts){
+                $q=$db->prepare($sql);$q->execute([json_encode($polygon,JSON_THROW_ON_ERROR),json_encode(['type'=>'GeometryCollection','geometries'=>$cuts],JSON_THROW_ON_ERROR)]);
+                $polygons=$q->fetchAll(\PDO::FETCH_COLUMN);
+            }else $polygons=[json_encode($polygon,JSON_THROW_ON_ERROR)];
+            foreach($polygons as $json){
                 $rings=json_decode($json,true,512,JSON_THROW_ON_ERROR)['coordinates'];
                 $copy=$f;$copy['points']=BeamPolygon::clean($rings[0]);$copy['holes']=array_map(BeamPolygon::clean(...),array_slice($rings,1));
                 if($copy['holes']){
+                    $stage='courtyard triangulation';
                     $t=$db->prepare('SELECT ST_AsGeoJSON(ST_TriangulatePolygon(ST_GeomFromGeoJSON(?)))');
                     $t->execute([$json]);$tri=json_decode($t->fetchColumn(),true,512,JSON_THROW_ON_ERROR);
                     if(empty($tri['geometries']))throw new \RuntimeException('Courtyard triangulation produced no faces.');
@@ -111,7 +127,10 @@ final class BeamBuildingGeometry
                 }
                 $out[]=$copy;
             }
-            }catch(\RuntimeException $e){$out[]=['geometry_rejected'=>true,'osm_id'=>$f['osm_id'],'reason'=>'Invalid or unsupported courtyard/part topology.'];}
+            }catch(\RuntimeException $e){
+                if($strict)throw new \RuntimeException('Building topology failed during '.$stage.' ('.$e->getCode().').',0,$e);
+                $out[]=['geometry_rejected'=>true,'osm_id'=>$f['osm_id'],'reason'=>'Invalid or unsupported courtyard/part topology.','failure_stage'=>$stage,'sqlstate'=>$e instanceof \PDOException?(string)$e->getCode():null];
+            }
         }
         return $out;
     }
