@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace SweepLine;
-/** Generic visual models at mapped points/paths; no collision or invented feature locations. */
+/** Mapped roadside models; solid objects collide, wires and thin overlays remain visual. */
 final class BeamRoadside {
     public static function height(array $tags,float $fallback):float{
         $v=$tags['height']??null;if(!is_string($v)||!preg_match('/^([0-9]+(?:\.[0-9]+)?)\s*(m|ft|feet)?$/D',trim($v),$m))return $fallback;
@@ -37,6 +37,7 @@ final class BeamRoadside {
         foreach($features as $i=>$f){
             if($i%25===0)$progress(null);if($mesh->limited||$samples>=24000){$skip('geometry_budget');break;}
             $kind=$f['kind'];$p=$f['points'];$tags=$f['tags'];$made=0;
+            $mesh->collision(!in_array($kind,['power_line','parking','level_crossing'],true));
             if($kind==='power_line'){
                 for($j=1;$j<count($p);$j++){
                     $a=$supports[(string)($f['node_ids'][$j-1]??'')]??null;$b=$supports[(string)($f['node_ids'][$j]??'')]??null;
@@ -82,7 +83,7 @@ final class BeamRoadside {
                         }
                         if($kind==='hedge'){
                             if($hedges>=500){$skip('hedge_instance_budget');continue;}$asset=BeamVegetation::CATALOG['eastern_bush'];$hedges++;$libraries[$asset['materials']]=true;
-                            $objects[]=['class'=>'TSStatic','name'=>'mapped_hedge_'.$hedges,'__parent'=>'MissionGroup','shapeName'=>$asset['shape'],'position'=>[$a[0],$a[1],$za],'rotationMatrix'=>[cos($yaw),sin($yaw),0,-sin($yaw),cos($yaw),0,0,0,1],'scale'=>[.35,.35,.35],'collisionType'=>'None','castShadows'=>true];
+                            $objects[]=['class'=>'TSStatic','name'=>'mapped_hedge_'.$hedges,'__parent'=>'MissionGroup','shapeName'=>$asset['shape'],'position'=>[$a[0],$a[1],$za],'rotationMatrix'=>[cos($yaw),sin($yaw),0,-sin($yaw),cos($yaw),0,0,0,1],'scale'=>[.35,.35,.35],'collisionType'=>'Collision Mesh','castShadows'=>true];
                         }elseif($kind==='rail'){
                             $gauge=isset($tags['gauge'])&&is_numeric($tags['gauge'])?max(.6,min(2.,(float)$tags['gauge']/1000)):1.435;
                             foreach([-1,1] as $side){$x=-$dy/$length*$gauge/2*$side;$y=$dx/$length*$gauge/2*$side;$mesh->beam([$a[0]+$x,$a[1]+$y,$za+.025],[$b[0]+$x,$b[1]+$y,$zb+.025],.07,.05,'steel');}
@@ -162,7 +163,7 @@ final class BeamRoadside {
                             $labels[$key]=['file'=>$file,'text'=>$text];
                         }
                         $theta=$bearing===null?atan2($a[1]+($b[1]-$a[1])*$hit['fraction']-$point[1],$a[0]+($b[0]-$a[0])*$hit['fraction']-$point[0])+M_PI/2:deg2rad(180-$bearing);
-                        $objects[]=['class'=>'TSStatic','name'=>'mapped_marker_'.$i,'__parent'=>'MissionGroup','shapeName'=>$path.$labels[$key]['file'].'.dae','position'=>[$point[0],$point[1],$z+($kind==='bus_stop'?2.:.9)],'rotationMatrix'=>[cos($theta),sin($theta),0,-sin($theta),cos($theta),0,0,0,1],'scale'=>[.65,1,.5],'collisionType'=>'None','castShadows'=>true];
+                        $objects[]=['class'=>'TSStatic','name'=>'mapped_marker_'.$i,'__parent'=>'MissionGroup','shapeName'=>$path.$labels[$key]['file'].'.dae','position'=>[$point[0],$point[1],$z+($kind==='bus_stop'?2.:.9)],'rotationMatrix'=>[cos($theta),sin($theta),0,-sin($theta),cos($theta),0,0,0,1],'scale'=>[.65,1,.5],'collisionType'=>'Visible Mesh Final','castShadows'=>true];
                     }
                 }elseif($kind==='gate'){
                     if($bearing===null){$skip('gate_orientation_missing');continue;}
@@ -176,10 +177,10 @@ final class BeamRoadside {
         }
         $result=$mesh->finish();$objects=array_merge($result['objects'],$objects);
         $colors=['wood'=>[.32,.25,.17,1],'steel'=>[.45,.47,.48,1],'concrete'=>[.5,.49,.46,1],'roof'=>[.23,.25,.26,1],'lamp'=>[.85,.83,.7,1],'bus'=>[.1,.28,.55,1],'marker'=>[.85,.88,.79,1],'parking'=>[.24,.24,.25,1]];$materials=[];
-        foreach($colors as $name=>$color){$key=$prefix.'_'.$name;$materials[$key]=['class'=>'Material','name'=>$key,'mapTo'=>$key,'version'=>1.5,'doubleSided'=>true,'Stages'=>[['baseColorFactor'=>$color,'roughnessFactor'=>.9,'metallicFactor'=>$name==='steel'?.4:0]]];}
+        foreach($colors as $name=>$color){$key=$prefix.'_'.$name;$materials[$key]=['class'=>'Material','name'=>$key,'mapTo'=>$key,'version'=>1.5,'groundType'=>match($name){'wood'=>'WOOD','concrete'=>'CONCRETE','parking'=>'ASPHALT',default=>'METAL'},'doubleSided'=>true,'Stages'=>[['baseColorFactor'=>$color,'roughnessFactor'=>.9,'metallicFactor'=>$name==='steel'?.4:0]]];}
         $materials[$prefix.'_parking']['Stages'][0]=['baseColorMap'=>BeamRoadMaterials::TEXTURES.'_b.color.dds','normalMap'=>BeamRoadMaterials::TEXTURES.'_nm.normal.dds','roughnessMap'=>BeamRoadMaterials::TEXTURES.'_r.data.dds','roughnessFactor'=>.9,'metallicFactor'=>0];
         foreach($labels as $key=>$label){$materials[$key]=['class'=>'Material','name'=>$key,'mapTo'=>$key,'version'=>1.5,'Stages'=>[['baseColorMap'=>$path.$label['file'].'.color.png','roughnessFactor'=>.9]]];$materials[$key.'_back']=['class'=>'Material','name'=>$key.'_back','mapTo'=>$key.'_back','version'=>1,'Stages'=>[['diffuseColor'=>[.5,.5,.5,1]]]];}
         if($result['mesh_parts']||$labels)$put('art/context/main.materials.json',json_encode($materials,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES));
-        return ['objects'=>$objects,'material_libraries'=>array_merge(($result['mesh_parts']||$labels)?[$path.'art/context/main.materials.json']:[],array_keys($libraries)),'report'=>['fetch_status'=>$data['fetch_status']??'not_requested','warning'=>$data['warning']??null,'requests'=>$data['requests']??[],'source'=>'Mapped roadside infrastructure; per-record provider retained','placed_features'=>$counts,'records'=>$records,'crossings'=>$crossings,'skipped'=>$skipped,'skipped_parse'=>$data['skipped']??[],'truncated'=>($data['truncated']??false)||$result['limited']||$samples>=24000,'mesh_parts'=>$result['mesh_parts'],'primitives'=>$result['primitives'],'lights'=>$lights,'hedge_instances'=>$hedges,'stock_assets'=>$stockCounts,'stock_instances'=>$stockInstances,'stock_policy'=>$modelPolicy,'model_policy'=>'Stock models first when the mapped type, footprint, dimensions and slope fit; generated geometry for unsupported models or exact paths.','collision'=>'Visual-only; existing road/terrain collision unchanged.','limits'=>'200 ft from road edges; 2,000 features, 40,000 source points, 24,000 samples, 12,000 mesh primitives, 500 hedge instances, 1,500 stock instances and 64 lights.','estimates'=>'Dimensions, materials, foundations, orientation where absent, cable sag and railway gauge/sleeper spacing may be estimated. No new feature locations or crossings are invented.']];
+        return ['objects'=>$objects,'material_libraries'=>array_merge(($result['mesh_parts']||$labels)?[$path.'art/context/main.materials.json']:[],array_keys($libraries)),'report'=>['fetch_status'=>$data['fetch_status']??'not_requested','warning'=>$data['warning']??null,'requests'=>$data['requests']??[],'source'=>'Mapped roadside infrastructure; per-record provider retained','placed_features'=>$counts,'records'=>$records,'crossings'=>$crossings,'skipped'=>$skipped,'skipped_parse'=>$data['skipped']??[],'truncated'=>($data['truncated']??false)||$result['limited']||$samples>=24000,'mesh_parts'=>$result['mesh_parts'],'collision_mesh_parts'=>$result['collision_parts'],'visual_mesh_parts'=>$result['visual_parts'],'primitives'=>$result['primitives'],'lights'=>$lights,'hedge_instances'=>$hedges,'stock_assets'=>$stockCounts,'stock_instances'=>$stockInstances,'stock_policy'=>$modelPolicy,'model_policy'=>'Stock models first when the mapped type, footprint, dimensions and slope fit; generated geometry for unsupported models or exact paths.','collision'=>'Solid roadside objects use stock collision meshes or generated visible-mesh collision. Wires and parking/crossing overlays remain visual-only; road/terrain collision is unchanged.','limits'=>'200 ft from road edges; 2,000 features, 40,000 source points, 24,000 samples, 12,000 mesh primitives, 500 hedge instances, 1,500 stock instances and 64 lights.','estimates'=>'Dimensions, materials, foundations, orientation where absent, cable sag and railway gauge/sleeper spacing may be estimated. No new feature locations or crossings are invented.']];
     }
 }

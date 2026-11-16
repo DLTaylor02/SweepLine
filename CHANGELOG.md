@@ -4,6 +4,12 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.163.0:** Style recognized sign families with warning/construction diamonds, regulatory speed numerals, advisory values, red prohibition symbols and green/blue/brown guide/service/recreation panels. Add fitted font hierarchy and wider guide meshes; retain generic fallbacks, source provenance and unchanged sign locations/facing.
+
+
+- **0.162.0:** Enable collision for OSM/Mapillary roadside solids and signs. Use inspected stock collision meshes where available, visible geometry for generated solids and the stock bus-stop sign, and separate generated collision/visual batches without increasing primitive budgets. Wires and thin parking/crossing overlays remain non-colliding; road/terrain geometry is unchanged.
+
+
 - **0.161.0:** Rotate small utility pole models by 90 degrees while preserving truss towers. Render signs at 512×512 with antialiased TrueType lettering, readable wrapped class labels and corrected vertical Collada UV mapping. Install the Debian DejaVu font package when missing; preserve sign facing and placement.
 
 

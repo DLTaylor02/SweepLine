@@ -45,7 +45,7 @@ final class BeamRoadsideAssets {
         $y=$length>0?1.:$z;$c=cos($yaw);$s=sin($yaw);
         return ['class'=>'TSStatic','name'=>$name,'__parent'=>'MissionGroup','shapeName'=>$a['shape'],
             'position'=>[$point[0]-$c*$a['center_x']*$x+$s*$a['center_y']*$y,$point[1]-$s*$a['center_x']*$x-$c*$a['center_y']*$y,$point[2]-$a['base_z']*$z],
-            'rotationMatrix'=>[$c,$s,0,-$s,$c,0,0,0,1],'scale'=>[$x,$y,$z],'collisionType'=>'None','decalType'=>'None','castShadows'=>true];
+            'rotationMatrix'=>[$c,$s,0,-$s,$c,0,0,0,1],'scale'=>[$x,$y,$z],'collisionType'=>$asset==='bus_stop'?'Visible Mesh Final':'Collision Mesh','decalType'=>'None','castShadows'=>true];
     }
     public static function libraries(string $asset):array{return array_values(array_unique(array_merge(self::COMMON,self::CATALOG[$asset]['libraries'])));}
 }

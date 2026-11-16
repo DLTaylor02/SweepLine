@@ -29,6 +29,7 @@ use SweepLine\{BeamSigns,BeamSignFace,BeamRaster};
     $assets=[];$put=static function($path,$bytes)use(&$assets){$assets[$path]=$bytes;};
     $result=BeamSigns::write(['signs'=>[$record],'fetch_status'=>'complete'],$lines,$raster,0,'test','/levels/test/',$put,static function($m){});
     check($result['report']['placed']===1&&count($result['objects'])===2,'Recorded off-road sign creates a sign and post at its source location');
+    check($result['objects'][0]['collisionType']==='Visible Mesh Final'&&$result['objects'][1]['collisionType']==='Visible Mesh Final','Generated road sign panel and post are collidable');
     $o=$result['objects'][0];check($o['position'][0]===200&&$o['position'][1]===109&&abs($o['rotationMatrix'][3]-1)<1e-8,'Recorded sign location and west-facing front are retained');
     check(isset($assets['art/signs/main.materials.json'],$assets['art/signs/W1_2L.dae'],$assets['art/signs/W1_2L.color.png'],$assets['art/signs/post.dae']),'All generated sign assets are packaged');
     foreach([[200,100],[200,250]] as $p){
@@ -53,4 +54,15 @@ use SweepLine\{BeamSigns,BeamSignFace,BeamRaster};
     $ambiguous=$lines;$ambiguous[]=['name'=>'parallel road','points'=>[[0,118,10],[600,118,10]],'profiles'=>$lines[0]['profiles']];
     $r=BeamSigns::write(['signs'=>[$record]],$ambiguous,$raster,0,'test','/levels/test/',$put,static function($m){});
     check(($r['report']['skipped_placement']['ambiguous_road_association']??0)===1,'Signs equally associated with two roads are skipped');
+})();
+
+(function():void{
+    $cases=[['warning--slippery-road--g1','warning',[244,194,28]],['information--rest-area--g1','services',[24,76,151]],['information--highway-interchange--g1','guide',[20,105,61]],['information--picnic-site--g1','recreation',[110,65,36]],['warning--roadworks--g1','construction',[240,132,28]]];
+    foreach($cases as [$code,$family,$color]){
+        $style=\SweepLine\BeamSignStyle::describe($code);check($style['family']===$family&&$style['bg']===$color,'Source semantics select '.$family.' sign colors');
+        $im=imagecreatefromstring(\SweepLine\BeamSignFace::png($code));$rgb=imagecolorat($im,0,0);check([($rgb>>16)&255,($rgb>>8)&255,$rgb&255]===$color,'Rendered '.$family.' sign uses its selected background');imagedestroy($im);
+    }
+    $speed=\SweepLine\BeamSignStyle::describe('regulatory--maximum-speed-limit-45--g3');check($speed['number']==='45'&&$speed['heading']==='SPEED LIMIT','Speed sign separates its large numeric legend from its heading');
+    $exit=\SweepLine\BeamSignStyle::describe('information--highway-interchange--g1');check($exit['label']==='INTERCHANGE','Guide styling does not invent an exit number or destination');
+    foreach(['regulatory--no-entry--g1','regulatory--no-parking--g1','complementary--maximum-speed-limit-30--g1'] as $code){$im=imagecreatefromstring(\SweepLine\BeamSignFace::png($code));check(imagesx($im)===512,'Styled prohibitions and advisory values retain high-resolution output');imagedestroy($im);}
 })();

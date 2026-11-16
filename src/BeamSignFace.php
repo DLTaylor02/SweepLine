@@ -8,16 +8,16 @@ final class BeamSignFace {
         $fontPath=null;foreach(['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf','C:/Windows/Fonts/arialbd.ttf'] as $font)if(is_file($font)){$fontPath=$font;break;}
         imageantialias($im,true);
         $rect=static fn($x1,$y1,$x2,$y2,$color)=>imagerectangle($im,$x1*8,$y1*8,$x2*8,$y2*8,$color);
-        $outline=static fn($xy,$color)=>imagepolygon($im,array_map(static fn($v)=>(int)round($v*8),$xy),$color);
+        $outline=static function($xy,$color)use($im):void{imageantialias($im,false);imagepolygon($im,array_map(static fn($v)=>(int)round($v*8),$xy),$color);imageantialias($im,true);};
         $line=static fn($x1,$y1,$x2,$y2,$color)=>imageline($im,$x1*8,$y1*8,$x2*8,$y2*8,$color);
         $thickness=static fn($width)=>imagesetthickness($im,$width*8);
-        $warning=str_starts_with($code,'W');
-        imagefill($im,0,0,$warning?$yellow:$white);
+        $style=BeamSignStyle::describe($code);$ink=imagecolorallocate($im,...$style['fg']);$background=imagecolorallocate($im,...$style['bg']);
+        imagefill($im,0,0,$background);
         $poly=static function(array $xy,int $color)use($im):void{imagefilledpolygon($im,array_map(static fn($v)=>(int)round($v*8),$xy),$color);};
-        $text=static function(string $label,int $y,int $color,int $font=5)use($im,$fontPath):void{
-            $size=($font===1?4.5:($font===3?6.:9.))*8;
+        $text=static function(string $label,int $y,int $color,int $font=5,float $maxWidth=440)use($im,$fontPath):void{
+            $size=($font>=10?$font:($font===1?4.5:($font===3?6.:9.)))*8;
             if($fontPath&&function_exists('imagettftext')){
-                $box=imagettfbbox($size,0,$fontPath,$label);$x=(512-($box[2]-$box[0]))/2-$box[0];$baseline=$y*8-min($box[5],$box[7]);
+                $box=imagettfbbox($size,0,$fontPath,$label);$width=$box[2]-$box[0];if($width>$maxWidth){$size*=$maxWidth/$width;$box=imagettfbbox($size,0,$fontPath,$label);}$x=(512-($box[2]-$box[0]))/2-$box[0];$baseline=$y*8-min($box[5],$box[7]);
                 imagettftext($im,$size,0,(int)round($x),(int)round($baseline),$color,$fontPath,$label);
             }else{
                 $small=imagecreatetruecolor(max(1,imagefontwidth($font)*strlen($label)),imagefontheight($font));
@@ -27,18 +27,26 @@ final class BeamSignFace {
         };
         if($code==='R1-1'){
             imagefill($im,0,0,$red);$poly([19,3,45,3,61,19,61,45,45,61,19,61,3,45,3,19],$white);
-            $poly([20,6,44,6,58,20,58,44,44,58,20,58,6,44,6,20],$red);$text('STOP',23,$white);
+            $poly([20,6,44,6,58,20,58,44,44,58,20,58,6,44,6,20],$red);$text('STOP',26,$white,12);
         }elseif($code==='R1-2'){
             imagefill($im,0,0,$red);$poly([9,8,55,8,32,53],$white);$text('YIELD',18,$red,3);
         }elseif(preg_match('/^R2-1\[[0-9]+(?: mph)?\]$/D',$code)){
             $rect(2,2,61,61,$black);$text('SPEED',6,$black,3);$text('LIMIT',19,$black,3);
-            preg_match('/\[([0-9]+)/',$code,$m);$text($m[1],39,$black);
+            preg_match('/\[([0-9]+)/',$code,$m);$text($m[1],31,$black,20);
+        }elseif($style['number']!==null){
+            $thickness(1);$rect(2,2,61,61,$ink);
+            if($style['family']==='advisory')$text('ADVISORY',8,$ink,3);
+            else{$text('SPEED',5,$ink,3);$text('LIMIT',17,$ink,3);}
+            $text($style['number'],31,$ink,20);
+        }elseif($style['symbol']==='do_not_enter'){
+            imagefill($im,0,0,$white);imagefilledellipse($im,256,256,448,448,$red);imagefilledrectangle($im,56,216,456,296,$white);$text('DO NOT',14,$white,3);$text('ENTER',43,$white,3);
+        }elseif($style['symbol']==='no_parking'){
+            imagefilledellipse($im,256,256,380,380,$red);imagefilledellipse($im,256,256,332,332,$white);$text('P',22,$black,20);imagefilledpolygon($im,[116,136,136,116,396,376,376,396],$red);$thickness(1);$rect(2,2,61,61,$black);
         }elseif(!preg_match('/^W1-(?:[1-5]|8)[LR]$/D',$code)){
-            $rect(2,2,61,61,$black);
-            $label=preg_replace('/^(?:regulatory|warning|information|complementary)--/','',$code);
-            $label=preg_replace('/--g[0-9]+$/','',$label);$label=strtoupper(preg_replace('/[^\x20-\x7e]/','?',str_replace(['--','-','_'],' ',$label)));
+            $thickness(1);if($style['shape']==='diamond')$outline([32,3,61,32,32,61,3,32],$ink);else $rect(2,2,61,61,$ink);
+            $label=preg_replace('/[^\x20-\x7e]/','?',$style['label']);
             $rows=explode("\n",wordwrap(substr($label,0,120),14,"\n",true));$rows=array_slice($rows,0,6);$top=max(5,(64-count($rows)*8)/2);
-            foreach($rows as $i=>$row)$text($row,(int)($top+$i*8),$black,1);
+            foreach($rows as $i=>$row){$y=(int)($top+$i*8);$width=$style['shape']==='diamond'?max(12,54-2*abs($y+4-32))*8:440;$text($row,$y,$ink,$style['family']==='prohibition'?5:3,$width);}
         }else{
             $thickness(2);if(str_starts_with($code,'W1-8'))$rect(2,2,61,61,$black);else $outline([32,3,61,32,32,61,3,32],$black);
             $right=str_ends_with($code,'R');$flip=static fn($x)=>$right?64-$x:$x;
@@ -62,8 +70,9 @@ final class BeamSignFace {
         ob_start();imagepng($im);$png=ob_get_clean();imagedestroy($im);return $png;
     }
     public static function mesh(string $material,string $code): string {
+        $style=BeamSignStyle::describe($code);
         $shape=$code==='R1-1'?[[-.19,.45],[-.45,.19],[-.45,-.19],[-.19,-.45],[.19,-.45],[.45,-.19],[.45,.19],[.19,.45]]:
-            ($code==='R1-2'?[[-.45,.4],[0,-.4],[.45,.4]]:(str_starts_with($code,'W1-8')?[[-.35,.45],[-.35,-.45],[.35,-.45],[.35,.45]]:(str_starts_with($code,'W')?[[0,.55],[-.55,0],[0,-.55],[.55,0]]:[[-.3,.45],[-.3,-.45],[.3,-.45],[.3,.45]])));
+            ($code==='R1-2'?[[-.45,.4],[0,-.4],[.45,.4]]:(str_starts_with($code,'W1-8')?[[-.35,.45],[-.35,-.45],[.35,-.45],[.35,.45]]:($style['shape']==='diamond'?[[0,.55],[-.55,0],[0,-.55],[.55,0]]:($style['shape']==='wide'?[[-.55,.35],[-.55,-.35],[.55,-.35],[.55,.35]]:[[-.3,.45],[-.3,-.45],[.3,-.45],[.3,.45]]))));
         $vertices=[[0,-.05,0],[0,-.03,0]];$tri=[];$uv=[];$mats=[];
         foreach($shape as [$x,$z]){$vertices[]=[$x,-.05,$z];$vertices[]=[$x,-.03,$z];}
         $left=min(array_column($shape,0));$right=max(array_column($shape,0));$bottom=min(array_column($shape,1));$top=max(array_column($shape,1));

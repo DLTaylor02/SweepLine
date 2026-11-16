@@ -41,6 +41,7 @@ try{
  check(str_contains($largeZip->getFromName($largeBase.'mainLevel.lua'),'/levels/east_coast_usa/art/shapes/buildings/main.materials.json'),'Archive loads referenced stock furniture materials');
  check(count(array_filter($largeObjects,static fn($o)=>($o['shapeName']??'')==='/levels/east_coast_usa/art/shapes/clutter/clutter_city_bench_wood.dae'))===1,'Archive references stock bench without copying game geometry');
  check($largeZip->getFromName('MAPILLARY-ATTRIBUTION.txt')!==false&&str_contains($largeZip->getFromName($largeBase.'info.json'),'Mapillary'),'Mapillary-enabled archive credits its provider without bundling imagery');
+ check(count(array_filter($largeObjects,static fn($o)=>($o['name']??'')==='mapped_sign_99001'&&($o['collisionType']??'')==='Visible Mesh Final'))===1&&count(array_filter($largeObjects,static fn($o)=>str_starts_with($o['name']??'','mapped_stock_')&&($o['collisionType']??'')==='Collision Mesh'))>0,'Archive enables collision on generated sign panels and stock furniture');
  $largeZip->close();
 }finally{@unlink($largeFile);}
 

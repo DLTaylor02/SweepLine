@@ -123,24 +123,24 @@ final class BeamSigns {
             if($reason!==null){$rejected[$reason]=($rejected[$reason]??0)+1;continue;}
             $code=$sign['code'];
             if(preg_match('/^W1-(?:[1-5]|8)$/D',$code)){$turn=self::curveDirection($hit,$sign['grid_bearing']??$sign['bearing']);if($turn){$code.=$turn;$sign['curve_direction_source']='road_geometry';}else{$sign['curve_direction_source']='unresolved_generic_face';}}
-            $sign['rendered_code']=$code;$sign['rendered_point']=$point;
+            $sign['artwork_family']=BeamSignStyle::describe($code)['family'];$sign['artwork_accuracy']='Approximate sign-family styling, not surveyed exact artwork';$sign['rendered_code']=$code;$sign['rendered_point']=$point;
             $key=preg_replace('/[^A-Za-z0-9]/','_',substr($code,0,48));if(!preg_match('/^(?:R1-[12]|R2-1\[[0-9]+(?: mph)?\]|W1-(?:[1-5]|8)[LR])$/D',$code))$key.='_'.substr(hash('sha256',$code),0,8);$material=$prefix.'_sign_'.$key;
             if(!isset($meshes[$key])){
                 $file='art/signs/'.$key;
                 $put($file.'.color.png',BeamSignFace::png($code));
                 $put($file.'.dae',BeamSignFace::mesh($material,$code));
-                $materials[$material]=['class'=>'Material','name'=>$material,'mapTo'=>$material,'version'=>1.5,'Stages'=>[['baseColorMap'=>$path.$file.'.color.png','roughnessFactor'=>0.85,'metallicFactor'=>0]]];
-                $back=$material.'_back';$materials[$back]=['class'=>'Material','name'=>$back,'mapTo'=>$back,'version'=>1,'Stages'=>[['diffuseColor'=>[0.48,0.49,0.50,1]]]];
+                $materials[$material]=['class'=>'Material','name'=>$material,'mapTo'=>$material,'version'=>1.5,'groundType'=>'METAL','Stages'=>[['baseColorMap'=>$path.$file.'.color.png','roughnessFactor'=>0.85,'metallicFactor'=>0]]];
+                $back=$material.'_back';$materials[$back]=['class'=>'Material','name'=>$back,'mapTo'=>$back,'version'=>1,'groundType'=>'METAL','Stages'=>[['diffuseColor'=>[0.48,0.49,0.50,1]]]];
                 $meshes[$key]=true;
             }
             $angle=deg2rad(180-($sign['grid_bearing']??$sign['bearing']));$c=cos($angle);$s=sin($angle);
-            $objects[]=['class'=>'TSStatic','name'=>'mapped_sign_'.$sign['id'],'__parent'=>'MissionGroup','shapeName'=>$path.'art/signs/'.$key.'.dae','position'=>[$point[0],$point[1],$z-$origin+2.2],'rotationMatrix'=>[$c,$s,0,-$s,$c,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'None','decalType'=>'None','castShadows'=>true];
-            $objects[]=['class'=>'TSStatic','name'=>'mapped_sign_post_'.$sign['id'],'__parent'=>'MissionGroup','shapeName'=>$path.'art/signs/post.dae','position'=>[$point[0],$point[1],$z-$origin],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[0.065,0.065,2.2],'collisionType'=>'None','castShadows'=>true];
+            $objects[]=['class'=>'TSStatic','name'=>'mapped_sign_'.$sign['id'],'__parent'=>'MissionGroup','shapeName'=>$path.'art/signs/'.$key.'.dae','position'=>[$point[0],$point[1],$z-$origin+2.2],'rotationMatrix'=>[$c,$s,0,-$s,$c,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None','castShadows'=>true];
+            $objects[]=['class'=>'TSStatic','name'=>'mapped_sign_post_'.$sign['id'],'__parent'=>'MissionGroup','shapeName'=>$path.'art/signs/post.dae','position'=>[$point[0],$point[1],$z-$origin],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[0.065,0.065,2.2],'collisionType'=>'Visible Mesh Final','castShadows'=>true];
             $placed[]=$sign+['mounting_height_m'=>2.2,'dimensions_estimated'=>true,'road'=>$hit['line']['name']??'selected road'];
         }
         if($objects){
             $post=$prefix.'_sign_post';$put('art/signs/post.dae',BeamAssets::shape($post,'bridge-pier'));
-            $materials[$post]=['class'=>'Material','name'=>$post,'mapTo'=>$post,'version'=>1,'Stages'=>[['diffuseColor'=>[0.5,0.52,0.54,1]]]];
+            $materials[$post]=['class'=>'Material','name'=>$post,'mapTo'=>$post,'version'=>1,'groundType'=>'METAL','Stages'=>[['diffuseColor'=>[0.5,0.52,0.54,1]]]];
             $put('art/signs/main.materials.json',json_encode($materials,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES));
         }
         return ['objects'=>$objects,'report'=>['provider'=>$data['source']??'OpenStreetMap','fetch_status'=>$data['fetch_status']??'not_requested','warning'=>$data['warning']??(($data['fetch_status']??'')==='complete'&&!$placed?'No mapped signs met the type, facing and placement requirements; no sign locations were invented.':null),'parsed'=>count($data['signs']??[]),'placed'=>count($placed),'records'=>$placed,'skipped_parse'=>$data['skipped']??[],'skipped_placement'=>$rejected,'truncated'=>$data['truncated']??false,'coverage'=>'All mapped sign labels accepted; unknown artwork uses labeled generic panels. Facing and curve handedness may be inferred; ambiguous road associations remain skipped.','geometry'=>'Generic dimensions/posts and terrain-derived mounting elevation; coordinates and face types are source-derived.']];
