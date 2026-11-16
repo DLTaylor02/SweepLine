@@ -1,5 +1,6 @@
 <?php
 (function():void{
+    check(SweepLine\BeamRampNetwork::share(8000,2)===4000.0&&SweepLine\BeamRampNetwork::share(7000,1)===7000.0,'Ramp budgets reserve a fair share and carry unused capacity to remaining carriageways');
     $profile=SweepLine\BeamLanes::infer(['lanes'=>'1','oneway'=>'yes'],'motorway_link',1);$profile['legal_forward']=true;
     $seed=['osm_id'=>10,'highway'=>'motorway_link','tags'=>['oneway'=>'yes'],'profile'=>$profile,'width_m'=>$profile['width_m'],
         'points'=>[[100,100],[200,105],[300,140]],'full_points'=>[[100,100],[200,105],[300,140]],'arm_nodes'=>[1,2,3]];

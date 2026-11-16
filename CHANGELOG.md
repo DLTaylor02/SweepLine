@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.168.0:** Reserve a fair share of the unchanged ramp geometry budget for each carriageway, carrying unused capacity forward. Replace concatenated export warnings with a short status and expandable, deduplicated notices. Preserve detailed build-report diagnostics; terrain/fork reconstruction limits are unchanged.
+
 - **0.167.0:** Fix missing highway ramps by including OSM link-road classes in regional density/download queries and XML ingestion. Automatically supplement legacy active regions before BeamNG ramp discovery, preserving existing roads/candidates and retrying incomplete supplements. Add import-job coverage markers, ingestion diagnostics and actual-import/backfill regression tests.
 
 - **0.166.0:** Extend BeamNG highway context along mapped ramps across OSM way IDs and add 600-foot receiving-road arms. Support shallow curved ramp joins, parent-aware pavement/terrain/minimap connections and pre-download square terrain expansion. Preserve mapped direction/access and report missing data, unsupported structures, forks and geometry budgets. Add synthetic geometry/archive and native PostGIS coverage.

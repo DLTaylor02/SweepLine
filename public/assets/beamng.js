@@ -32,7 +32,9 @@
     const track=node('div');track.className='beam-step-track';track.setAttribute('role','img');
     const segments=steps.map(label=>{const segment=node('span');segment.title=label;segment.setAttribute('aria-hidden','true');track.append(segment);return segment;});
     progress.append(stepLabel,track);
-    section.append(spinner,status,cancel,progress);container.append(action,section);
+    const notices=node('details');notices.className='beam-notices';notices.hidden=true;
+    const noticeTitle=node('summary','Export notices'),noticeBody=node('p');notices.append(noticeTitle,noticeBody);
+    section.append(spinner,status,cancel,progress,notices);container.append(action,section);
     const user=window.SweepLineAccount?.user?.id;
     const baseStorageKey='sweepline:beamng:'+user+':'+(road.geometry_key||road.id)+':'+(context.orientation||'forward')+':'+(context.preferredName||road.name||'');
     const storageKey=baseStorageKey+':stock',noticeKey=storageKey+':notice';
@@ -61,7 +63,9 @@
       if(busy&&Number.isInteger(job.queue_position)&&Number.isInteger(job.queue_total))status.textContent=(job.status==='queued'?'In queue ':'Processing ')+job.queue_position+' of '+job.queue_total+(job.status==='running'&&job.progress?' · '+job.progress:'');
       if(failed&&job.progress)status.textContent+=' Last activity: '+job.progress;
       if(busy&&job.cancel_requested)status.textContent='Cancellation requested. Last activity: '+(job.progress||steps[stage]);
-      if(!failed&&job.warning)status.textContent+=' '+job.warning;
+      const warnings=typeof job.warning==='string'?[...new Set(job.warning.trim().split(/(?<=[.!?])\s+/).filter(Boolean))]:[];
+      notices.hidden=failed||warnings.length===0;noticeTitle.textContent='Export notices ('+warnings.length+')';noticeBody.textContent=warnings.join('\n');
+      if(!failed&&warnings.length)status.textContent+=' Some map details are limited; expand Export notices for details.';
       // Keep actionable warnings; omit repetitive data-provenance reassurances, including saved jobs.
       status.textContent=status.textContent.replace(/(;\s*|\s+)(?:no (?:feature locations|sign locations|sign positions|replacement water) (?:were|was) invented|missing locations were not invented|no (?:fabricated imagery|synthetic terrain|guessed buildings|inferred roadside barriers) (?:were|was) substituted)\./gi,(_,separator)=>separator.trim()===';'?'.':'').trim();
       if(stopped){try{window.sessionStorage?.setItem(noticeKey,JSON.stringify({status:job.status,error:job.error,progress:job.progress,stage:lastStage}));}catch(_){}section.scrollIntoView?.({block:'nearest',behavior:'smooth'});}

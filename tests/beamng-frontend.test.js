@@ -72,6 +72,12 @@ async function testBeamControls(source){
   window.sweeplineRequest=async(path,options)=>options?{id:'a'.repeat(32),status:'queued',progress:'Queued'}:{status:'cancelled',stage:8,progress:'Building bridges, tunnels and median terrain'};
   const cancelledRow=new Element('div');window.sweeplineBeamExport(cancelledRow,{id:96});await cancelledRow.children[0].onclick({preventDefault(){}});await tasks.shift()();
   check(!cancelledRow.children[1].children[3].hidden&&cancelledRow.children[1].children[3].children[0].textContent.includes('Cancelled at step 9 of 13')&&cancelledRow.children[1].children[0].hidden,'Cancellation retains its last stage with no spinner');
+  tasks.length=0;
+  window.sweeplineRequest=async(path,options)=>options?{id:'e'.repeat(32),status:'queued',progress:'Queued'}:{status:'complete',download_url:'/private.zip',progress:'Ready',warning:'Ramp limits. Ramp limits. Water incomplete.'};
+  const noticesRow=new Element('div');window.sweeplineBeamExport(noticesRow,{id:97});await noticesRow.children[0].onclick({preventDefault(){}});await tasks.shift()();
+  const noticePanel=noticesRow.children[1].children[4];
+  check(!noticePanel.hidden&&noticePanel.tag==='details'&&noticePanel.children[0].textContent==='Export notices (2)','Export warnings use expandable details and deduplicate repeated sentences');
+  check(noticePanel.children[1].textContent==='Ramp limits.\nWater incomplete.'&&!noticesRow.children[1].children[1].textContent.includes('Water incomplete'),'Detailed notices stay available without flooding the main status');
   return checks;
 }
 if(typeof require==="function"&&require.main===module){testBeamControls(require("fs").readFileSync(require("path").join(__dirname,"../public/assets/beamng.js"),"utf8")).then(n=>console.log(n+" BeamNG frontend checks passed")).catch(e=>{console.error(e);process.exitCode=1;});}

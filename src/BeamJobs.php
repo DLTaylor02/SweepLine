@@ -171,12 +171,12 @@ final class BeamJobs
             if(!$this->rasterSource){
                 $rampIngestion=BeamRampBackfill::ensure($this->db,$plan,$dir,$progress);
                 $progress('Matching road network and ramp connections');$networkProgress=static fn($m)=>$progress(null);
-                try{$plan['intersection_data']=BeamIntersections::fetch($this->db,$plan,$networkProgress);}catch(JobCancelled $e){throw $e;}catch(\Throwable $e){$plan['intersection_data']=['branches'=>[],'warning'=>'Local ramp/intersection context was unavailable.'];}
+                try{$plan['intersection_data']=BeamIntersections::fetch($this->db,array_replace($plan,['ramp_budget_m'=>BeamRampNetwork::share(BeamRampNetwork::TOTAL_RAMP_M,1+count($plan['carriageways']??[]))]),$networkProgress);}catch(JobCancelled $e){throw $e;}catch(\Throwable $e){$plan['intersection_data']=['branches'=>[],'warning'=>'Local ramp/intersection context was unavailable.'];}
                 $plan['intersection_data']['ramp_ingestion']=$rampIngestion;
                 if($rampIngestion['failures'])$plan['intersection_data']['warning']=trim(($plan['intersection_data']['warning']??'').' Some legacy ramp data could not be acquired; see ramp_ingestion in the build report.');
                 $remainingRamps=max(0,BeamRampNetwork::TOTAL_RAMP_M-($plan['intersection_data']['ramp_network']['total_ramp_m']??0));
                 foreach($plan['carriageways']??[] as $i=>$track){
-                    try{$plan['carriageways'][$i]['intersection_data']=BeamIntersections::fetch($this->db,array_replace($plan,['points'=>$track['points'],'sources'=>$track['sources'],'ramp_budget_m'=>$remainingRamps]),$networkProgress);$remainingRamps=max(0,$remainingRamps-($plan['carriageways'][$i]['intersection_data']['ramp_network']['total_ramp_m']??0));}
+                    try{$plan['carriageways'][$i]['intersection_data']=BeamIntersections::fetch($this->db,array_replace($plan,['points'=>$track['points'],'sources'=>$track['sources'],'ramp_budget_m'=>BeamRampNetwork::share($remainingRamps,count($plan['carriageways'])-$i)]),$networkProgress);$remainingRamps=max(0,$remainingRamps-($plan['carriageways'][$i]['intersection_data']['ramp_network']['total_ramp_m']??0));}
                     catch(JobCancelled $e){throw $e;}catch(\Throwable $e){$plan['carriageways'][$i]['intersection_data']=['branches'=>[],'warning'=>'Opposite ramp/intersection context was unavailable.'];}
                 }
                 $plan['bounds']=BeamRampNetwork::extent($plan);

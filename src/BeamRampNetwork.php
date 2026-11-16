@@ -8,6 +8,7 @@ final class BeamRampNetwork
     public const MAX_RAMP_M=3218.688;
     public const TOTAL_RAMP_M=8000.;
     public const MAX_PIECES=32;
+    public static function share(float $remaining,int $carriageways): float {return max(0,$remaining)/max(1,$carriageways);}
     public static function link(string $highway): bool {return in_array($highway,['motorway_link','trunk_link','primary_link','secondary_link','tertiary_link'],true);}
     public static function allowed(array $tags): bool
     {
