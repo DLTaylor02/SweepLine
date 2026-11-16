@@ -70,6 +70,7 @@ final class BeamTraffic
             if(isset($branch['turnaround_for']))continue;
             $join=$branch['join'];$parent=$primary[0]['name'];$best=INF;
             foreach($primary as $p)if(abs($p['along']-$join['along'])<$best){$best=abs($p['along']-$join['along']);$parent=$p['name'];}
+            if(isset($branch['parent_name'],$ends[$branch['parent_name']]))$parent=$ends[$branch['parent_name']];
             $last=$parent;$profile=$branch['profiles'][0];
             $path=array_merge($branch['connector']??[], $branch['points']);$lastPoint=[$join['x'],$join['y'],$join['z']];
             foreach($path as $i=>$p){

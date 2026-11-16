@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.166.0:** Extend BeamNG highway context along mapped ramps across OSM way IDs and add 600-foot receiving-road arms. Support shallow curved ramp joins, parent-aware pavement/terrain/minimap connections and pre-download square terrain expansion. Preserve mapped direction/access and report missing data, unsupported structures, forks and geometry budgets. Add synthetic geometry/archive and native PostGIS coverage.
+
 - **0.165.0:** Retain complete building footprints when any part intersects the 200-foot roadside corridor. Add optional Mapillary panorama-informed facade color/material matching with two-view agreement, explicit OSM precedence, seven-day private resource caching, bounded acquisition, cancellation, failure fallbacks and per-image attribution. Record matching/rejection diagnostics and preserve generic appearance where evidence is insufficient; direct facade projection remains future work.
 
 - **0.164.0:** Improve mapped OSM buildings with measured heights and floor counts, raised building parts, pitched roofs and orientation, explicit facade/roof materials and colors, open multipolygon courtyards and parent/wing footprint replacement. Preserve generic fallbacks and record attribute provenance, inherited values and unsupported geometry in BeamNG reports/build logs. Add offline mesh and native PostGIS regression coverage.

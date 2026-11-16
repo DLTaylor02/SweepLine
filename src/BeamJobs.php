@@ -168,10 +168,20 @@ final class BeamJobs
                 $plan['carriageways']=$plan['carriageway_data']['tracks'];unset($plan['carriageway_data']['tracks']);
                 if($plan['carriageways']){$extent=$plan['points'];foreach($plan['carriageways'] as $t)array_push($extent,...$t['points']);$plan['bounds']=BeamPlan::square($extent,$plan['padding_miles']*1609.344);}
             }
+            if(!$this->rasterSource){
+                $progress('Matching road network and ramp connections');$networkProgress=static fn($m)=>$progress(null);
+                try{$plan['intersection_data']=BeamIntersections::fetch($this->db,$plan,$networkProgress);}catch(JobCancelled $e){throw $e;}catch(\Throwable $e){$plan['intersection_data']=['branches'=>[],'warning'=>'Local ramp/intersection context was unavailable.'];}
+                $remainingRamps=max(0,BeamRampNetwork::TOTAL_RAMP_M-($plan['intersection_data']['ramp_network']['total_ramp_m']??0));
+                foreach($plan['carriageways']??[] as $i=>$track){
+                    try{$plan['carriageways'][$i]['intersection_data']=BeamIntersections::fetch($this->db,array_replace($plan,['points'=>$track['points'],'sources'=>$track['sources'],'ramp_budget_m'=>$remainingRamps]),$networkProgress);$remainingRamps=max(0,$remainingRamps-($plan['carriageways'][$i]['intersection_data']['ramp_network']['total_ramp_m']??0));}
+                    catch(JobCancelled $e){throw $e;}catch(\Throwable $e){$plan['carriageways'][$i]['intersection_data']=['branches'=>[],'warning'=>'Opposite ramp/intersection context was unavailable.'];}
+                }
+                $plan['bounds']=BeamRampNetwork::extent($plan);
+            }
             $raster=$this->rasterSource?($this->rasterSource)($plan,$dir,$progress):(new BeamSources())->fetch($plan,$dir,$progress);
             $progress('Preparing geographic context');
             if(!$this->rasterSource){$plan['building_data']=BeamBuildings::fetch($this->db,$plan,$dir,$progress);$plan['guardrail_data']=BeamGuardrails::fetch($this->db,$plan,$dir,$progress);$plan['traffic_sign_data']=BeamSigns::fetch($this->db,$plan,$dir,$progress);$plan['roadside_data']=BeamRoadsideData::fetch($this->db,$plan,$dir,$progress);}
-            try{$plan['intersection_data']=BeamIntersections::fetch($this->db,$plan,$progress);}
+            try{$plan['intersection_data']??=BeamIntersections::fetch($this->db,$plan,$progress);}
             catch(JobCancelled $e){throw $e;}
             catch(\Throwable $e){$plan['intersection_data']=['branches'=>[],'warning'=>'Local intersecting-road context could not be prepared.'];}
             $plan['intersection_data']=BeamCarriageways::filterContext($plan['intersection_data'],$plan['carriageways']??[]);
@@ -188,7 +198,7 @@ final class BeamJobs
                         if(isset($data['warning']))$plan[$key]['warning']=trim(($plan[$key]['warning']??'').' '.$data['warning']);
                     }
                 }
-                try{$context=BeamIntersections::fetch($this->db,$other,$progress);}
+                try{$context=$track['intersection_data']??BeamIntersections::fetch($this->db,$other,$progress);}
                 catch(JobCancelled $e){throw $e;}
                 catch(\Throwable $e){$context=['branches'=>[],'warning'=>'Opposite-carriageway intersection context was unavailable.'];}
                 $context=BeamCarriageways::filterContext($context,$plan['carriageways']);

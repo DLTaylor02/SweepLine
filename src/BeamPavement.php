@@ -19,6 +19,7 @@ final class BeamPavement
     }
     public static function build(array $branch,array $main,array $mainProfiles,string $prefix,?array $surfaceSections=null,array $obstacles=[]): array
     {
+        if(!empty($branch['junction_parent'])){$obstacles[]=['road'=>$main,'profiles'=>$mainProfiles];$main=$branch['junction_parent']['points'];$mainProfiles=$branch['junction_parent']['profiles'];}
         $points=$branch['points'];$profiles=$branch['profiles'];$origin=$points[0];$vertices=[];$lookup=[];$triangles=[];$along=0.0;
         $vertex=static function($p)use(&$vertices,&$lookup){$key=implode(',',array_map(static fn($v)=>sprintf('%.7F',$v),$p));if(isset($lookup[$key]))return $lookup[$key];$id=count($vertices);$vertices[]=$p;$lookup[$key]=$id;return $id;};
         $quad=static function($a,$b,$c,$d,$material,$uv)use(&$triangles,$vertex){
@@ -67,7 +68,12 @@ final class BeamPavement
 
     public static function connectorRings(array $branch,array $main,array $mainProfiles): array
     {
+        if(!empty($branch['junction_parent'])){$main=$branch['junction_parent']['points'];$mainProfiles=$branch['junction_parent']['profiles'];}
         if(!isset($branch['join']))return [];
+        if((($branch['kind']??'')==='ramp'||!empty($branch['junction_parent']))&&count($branch['connector']??[])>=2){
+            $line=$branch['connector'];$last=$branch['points'][0];if(hypot(end($line)[0]-$last[0],end($line)[1]-$last[1])>.001)$line[]=$last;
+            return BeamJunctionBoundary::sections($line,array_fill(0,count($line),$branch['profiles'][0]));
+        }
         $points=$branch['points'];$profiles=$branch['profiles'];$ends=self::section($points,$profiles,0);
         $dx=$points[1][0]-$points[0][0];$dy=$points[1][1]-$points[0][1];$length=hypot($dx,$dy)?:1;$direction=[$dx/$length,$dy/$length];
         $left=self::boundary($ends[0],$direction,$main,$mainProfiles,$branch['join']);$right=self::boundary($ends[1],$direction,$main,$mainProfiles,$branch['join']);

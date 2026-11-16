@@ -241,6 +241,8 @@ final class BeamCarriageways
     public static function filterContext(array $context,array $tracks): array
     {
         $ids=[];foreach($tracks as $track)foreach($track['sources'] as $s)if(isset($s['osm_id']))$ids[$s['osm_id']]=true;
-        $context['branches']=array_values(array_filter($context['branches']??[],static fn($b)=>!isset($ids[$b['osm_id']??0])));return $context;
+        $context['branches']=array_values(array_filter($context['branches']??[],static fn($b)=>!isset($ids[$b['osm_id']??0])));
+        $active=array_fill_keys(array_column($context['branches'],'context_id'),true);
+        $context['branches']=array_values(array_filter($context['branches'],static fn($b)=>!isset($b['parent_context_id'])||isset($active[$b['parent_context_id']])));return $context;
     }
 }

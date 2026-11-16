@@ -30,13 +30,14 @@ final class BeamIntersections
         ), main AS (
             SELECT s.id,s.job_id FROM nearby s CROSS JOIN route p
             WHERE ST_Length(ST_Intersection(s.projected,ST_Buffer(p.g,0.5)))>LEAST(10,ST_Length(s.projected)*0.6)
+            AND (s.highway NOT LIKE '%_link' OR ST_Length(ST_Intersection(s.projected,ST_Buffer(p.g,0.5)))>ST_Length(s.projected)*0.6)
         ), junctions AS (
             SELECT DISTINCT c.job_id,c.node_id
             FROM main m JOIN road_connectivity c ON c.segment_id=m.id
             JOIN osm_nodes n ON n.job_id=c.job_id AND n.osm_id=c.node_id CROSS JOIN route p
             WHERE ST_DWithin(ST_Transform(ST_SetSRID(ST_MakePoint(n.lon,n.lat),4326),ST_SRID(p.g)),p.g,0.5)
         )
-        SELECT DISTINCT s.osm_id,s.tags,s.highway,s.direction,c.point_index,ST_AsGeoJSON(s.projected,6) geometry
+        SELECT DISTINCT s.osm_id,s.tags,s.highway,s.direction,s.node_ids,c.point_index,ST_AsGeoJSON(s.projected,6) geometry
         FROM junctions j JOIN road_connectivity c ON c.job_id=j.job_id AND c.node_id=j.node_id
         JOIN nearby s ON s.id=c.segment_id
         WHERE NOT EXISTS(SELECT 1 FROM main m WHERE m.id=s.id)
@@ -45,8 +46,7 @@ final class BeamIntersections
         AND COALESCE(s.tags->>'access','') NOT IN ('no','private')
         AND COALESCE(s.tags->>'motor_vehicle','') NOT IN ('no','private')
         AND COALESCE(s.tags->>'motorcar','') NOT IN ('no','private')
-        AND COALESCE(s.tags->>'bridge','no') IN ('no','false','0')
-        AND COALESCE(s.tags->>'tunnel','no') IN ('no','false','0')
+        AND (s.highway LIKE '%_link' OR (COALESCE(s.tags->>'bridge','no') IN ('no','false','0') AND COALESCE(s.tags->>'tunnel','no') IN ('no','false','0')))
         ORDER BY s.osm_id,c.point_index LIMIT 1001");
         $q->execute([json_encode(['type'=>'LineString','coordinates'=>$plan['points']],JSON_THROW_ON_ERROR),$plan['epsg']]);
         $rows=$q->fetchAll(PDO::FETCH_ASSOC);$out=[];$seen=[];$truncated=count($rows)>1000;
@@ -59,10 +59,15 @@ final class BeamIntersections
                 if(isset($seen[$key]))continue;$seen[$key]=true;
                 if(count($out)>=256){$truncated=true;break 2;}
                 $profile=BeamLanes::infer($tags,$row['highway'],(int)$row['direction'],$armSide===1);
-                $out[]=['points'=>$arm,'width_m'=>$profile['width_m'],'profile'=>$profile,'osm_id'=>(int)$row['osm_id']];
+                $profile['legal_forward']=(int)$row['direction']===0||(((int)$row['direction']>0)===($armSide===1));
+                $nodes=json_decode($row['node_ids']??'[]',true,512,JSON_THROW_ON_ERROR);
+                $out[]=['points'=>$arm,'full_points'=>$armSide===0?array_reverse(array_slice($points,0,$at+1)):array_slice($points,$at),
+                    'arm_nodes'=>$armSide===0?array_reverse(array_slice($nodes,0,$at+1)):array_slice($nodes,$at),
+                    'highway'=>$row['highway'],'tags'=>$tags,'width_m'=>$profile['width_m'],'profile'=>$profile,'osm_id'=>(int)$row['osm_id']];
             }
         }
-        return ['branches'=>$out,'truncated'=>$truncated,'source'=>'Local active OSM shared-node connectivity','limit_ft'=>600];
+        $network=BeamRampNetwork::expand($db,$plan,$out,$progress);
+        return ['branches'=>$network['branches'],'ramp_network'=>$network['ramp_network'],'warning'=>$network['ramp_network']['reasons']?'Some ramp context is limited; see ramp_network reasons in the build report.':null,'truncated'=>$truncated||$network['truncated'],'source'=>'Local active OSM shared-node connectivity','limit_ft'=>600];
     }
     /** Native terrain decals add context without overlapping road collision meshes. */
     public static function objects(array $data,BeamRaster $raster,array $bounds,float $origin,string $material): array
@@ -115,18 +120,33 @@ final class BeamIntersections
     /** Match main-road elevation and keep collision meshes outside its footprint. */
     public static function prepare(array $data,array $road,array $profiles,BeamRaster $raster,array $bounds,float $origin,array $bridges,callable $progress): array
     {
-        $out=['roads'=>[],'aprons'=>[],'junctions'=>[],'skipped'=>0];
+        $out=['roads'=>[],'aprons'=>[],'junctions'=>[],'skipped'=>0];$parents=[];$primaryRoad=$road;$primaryProfiles=$profiles;$childJunctions=[];
         foreach($data['branches']??[] as $index=>$branch){
-            $progress(null);$arm=self::clip($branch['points']);if(!$arm)continue;
+            $road=$primaryRoad;$profiles=$primaryProfiles;$parent=null;
+            if(isset($branch['parent_context_id'])){
+                $parent=$parents[$branch['parent_context_id']]??null;if($parent===null){$out['skipped']++;continue;}
+                $road=$out['roads'][$parent]['points'];$profiles=$out['roads'][$parent]['profiles'];
+            }
+            $progress(null);$arm=self::clip($branch['points'],$branch['limit_m']??self::LENGTH_M);if(!$arm)continue;
             $local=array_map(static fn($p)=>[$p[0]-$bounds[0],$p[1]-$bounds[1]],$arm);
+            if($parent!==null&&hypot($local[0][0]-end($road)[0],$local[0][1]-end($road)[1])>.2){$out['skipped']++;continue;}
             $join=self::nearest($local[0],$road,$profiles);if(!$join||$join['distance']>2){$out['skipped']++;continue;}
-            $bridge=false;foreach($bridges as $span)if($join['along']>=$span['start_m']-1&&$join['along']<=$span['end_m']+1)$bridge=true;
+            if($parent!==null)$join['endpoint_junction']=true;
+            $bridge=false;foreach($parent===null?$bridges:[] as $span)if($join['along']>=$span['start_m']-1&&$join['along']<=$span['end_m']+1)$bridge=true;
             $dx=$local[1][0]-$local[0][0];$dy=$local[1][1]-$local[0][1];$length=hypot($dx,$dy);if($length<0.001)continue;
             $sine=abs($dx/$length*$join['dy']-$dy/$length*$join['dx']);$cosine=abs($dx/$length*$join['dx']+$dy/$length*$join['dy']);
-            if($bridge||$sine<0.2){$out['skipped']++;continue;}
+            $ramp=($branch['kind']??'')==='ramp';
+            if($bridge||($sine<0.2&&!$ramp)){$out['skipped']++;continue;}
             $profile=$branch['profile']??BeamLanes::infer(['width'=>(string)$branch['width_m']],'residential',0);
             $profile['width_m']=$branch['width_m'];$profile=BeamRoadSurface::shoulders([$profile])[0];
-            $trim=($join['half_width']+$profile['width_m']/2*$cosine)/$sine+max(8,$profile['width_m']/2);
+            $trim=($join['half_width']+$profile['width_m']/2*$cosine)/max(.01,$sine)+max(8,$profile['width_m']/2);
+            if($ramp){
+                $fine=BeamPlan::sample($local,2,0.001);$trim=0.;$found=false;
+                foreach($fine as $i=>$v){if($i)$trim+=hypot($v[0]-$fine[$i-1][0],$v[1]-$fine[$i-1][1]);$n=self::nearest($v,$road,$profiles);
+                    if($n['distance']>$n['half_width']+$profile['width_m']/2+2){$found=true;break;}}
+                if(!$found){$out['skipped']++;continue;}
+                $sine=max(.05,$sine);
+            }
             $surface=self::after($local,$trim);if(count($surface)<2){$out['skipped']++;continue;}
             $sampled=BeamPlan::sample(BeamCurve::smooth($surface,[$surface[0],end($surface)]),2,0.001);$raw=[];$chain=[0.0];
             foreach($sampled as $i=>$p){$raw[]=$raster->roadHeight($p[0],$p[1]);if($i)$chain[]=$chain[$i-1]+hypot($p[0]-$sampled[$i-1][0],$p[1]-$sampled[$i-1][1]);}
@@ -142,6 +162,7 @@ final class BeamIntersections
                 $z=$sum/$weights-$origin+BeamMap::ROAD_ELEVATION_OFFSET_M;
                 $near=self::nearest($p,$road,$profiles);$fade=min(1,$chain[$i]/30.48);$fade=$fade*$fade*(3-2*$fade);
                 $anchor=$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade'];
+                if($ramp)$anchor=$near['z'];
                 $z=$anchor*(1-$fade)+$z*$fade;
                 $nearMain=self::nearest($p,$road,$profiles);
                 if($i){$hx=$p[0]-$sampled[$i-1][0];$hy=$p[1]-$sampled[$i-1][1];$hl=hypot($hx,$hy)?:1;$across=abs(($hx*$nearMain['dx']+$hy*$nearMain['dy'])/$hl);
@@ -151,12 +172,27 @@ final class BeamIntersections
             }
             if(count($nodes)<2){$out['skipped']++;continue;}
             $connector=array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample(self::clip($local,$trim)));
-            $out['roads'][]=['name'=>'intersection_context_'.$index,'osm_id'=>$branch['osm_id']??null,'points'=>$nodes,'profiles'=>$branchProfiles,'join'=>$join,'connector'=>$connector];
+            $parents[$branch['context_id']??'branch_'.$index]=count($out['roads']);
+            if($ramp)$connector=array_map(static function($p)use($road,$profiles){$n=self::nearest($p,$road,$profiles);return [$p[0],$p[1],$n['z']];},BeamPlan::sample(self::clip($local,$trim)));
+            $out['roads'][]=['parent_name'=>$parent===null?null:$out['roads'][$parent]['name'],'junction_parent'=>$parent===null?null:['points'=>$road,'profiles'=>$profiles],
+                'kind'=>$branch['kind']??'crossroad','context_id'=>$branch['context_id']??null,'name'=>'intersection_context_'.$index,'osm_id'=>$branch['osm_id']??null,'points'=>$nodes,'profiles'=>$branchProfiles,'join'=>$join,'connector'=>$connector];
             $apron=self::clip($local,$trim+1);
             $apronSurface=array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample($apron));
             $out['aprons'][]=['points'=>$apron,'width_m'=>$profile['width_m'],'surface'=>$apronSurface];
-            $out['junctions'][]=$join+['radius'=>$profile['width_m']/2/$sine,'branch_name'=>'intersection_context_'.$index,'side'=>($join['dx']*$dy-$join['dy']*$dx)>0?'left':'right'];
+            $junction=$join+['radius'=>$profile['width_m']/2/$sine,'branch_name'=>'intersection_context_'.$index,'side'=>($join['dx']*$dy-$join['dy']*$dx)>0?'left':'right'];
+            if($parent===null)$out['junctions'][]=$junction;
+            else {
+                $childJunctions[$parent][]=$junction;
+            }
         }
+        foreach($childJunctions as $index=>$joins){
+            $marked=self::markingSections($out['roads'][$index]['points'],$out['roads'][$index]['profiles'],$joins);
+            $out['roads'][$index]['points']=$marked['points'];$out['roads'][$index]['profiles']=$marked['profiles'];
+        }
+        $byName=[];foreach($out['roads'] as $branch)$byName[$branch['name']]=$branch;
+        foreach($out['roads'] as &$branch)if(isset($branch['parent_name'])){
+            $p=$byName[$branch['parent_name']];$branch['junction_parent']=['points'=>$p['points'],'profiles'=>$p['profiles']];
+        }unset($branch);
         return $out;
     }
     public static function markJunctions(array $road,array $profiles,array $junctions): array
@@ -270,6 +306,12 @@ final class BeamIntersections
             }
             $before=count($kept);$kept=array_values(array_filter($kept,static fn($b)=>!isset($b['turnaround_for'])||!isset($limited[$b['turnaround_for']])));
             if(isset($prepared['turnarounds'])){$removed=$before-count($kept);$prepared['turnarounds']['created']=max(0,$prepared['turnarounds']['created']-$removed);$prepared['turnarounds']['skipped']+=$removed;}
+            $byName=[];foreach($kept as $b)$byName[$b['name']]=$b;
+            $kept=array_values(array_filter($kept,static function($b)use($byName){
+                if(!isset($b['parent_name']))return true;
+                $p=$byName[$b['parent_name']]??null;if(!$p)return false;$end=end($p['points']);
+                return hypot($end[0]-$b['join']['x'],$end[1]-$b['join']['y'])<.2;
+            }));
             $prepared['roads']=$kept;$prepared['aprons']=[];
             foreach($kept as $branch){$contact=BeamPavement::contact($branch,$main,$mainProfiles);if($contact){$contact['owner']=$branch['name'];$prepared['aprons'][]=$contact;}}
             $active=array_fill_keys(array_column($kept,'name'),true);
@@ -282,6 +324,6 @@ final class BeamIntersections
 
     public static function exclusions(array $data,array $bounds): array
     {
-        return array_map(static fn($b)=>['points'=>array_map(static fn($p)=>[$p[0]-$bounds[0],$p[1]-$bounds[1]],self::clip($b['points'])),'width_m'=>$b['width_m']],$data['branches']??[]);
+        return array_map(static fn($b)=>['points'=>array_map(static fn($p)=>[$p[0]-$bounds[0],$p[1]-$bounds[1]],self::clip($b['points'],$b['limit_m']??self::LENGTH_M)),'width_m'=>$b['width_m']],$data['branches']??[]);
     }
 }
