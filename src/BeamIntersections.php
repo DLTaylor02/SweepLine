@@ -179,7 +179,11 @@ final class BeamIntersections
             $surface=$trim<.001?$local:self::after($local,$trim);if(count($surface)<2){$out['skipped']++;continue;}
             $sampled=BeamPlan::sample(BeamCurve::smooth($surface,[$surface[0],end($surface)],BeamNetworkStructures::segments($branch['source_parts']??[],$bounds)),2,0.001);$raw=[];$chain=[0.0];
             foreach($sampled as $i=>$p){$raw[]=$raster->roadHeight($p[0],$p[1]);if($i)$chain[]=$chain[$i-1]+hypot($p[0]-$sampled[$i-1][0],$p[1]-$sampled[$i-1][1]);}
-            $structure=BeamNetworkStructures::sample($sampled,$branch,$data['branches']??[],$road,$bounds,$raster);$raw=$structure['raw'];
+            $connectedApproaches=[];
+            $finishOwner=$network?($anchors[$branch['end_node']]??null):null;
+            if(isset($finishOwner['surface']))$connectedApproaches[]=$finishOwner['surface']['points'];
+            elseif(isset($finishOwner['road_index']))$connectedApproaches[]=$out['roads'][$finishOwner['road_index']]['points'];
+            $structure=BeamNetworkStructures::sample($sampled,$branch,$data['branches']??[],$road,$bounds,$raster,$connectedApproaches);$raw=$structure['raw'];
             $edgeProfiles=[];
             if($network&&!empty($branch['source_parts'])){
                 $worldSampled=array_map(static fn($p)=>[$p[0]+$bounds[0],$p[1]+$bounds[1]],$sampled);

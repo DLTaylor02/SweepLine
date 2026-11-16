@@ -9,7 +9,7 @@ final class BeamInterchangeGraph
     public const MAX_SAMPLES=20000;
     public static function build(array $seeds,callable $lookup,callable $progress,array $main=[],float $rampLimit=BeamRampNetwork::MAX_RAMP_M,?callable $junctions=null): array
     {
-        $queue=[];$out=[];$seen=[];$partialSeen=[];$reasons=[];$roots=[];$attachments=[];$estimated=0;
+        $queue=[];$out=[];$seen=[];$partialSeen=[];$reasons=[];$roots=[];$attachments=[];$estimated=0;$extensions=[];
         $note=static function($reason,$root,$way=null)use(&$reasons){$reasons[]=['reason'=>$reason,'root'=>$root,'osm_id'=>$way];};
         foreach($seeds as $i=>$seed){
             if(!BeamRampNetwork::link($seed['highway']??'')){unset($seed['full_points'],$seed['arm_nodes']);$out[]=$seed;continue;}
@@ -38,6 +38,11 @@ final class BeamInterchangeGraph
                 }
                 if(count($arm)<2)break;
                 $partLength=BeamRampNetwork::length($arm);
+                // Context distance is a target, not permission to cut a mapped structure.
+                // Keep the whole tagged piece and real approach road after it, across way IDs.
+                if(BeamNetworkStructures::tagged($row['tags']??[])&&$left<$partLength+80.){
+                    $left=$partLength+80.;$extensions[]=['root'=>$work['root'],'osm_id'=>$row['osm_id'],'approach_m'=>80.];
+                }
                 if($partLength>$left+.001){
                     $partialKey=hash('sha256',json_encode([$work['kind'],(string)$nodeIds[0],(string)end($nodeIds),round($left,3)]));
                     if(isset($partialSeen[$partialKey])){$complete=false;break;}
@@ -46,7 +51,12 @@ final class BeamInterchangeGraph
                     if(count($arm)<2)break;
                     $nodeIds=array_slice($nodeIds,0,count($arm));
                     $nodeIds[count($arm)-1]='limit:'.hash('sha256',json_encode(end($arm)));
-                    $partLength=BeamRampNetwork::length($arm);$complete=false;$note('per_ramp_distance_limit',$work['root'],$row['osm_id']);
+                    $partLength=BeamRampNetwork::length($arm);
+                // Context distance is a target, not permission to cut a mapped structure.
+                // Keep the whole tagged piece and real approach road after it, across way IDs.
+                if(BeamNetworkStructures::tagged($row['tags']??[])&&$left<$partLength+80.){
+                    $left=$partLength+80.;$extensions[]=['root'=>$work['root'],'osm_id'=>$row['osm_id'],'approach_m'=>80.];
+                }$complete=false;$note('per_ramp_distance_limit',$work['root'],$row['osm_id']);
                 }
                 $parts[]=['points'=>$arm,'tags'=>$row['tags']??[],'highway'=>$row['highway'],'direction'=>(int)($row['direction']??0),'osm_id'=>$row['osm_id']];
                 if(!$points){$points=$arm;$ids=$nodeIds;}else {array_push($points,...array_slice($arm,1));array_push($ids,...array_slice($nodeIds,1));}
@@ -103,7 +113,7 @@ final class BeamInterchangeGraph
             }
         }
         $counts=[];foreach($reasons as $r)$counts[$r['reason']]=($counts[$r['reason']]??0)+1;
-        return ['branches'=>$out,'truncated'=>false,'graph'=>['attachments'=>$attachments,'edge_count'=>count($out),'estimated_samples'=>$estimated,'rejections'=>$reasons],
+        return ['branches'=>$out,'truncated'=>false,'graph'=>['attachments'=>$attachments,'edge_count'=>count($out),'estimated_samples'=>$estimated,'structure_extensions'=>$extensions,'rejections'=>$reasons],
             'ramp_network'=>['requested_ramps'=>count($roots),'ramps'=>count(array_filter($out,static fn($e)=>($e['kind']??'')==='ramp')),
                 'receiving_arms'=>count(array_filter($out,static fn($e)=>($e['kind']??'')==='receiving_road')),'reasons'=>$counts,
                 'ramp_limit_m'=>$rampLimit,'budget_policy'=>'Per highway attachment/path; shared map-wide geometry checked before terrain generation.','total_ramp_m'=>array_sum(array_map(static fn($e)=>($e['kind']??'')==='ramp'?BeamRampNetwork::length($e['points']):0,$out))]];

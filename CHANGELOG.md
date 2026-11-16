@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.171.0:** Prevent ramp/receiving-road context budgets from cutting through bridges or tunnels; retain the complete mapped structure pieces and 80 metres of connected finish approach, subject to existing map/geometry limits. Use known finish-carriageway connections for approach sampling, allow sharp connected junctions, fix 2D approach lookup warnings, and report missing approach lengths/OSM way IDs without blaming highway selection endpoints. Add bridge-boundary regressions and report the structure preparation activity in export progress.
+
 - **0.170.0:** Include mapped bridges and tunnels in ramp/receiving-road networks using the existing approach-based estimators. Protect structure geometry/terrain, sample connected approaches, generate bridge undersides/barriers/piers and tunnel interiors/openings/fixtures, preserve grade-separated pavement/paint and leave bridge-junction barrier openings. Record network structure diagnostics and fail explicitly for unsupported estimates. Add geometry and complete-ZIP regressions.
 
 - **0.169.0:** Build shared connected interchange graphs across both carriageways, follow forks and internal-way junctions, retain loops/rejoins, and replace the road-wide ramp allowance with per-path limits. Continue receiving roads across OSM ways, preserve network edges through terrain preparation, weld shared junctions and expose explicit resource/completeness failures. Recover tiny ramp connectors in existing imports. Add graph, terrain, navigation and ZIP regression coverage; mapped ramp structures remain an acquisition limitation.

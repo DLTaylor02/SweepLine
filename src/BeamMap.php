@@ -100,6 +100,7 @@ final class BeamMap
         $intersectionData=$plan['intersection_data']??['branches'=>[]];
         $intersectionData['main_surfaces']=[['name'=>'primary','points'=>$road,'source_points'=>$plan['points'],'profiles'=>$profiles,'spans'=>$coveredSpans]];
         foreach($carriageways as $track)$intersectionData['main_surfaces'][]=['name'=>$track['name'],'points'=>$track['road'],'source_points'=>$track['points'],'profiles'=>$track['profiles'],'spans'=>array_merge($track['bridges'],$track['tunnels'])];
+        $progress('Preparing connected interchange roads and structure approaches');
         $preparedIntersections=BeamIntersections::prepare($intersectionData,$road,$profiles,$raster,$plan['bounds'],$origin,$coveredSpans,$progress);
         foreach($carriageways as &$track)$track['context']['junctions']=array_merge($track['context']['junctions'],$preparedIntersections['external_junctions'][$track['name']]??[]);unset($track);
         $preparedIntersections=BeamTraffic::turnarounds($preparedIntersections,$road,$profiles,$raster,$origin,$progress,$plan['building_data']['footprints']??[]);

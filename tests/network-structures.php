@@ -58,4 +58,25 @@ function slNetworkStructuresFixture(): array
     $bridgePoints=[[0,0,5],[100,0,5]];$cross=SweepLine\BeamJunctionBoundary::sections($bridgePoints,$profiles);
     $rails=SweepLine\BeamBridgeDeck::barriers($bridgePoints,$cross,['start_m'=>0.,'end_m'=>100.],'test',[['along'=>50.,'radius'=>5.,'side'=>'right']]);
     check(count(array_filter(array_keys($rails),static fn($k)=>str_starts_with($k,'right_')))===2&&isset($rails['left_0']),'Bridge barrier has an opening on the connected ramp side while the opposite barrier remains intact');
+
+    // A receiving bridge longer than 600 ft must not be clipped by the context target.
+    $row=static function($id,$a,$b,$tags=[],$class='secondary'){
+        $tags+=['highway'=>$class,'lanes'=>'2'];
+        return ['osm_id'=>$id,'points'=>[[400,$a],[400,$b]],'node_ids'=>[$a,$b],'point_index'=>0,'tags'=>$tags,'highway'=>$class,'direction'=>0];
+    };
+    $seed=$row(80,200,400,[],'motorway_link');$seed['full_points']=$seed['points'];$seed['arm_nodes']=$seed['node_ids'];
+    $network=SweepLine\BeamRampNetwork::walk([$seed],static fn($n)=>match($n){400=>[$row(81,400,900,['bridge'=>'yes'])],900=>[$row(82,900,1200)],default=>[]},static fn($m)=>null);
+    $bridged=array_values(array_filter($network['branches'],static fn($b)=>($b['osm_id']??0)===81));
+    check(count($bridged)===1&&abs(SweepLine\BeamRampNetwork::length($bridged[0]['points'])-500)<.001,'Receiving-road context retains a complete bridge beyond the 600-foot target');
+    $tail=array_values(array_filter($network['branches'],static fn($b)=>($b['osm_id']??0)===82));
+    check(count($tail)===1&&SweepLine\BeamRampNetwork::length($tail[0]['points'])>=79.99,'Structure-aware context follows the next OSM way to include the finish approach');
+    $flat=new SweepLine\BeamRaster(128,1400,str_repeat(pack('g',100),128*128),str_repeat(chr(100),128*128*3));
+    $main=[[100,200,1.25],[1300,200,1.25]];$p=SweepLine\BeamRoadSurface::shoulders([SweepLine\BeamLanes::infer(['lanes'=>'2'],'primary',0)])[0];
+    $prepared=SweepLine\BeamIntersections::prepare($network,$main,[$p,$p],$flat,[0,0,1400,1400],99.,[],static fn($m)=>null);
+    check($prepared['network_manifest']['prepared']===3&&count(SweepLine\BeamNetworkStructures::tracks($prepared))===1,'Long receiving bridge and both connected approaches survive geometry preparation');
+    check(count($network['graph']['structure_extensions'])===1&&!isset($network['ramp_network']['reasons']['structure_context_extended']),'Structure padding is recorded as successful expansion, not a rejected-road warning');
+    // A bridge can rejoin another carriageway at its far endpoint.
+    $edge=['context_id'=>'rejoin','kind'=>'ramp','source_parts'=>[['osm_id'=>83,'points'=>[[200,200],[200,300]],'tags'=>[]],['osm_id'=>84,'points'=>[[200,300],[200,400]],'tags'=>['bridge'=>'yes']]]];
+    $result=SweepLine\BeamNetworkStructures::sample([[200,200],[200,300],[200,400]],$edge,[],[[200,100,1.25],[200,200,1.25]],[0,0,1400,1400],$flat,[[[200,400,1.25],[200,600,1.25]]]);
+    check($result['approach_after_m']>=79.99&&count($result['bridges'])===1,'Mapped finish-carriageway connection supplies bridge approach samples across the graph boundary');
 })();

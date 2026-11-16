@@ -26,7 +26,8 @@ final class BeamNetworkStructures
                 if(isset($seen[$key])||count($line)<2)continue;
                 // Parent attachment may be inside a highway segment, not at its endpoint.
                 $profile=array_fill(0,count($line),['width_m'=>1]);
-                $near=BeamIntersections::nearest($point,$line,$profile);
+                $queryLine=array_map(static fn($p)=>[$p[0],$p[1],$p[2]??0.],$line);
+                $near=BeamIntersections::nearest($point,$queryLine,$profile);
                 if(!$near||$near['distance']>.25)continue;
                 foreach([false,true] as $forward){
                     $arm=[array_slice($point,0,2)];$station=0.;
@@ -34,7 +35,7 @@ final class BeamNetworkStructures
                     if(!$forward){$rest=array_reverse(array_slice($arm,1));$arm=[$arm[0],...$rest];}
                     if(count($arm)<2)continue;
                     $dx=$arm[1][0]-$point[0];$dy=$arm[1][1]-$point[1];$score=($dx*$direction[0]+$dy*$direction[1])/max(.001,hypot($dx,$dy)*hypot(...$direction));
-                    if($score<-.1)continue;
+                    // Connected junctions can legitimately turn sharply; prefer alignment without rejecting the available approach.
                     if($best===null||$score>$best['score'])$best=['key'=>$key,'arm'=>$arm,'score'=>$score];
                 }
             }
@@ -45,11 +46,11 @@ final class BeamNetworkStructures
         }
         return $out;
     }
-    public static function sample(array $sampled,array $branch,array $all,array $parent,array $bounds,BeamRaster $raster): array
+    public static function sample(array $sampled,array $branch,array $all,array $parent,array $bounds,BeamRaster $raster,array $connectedRoads=[]): array
     {
         $raw=array_map(static fn($p)=>$raster->roadHeight($p[0],$p[1]),$sampled);
         $sources=$branch['source_parts']??[];if(!array_filter($sources,static fn($s)=>self::tagged($s['tags']??[])))return ['raw'=>$raw,'bridges'=>[],'tunnels'=>[]];
-        $candidates=[$parent];$reachable=[];
+        $candidates=[$parent,...$connectedRoads];$reachable=[];
         foreach(['start_node','end_node'] as $key)if(isset($branch[$key]))$reachable[(string)$branch[$key]]=true;
         $pending=$all;$connected=[];
         for($pass=0;$pass<count($all)&&$pending;$pass++){
@@ -72,7 +73,15 @@ final class BeamNetworkStructures
         foreach($full as $i=>$p)if($i)$chain[]=$chain[$i-1]+hypot($p[0]-$full[$i-1][0],$p[1]-$full[$i-1][1]);
         $localSources=[];foreach($sources as $s){$s['points']=array_map(static fn($p)=>[$p[0]-$bounds[0],$p[1]-$bounds[1]],$s['points']);$localSources[]=$s;}
         try{
-            $bridges=BeamStructures::spans($full,$localSources,true);
+            $bridges=BeamStructures::spans($full,$localSources,true,true);
+            foreach($bridges as $span){
+                $beforeAvailable=$span['start_m'];$afterAvailable=end($chain)-$span['end_m'];$required=$span['approach_m'];
+                if(min($beforeAvailable,$afterAvailable)+.001<$required){
+                    $ways=implode(',',array_column($sources,'osm_id'));
+                    throw new \RuntimeException(sprintf('Bridge approach context has %.0f ft before and %.0f ft after the mapped span; %.0f ft is required at each end (OSM ways %s, %s). The interchange context is incomplete; this does not establish that your selected highway endpoints cut off the bridge.',
+                        $beforeAvailable/.3048,$afterAvailable/.3048,$required/.3048,$ways?:'unknown',$branch['kind']??'network road'));
+                }
+            }
             $tunnels=BeamTunnels::spans($full,$localSources);
             $heights=array_map(static fn($p)=>$raster->roadHeight($p[0],$p[1]),$full);
             $heights=BeamTunnels::samples($full,$chain,$heights,$tunnels,$raster);
