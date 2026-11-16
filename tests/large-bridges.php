@@ -23,6 +23,10 @@ $largePlan['roadside_data']=['fetch_status'=>'complete','features'=>[
  ['id'=>'way:99003','kind'=>'wall','tags'=>['barrier'=>'wall'],'points'=>[[250,820],[280,820]],'node_ids'=>[],'timestamp'=>null]
 ]];
 $largePlan['mapillary_data']=['status'=>'complete','signs'=>0,'point_features'=>1,'attribution'=>'Mapillary'];
+$largePlan['building_data']=['footprints'=>[[
+ 'points'=>[[200,830],[220,830],[220,845],[200,845]],'osm_id'=>'way/99004',
+ 'tags'=>['building'=>'house','height'=>'18','roof:height'=>'3','roof:shape'=>'gabled','building:material'=>'brick','building:colour'=>'#d4b08a','roof:colour'=>'#444444']
+]]];
 $largeFile=tempnam(sys_get_temp_dir(),'sl-large-bridge-');
 try{
  $largeReport=BeamMap::build($largePlan,$largeRaster,str_repeat('8',32),$largeFile,static function($m){});
@@ -30,6 +34,8 @@ try{
  $largeObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($largeZip->getFromName($largeBase.'main/MissionGroup/items.level.json'))));
  check($largeZip->getFromName($largeBase.'art/roads/variation.color.png')===false&&!str_contains($largeZip->getFromName($largeBase.'art/roads/main.materials.json'),'variation.color.png')&&$largeReport['surface_appearance']['asphalt_variation_strength']===0,'Archive uses restored asphalt without the regressed detail-map shader');
  check($largeReport['traffic_sign_data']['placed']===1&&$largeZip->getFromName($largeBase.'art/signs/W1_2L.dae')!==false&&$largeZip->getFromName($largeBase.'art/signs/W1_2L.color.png')!==false,'Generated BeamNG archive contains mapped sign objects, source report and face assets');
+ check($largeReport['building_data']['placed']===1&&$largeReport['building_data']['attribute_evidence'][0]['height_m']===18.0&&$largeReport['building_data']['attribute_evidence'][0]['roof_shape']==='gabled','Finished archive retains mapped building height and roof-shape evidence');
+ check($largeZip->getFromName($largeBase.'art/shapes/building_0.dae')!==false&&$largeReport['building_data']['attribute_evidence'][0]['appearance_sources']['facade_material']==='building:material','Finished archive contains the mapped building mesh and explicit material provenance');
  check($largeReport['bridges'][0]['large']&&abs($largeReport['bridges'][0]['length_m']-700)<0.01,'Complete ZIP supports a seven hundred metre viaduct');
  check(abs($largeRaster->height(750,800)-60)<0.01,'Large bridge preserves native valley terrain');
  check(count(array_filter($largeObjects,static fn($o)=>str_starts_with($o['name']??'','bridge_0_pier_')))>15,'Large bridge generates bounded intermediate supports');

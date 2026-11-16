@@ -11,18 +11,30 @@ final class BeamBuildingStyle
         'industrial'=>'/assets/materials/tileable/metal/moderncorrugated_tin/eca_bld_moderncorrugated_tin_d.dds',
         'generic'=>'/assets/materials/tileable/plaster/eca_bld_modernwall/eca_bld_modernwall_d.dds'
     ];
+    public const MAPPED_TEXTURES=[
+        'concrete'=>'/assets/materials/tileable/concrete/eca_bld_concrete/eca_bld_concrete_d.dds',
+        'stone'=>'/assets/materials/tileable/stone/eca_bld_stone_clean/eca_bld_stone_clean_d.dds',
+        'glass'=>'/assets/materials/tileable/glass/curtainwall2/curtainwall1_d.dds'
+    ];
     public const SIDING_VARIANTS=[
         '/assets/materials/tileable/wood/eca_bld_woodcladding_new/eca_bld_woodcladding_new_d.dds',
         '/assets/materials/tileable/wood/eca_bld_woodcladding_old/eca_bld_woodcladding_01_d.dds',
         '/assets/materials/tileable/wood/eca_bld_wood/eca_bld_wood_d.dds'
     ];
-    public static function appearance(string $category,string $identity): array
+    public static function appearance(string $category,string $identity,array $tags=[]): array
     {
         $variant=(int)hexdec(substr(hash('sha256',$identity),0,6))%15;
         $texture=$category==='residential'?self::SIDING_VARIANTS[$variant%3]:self::TEXTURES[$category];
         $colors=$category==='residential'?[[1,0.98,0.93],[0.87,0.94,1],[0.90,0.98,0.91],[0.96,0.92,0.87],[1,1,1]]:[[1,1,1],[0.94,0.96,1],[1,0.97,0.92],[0.94,0.94,0.94],[0.98,0.96,0.94]];
-        return ['key'=>$category.'_v'.$variant,'texture'=>$texture,'normal'=>str_replace('_d.dds','_n.dds',$texture),'specular'=>str_replace('_d.dds','_s.dds',$texture),
-            'color'=>$colors[intdiv($variant,3)],'roof'=>$variant%3,'roof_color'=>[[0.22,0.24,0.26],[0.32,0.28,0.24],[0.35,0.36,0.35]][$variant%3]];
+        $material=strtolower((string)($tags['building:material']??''));
+        $explicit=match($material){'wood','timber'=>self::TEXTURES['residential'],'brick'=>self::TEXTURES['commercial'],'metal','steel'=>self::TEXTURES['industrial'],'plaster'=>self::TEXTURES['generic'],'concrete','cement_block'=>self::MAPPED_TEXTURES['concrete'],'stone','sandstone','limestone'=>self::MAPPED_TEXTURES['stone'],'glass'=>self::MAPPED_TEXTURES['glass'],default=>null};
+        $wallColor=BeamBuildingAttributes::color($tags['building:colour']??$tags['building:color']??null);
+        $roofColor=BeamBuildingAttributes::color($tags['roof:colour']??$tags['roof:color']??null);
+        $roofTexture=match(strtolower((string)($tags['roof:material']??''))){'metal','steel','tin'=>self::TEXTURES['industrial'],'wood'=>self::TEXTURES['residential'],'concrete'=>self::MAPPED_TEXTURES['concrete'],'stone','slate'=>self::MAPPED_TEXTURES['stone'],default=>null};
+        $texture=$explicit??$texture;$custom=$tags?'_'.substr(hash('sha256',json_encode([$explicit,$wallColor,$roofColor,$roofTexture])),0,10):'';
+        return ['key'=>$category.'_v'.$variant.$custom,'texture'=>$texture,'normal'=>$material==='glass'?null:str_replace('_d.dds','_n.dds',$texture),'specular'=>str_replace('_d.dds','_s.dds',$texture),
+            'color'=>$wallColor??$colors[intdiv($variant,3)],'roof'=>($variant%3).$custom,'roof_texture'=>$roofTexture,'roof_color'=>$roofColor??[[0.22,0.24,0.26],[0.32,0.28,0.24],[0.35,0.36,0.35]][$variant%3],
+            'sources'=>['facade_material'=>$explicit?'building:material':'estimated category texture','facade_color'=>$wallColor?'building:colour':'estimated palette','roof_material'=>$roofTexture?'roof:material':'estimated plain roof','roof_color'=>$roofColor?'roof:colour':'estimated palette']];
     }
     private static function category(string $value): ?string
     {
@@ -46,18 +58,34 @@ final class BeamBuildingStyle
     }
     public static function mesh(array $footprint,float $height,string $wall,string $roof,array $options=[]): string
     {
-        $ring=BeamPolygon::clean($footprint);$n=count($ring);$vertices=[];$triangles=[];$uv=[];$materials=[];
-        foreach([0,$height] as $z)foreach($ring as $p)$vertices[]=[$p[0],$p[1],$z];
-        foreach(BeamPolygon::triangles($ring) as [$a,$b,$c]){
-            $triangles[]=[$a+$n,$b+$n,$c+$n];$uv[]=array_map(static fn($i)=>[$ring[$i][0]/4,$ring[$i][1]/4],[$a,$b,$c]);$materials[]=$roof;
-            $triangles[]=[$a,$c,$b];$uv[]=array_map(static fn($i)=>[$ring[$i][0]/4,$ring[$i][1]/4],[$a,$c,$b]);$materials[]=$roof;
+        $ring=BeamPolygon::clean($footprint);$vertices=[];$triangles=[];$uv=[];$materials=[];
+        $attributes=$options['attributes']??BeamBuildingAttributes::read(['height'=>(string)$height]);
+        $roofPlan=BeamBuildingRoof::prepare($ring,$attributes,!empty($options['holes']));
+        $bottom=$attributes['min_height_m'];$eaves=$height-$roofPlan['rise'];
+        $add=static function(array $points,string $material,array $tex)use(&$vertices,&$triangles,&$uv,&$materials){
+            $base=count($vertices);array_push($vertices,...$points);$triangles[]=[$base,$base+1,$base+2];$uv[]=$tex;$materials[]=$material;
+        };
+        $baseTriangles=$options['roof_triangles']??[];
+        if(!empty($options['holes'])&&!$baseTriangles)throw new \InvalidArgumentException('Courtyard building requires constrained roof triangles.');
+        if(!$baseTriangles)foreach(BeamPolygon::triangles($ring) as $ids)$baseTriangles[]=array_map(static fn($i)=>$ring[$i],$ids);
+        foreach($baseTriangles as &$t)if(BeamPolygon::area($t)<0)$t=array_reverse($t);unset($t);
+        foreach(BeamBuildingRoof::facets($baseTriangles,$roofPlan) as $t){
+            $add(array_map(static fn($p)=>[$p[0],$p[1],$eaves+BeamBuildingRoof::rise($p,$roofPlan)],$t),$roof,array_map(static fn($p)=>[$p[0]/4,$p[1]/4],$t));
         }
-        foreach($ring as $i=>$p){
-            $j=($i+1)%$n;$length=hypot($ring[$j][0]-$p[0],$ring[$j][1]-$p[1]);$w=$length/4;$h=$height/3;
-            $triangles[]=[$i,$j,$n+$j];$uv[]=[[0,0],[$w,0],[$w,$h]];$materials[]=$wall;
-            $triangles[]=[$i,$n+$j,$n+$i];$uv[]=[[0,0],[$w,$h],[0,$h]];$materials[]=$wall;
+        foreach($baseTriangles as $t){$t=array_reverse($t);$add(array_map(static fn($p)=>[$p[0],$p[1],$bottom],$t),$roof,array_map(static fn($p)=>[$p[0]/4,$p[1]/4],$t));}
+        $rings=[$ring];foreach($options['holes']??[] as $hole)$rings[]=array_reverse(BeamPolygon::clean($hole));
+        foreach($rings as $boundary)foreach($boundary as $i=>$p){
+            $edge=BeamBuildingRoof::edge($p,$boundary[($i+1)%count($boundary)],$roofPlan);
+            for($j=1;$j<count($edge);$j++){
+                $a=$edge[$j-1];$b=$edge[$j];$za=$eaves+BeamBuildingRoof::rise($a,$roofPlan);$zb=$eaves+BeamBuildingRoof::rise($b,$roofPlan);$w=hypot($b[0]-$a[0],$b[1]-$a[1])/4;
+                $add([[$a[0],$a[1],$bottom],[$b[0],$b[1],$bottom],[$b[0],$b[1],$zb]],$wall,[[0,0],[$w,0],[$w,($zb-$bottom)/3]]);
+                $add([[$a[0],$a[1],$bottom],[$b[0],$b[1],$zb],[$a[0],$a[1],$za]],$wall,[[0,0],[$w,($zb-$bottom)/3],[0,($za-$bottom)/3]]);
+            }
         }
-        if(!empty($options['details']))self::details($ring,$height,$wall,$options,$vertices,$triangles,$uv,$materials);
+        if(!empty($options['details'])){
+            $options['foundation']=max($options['foundation']??0,$bottom);
+            self::details($ring,$eaves,$wall,$options,$vertices,$triangles,$uv,$materials);
+        }
         return BeamAssets::mesh($vertices,$triangles,$wall,$uv,$materials);
     }
     /** Decorative estimates on existing walls, not measured windows or entrances. */

@@ -405,11 +405,11 @@ final class BeamMap
             $buildingData=$plan['building_data']??['footprints'=>[]];
             $mappedBuildings=BeamBuildings::place($buildingData['footprints'],$road,$profiles,$raster,$intersectionExclusions);
             if($carriageways){
-                $allBuildings=[];foreach($mappedBuildings['objects'] as $o)$allBuildings[json_encode($o['position'])]=$o;
+                $allBuildings=[];foreach($mappedBuildings['objects'] as $o)$allBuildings[json_encode([$o['osm_id'],$o['position'],$o['height']])]=$o;
                 $avoid=array_merge($intersectionExclusions,[['points'=>$road,'width_m'=>max(array_column($profiles,'width_m'))]]);
                 foreach($carriageways as $track){
                     $extra=BeamBuildings::place($buildingData['footprints'],$track['road'],$track['profiles'],$raster,$avoid);
-                    foreach($extra['objects'] as $o)$allBuildings[json_encode($o['position'])]??=$o;
+                    foreach($extra['objects'] as $o)$allBuildings[json_encode([$o['osm_id'],$o['position'],$o['height']])]??=$o;
                 }
                 $mappedBuildings['objects']=array_values($allBuildings);
             }
@@ -420,16 +420,23 @@ final class BeamMap
             foreach($mappedBuildings['objects'] as $i=>$building){$file='art/shapes/building_'.$i.'.dae';$p=$building['position'];
                 $category=$building['style']['category'];$facadeCounts[$category]=($facadeCounts[$category]??0)+1;
                 $identity=round($p[0]+$plan['bounds'][0],1).','.round($p[1]+$plan['bounds'][1],1);
-                $appearance=BeamBuildingStyle::appearance($category,$identity);$buildingMaterial=$prefix.'_building_'.$appearance['key'];$roofMaterial=$prefix.'_building_roof_'.$appearance['roof'];
+                $appearance=BeamBuildingStyle::appearance($category,$identity,$building['attributes']['tags']??[]);$buildingMaterial=$prefix.'_building_'.$appearance['key'];$roofMaterial=$prefix.'_building_roof_'.$appearance['roof'];
                 $facadeMaterials[$appearance['key']]=$appearance;
-                $sceneryMaterials[$buildingMaterial]=['class'=>'Material','name'=>$buildingMaterial,'mapTo'=>$buildingMaterial,'version'=>1,'Stages'=>[['diffuseMap'=>$appearance['texture'],'normalMap'=>$appearance['normal'],'specularMap'=>$appearance['specular'],'diffuseColor'=>array_merge($appearance['color'],[1]),'specularPower'=>16,'useAnisotropic'=>true]]];
-                $sceneryMaterials[$roofMaterial]=['class'=>'Material','name'=>$roofMaterial,'mapTo'=>$roofMaterial,'version'=>1,'Stages'=>[['diffuseColor'=>array_merge($appearance['roof_color'],[1])]]];
+                $sceneryMaterials[$buildingMaterial]=['class'=>'Material','name'=>$buildingMaterial,'mapTo'=>$buildingMaterial,'version'=>1,'Stages'=>[array_filter(['diffuseMap'=>$appearance['texture'],'normalMap'=>$appearance['normal'],'specularMap'=>$appearance['specular'],'diffuseColor'=>array_merge($appearance['color'],[1]),'specularPower'=>16,'useAnisotropic'=>true],static fn($v)=>$v!==null)]];
+                $sceneryMaterials[$roofMaterial]=['class'=>'Material','name'=>$roofMaterial,'mapTo'=>$roofMaterial,'version'=>1,'Stages'=>[array_filter(['diffuseColor'=>array_merge($appearance['roof_color'],[1]),'diffuseMap'=>$appearance['roof_texture']??null],static fn($v)=>$v!==null)]];
                 $near=BeamIntersections::nearest($p,$road,$profiles);
                 $put($file,BeamBuildingStyle::mesh($building['points'],$building['height'],$buildingMaterial,$roofMaterial,[
                     'details'=>true,'category'=>$category,'foundation'=>$building['foundation_height_m'],'levels'=>$building['levels'],
+                    'attributes'=>$building['attributes'],'holes'=>$building['holes'],'roof_triangles'=>$building['roof_triangles'],
                     'front'=>[$near['x']-$p[0],$near['y']-$p[1]],'trim'=>$detailPrefix.'_trim','glass'=>$detailPrefix.'_glass','door'=>$detailPrefix.'_door']));
                 $objects[]=['class'=>'TSStatic','name'=>'mapped_building_'.$i,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>[$p[0],$p[1],$p[2]-$origin],'scale'=>[1,1,1],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'collisionType'=>'Visible Mesh Final','decalType'=>'None'];
             }
+            $buildingData['attribute_evidence']=array_map(static function($b){
+                $a=$b['attributes'];$roof=BeamBuildingRoof::prepare($b['points'],$a,(bool)$b['holes']);
+                return ['osm_id'=>$b['osm_id'],'assembly'=>$b['assembly'],'part'=>$b['part'],'height_m'=>$a['height_m'],'min_height_m'=>$a['min_height_m'],'levels'=>$a['levels'],
+                    'roof_shape'=>$roof['shape'],'roof_height_m'=>$roof['rise'],'roof_orientation'=>$roof['orientation_source'],'courtyards'=>count($b['holes']),
+                    'sources'=>$a['sources'],'appearance_sources'=>BeamBuildingStyle::appearance($b['style']['category'],'evidence',$a['tags'])['sources'],'inherited_tags'=>$b['inherited_tags'],'warnings'=>array_merge($a['warnings'],$roof['warnings'])];
+            },$mappedBuildings['objects']);
             unset($buildingData['footprints']);$buildingData['placed']=count($mappedBuildings['objects']);$buildingData['rejected']=$mappedBuildings['rejected'];$buildingData['rejection_reasons']=$mappedBuildings['rejection_reasons'];$buildingData['facade_counts']=$facadeCounts;$buildingData['facade_textures']=BeamBuildingStyle::TEXTURES;$buildingData['facade_materials']=$facadeMaterials;$buildingData['facade_details']='Generic estimated windows, road-facing door, trim and roof/siding variation; not surveyed architectural features.';
             $scenery=BeamScenery::place($road,$profiles,$raster,$seed,$progress,$plan['center'],$mappedBuildings['objects'],$intersectionExclusions,(int)floor(24000/count($exportRoads)));
             if($carriageways){
@@ -497,4 +504,3 @@ final class BeamMap
         return $report;
     }
 }
-

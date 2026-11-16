@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.164.0:** Improve mapped OSM buildings with measured heights and floor counts, raised building parts, pitched roofs and orientation, explicit facade/roof materials and colors, open multipolygon courtyards and parent/wing footprint replacement. Preserve generic fallbacks and record attribute provenance, inherited values and unsupported geometry in BeamNG reports/build logs. Add offline mesh and native PostGIS regression coverage.
+
 - **0.163.0:** Style recognized sign families with warning/construction diamonds, regulatory speed numerals, advisory values, red prohibition symbols and green/blue/brown guide/service/recreation panels. Add fitted font hierarchy and wider guide meshes; retain generic fallbacks, source provenance and unchanged sign locations/facing.
 
 

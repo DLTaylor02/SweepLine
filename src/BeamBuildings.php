@@ -11,15 +11,11 @@ final class BeamBuildings
             $q->execute([json_encode(['type'=>'LineString','coordinates'=>$plan['points']],JSON_THROW_ON_ERROR),$plan['epsg']]);
             $ring=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['coordinates'];$poly=implode(' ',array_map(static fn($p)=>$p[1].' '.$p[0],$ring));
             if(strlen($poly)>100000)throw new \RuntimeException('Building query corridor is too complex.');
-            $query='[out:json][timeout:90][maxsize:16777216];way[building][building!="no"](poly:"'.$poly.'");out geom 1001;';
+            $query='[out:json][timeout:90][maxsize:16777216];(way[building][building!="no"](poly:"'.$poly.'");way["building:part"]["building:part"!="no"](poly:"'.$poly.'");relation[type=multipolygon][building][building!="no"](poly:"'.$poly.'");relation[type=multipolygon]["building:part"]["building:part"!="no"](poly:"'.$poly.'"););out geom 1001;';
             $data=self::downloadBuildings(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$dir.'/buildings.json',http_build_query(['data'=>$query]),$progress,$download);
             $features=[];$tags=[];$vertices=0;$buildings=[];$areas=[];$seen=[];
-            foreach($data['elements']??[] as $element){
-                if(($element['type']??'way')!=='way')continue;$t=$element['tags']??[];$id=$element['id']??null;
-                if($id!==null&&isset($seen[$id]))continue;if($id!==null)$seen[$id]=true;
-                if(isset($t['building'])&&$t['building']!=='no')$buildings[]=$element;
-                elseif(isset($t['landuse']))$areas[]=$element;
-            }
+            $parsed=BeamBuildingGeometry::parse($data['elements']??[]);$buildings=$parsed['features'];
+            foreach($data['elements']??[] as $element)if(isset($element['tags']['landuse'])){$areas[]=$element;$seen[$element['id']??'']=true;}
             $landuseWarning=null;
             if($buildings)try{
                 $landuseQuery='[out:json][timeout:60][maxsize:16777216];way[landuse~"^(residential|commercial|retail|industrial|farmyard)$"](poly:"'.$poly.'");out geom 501;';
@@ -29,11 +25,11 @@ final class BeamBuildings
                     if($id!==null&&isset($seen[$id]))continue;if($id!==null)$seen[$id]=true;$areas[]=$element;
                 }
             }catch(JobCancelled $e){throw $e;}catch(\Throwable $e){$landuseWarning='Mapped land-use hints were unavailable; building tags and neutral facade fallbacks were retained.';}
+            $metadata=[];
             foreach(array_slice($buildings,0,1000) as $element){
-                $g=$element['geometry']??[];if(count($g)<4||count($g)>100)continue;
-                $coords=array_map(static fn($p)=>[$p['lon'],$p['lat']],$g);if($coords[0]!==end($coords))continue;
-                $vertices+=count($coords);if($vertices>50000)throw new \RuntimeException('Building footprint geometry limit reached.');
-                $features[]=['type'=>'LineString','coordinates'=>$coords];$tags[]=$element['tags']??[];
+                $coords=$element['rings'][0];if(count($coords)>100)continue;
+                $vertices+=array_sum(array_map('count',$element['rings']));if($vertices>50000)throw new \RuntimeException('Building footprint geometry limit reached.');
+                $features[]=['type'=>'LineString','coordinates'=>$coords];$tags[]=$element['tags'];$metadata[]=$element;
             }
             $buildingCount=count($features);$areaTags=[];$areaVertices=0;$areaLimit=false;
             foreach(array_slice($areas,0,500) as $element){
@@ -48,11 +44,30 @@ final class BeamBuildings
             $projected=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['geometries'];$out=[];$landuse=[];
             foreach($projected as $i=>$g){
                 $p=array_map(static fn($v)=>[$v[0]-$plan['bounds'][0],$v[1]-$plan['bounds'][1]],$g['coordinates']);
-                if($i<$buildingCount)$out[]=['points'=>$p,'tags'=>$tags[$i]];
+                if($i<$buildingCount)$out[]=['points'=>$p,'tags'=>$tags[$i],'osm_id'=>$metadata[$i]['id'],'part'=>$metadata[$i]['part'],'holes'=>[]];
                 else {$ring=BeamPolygon::clean($p);if(count($ring)>=3&&abs(BeamPolygon::area($ring))>=1)$landuse[]=['points'=>$ring,'landuse'=>$areaTags[$i-$buildingCount]];}
             }
+            // Project inner rings separately; the common simple-way path keeps its lightweight batch.
+            $innerFeatures=[];$innerOwners=[];
+            foreach($metadata as $i=>$meta)foreach(array_slice($meta['rings'],1) as $inner){$innerFeatures[]=['type'=>'LineString','coordinates'=>$inner];$innerOwners[]=$i;}
+            if($innerFeatures){
+                $q->execute([json_encode(['type'=>'GeometryCollection','geometries'=>$innerFeatures],JSON_THROW_ON_ERROR),$plan['epsg']]);
+                $inners=json_decode($q->fetchColumn(),true,512,JSON_THROW_ON_ERROR)['geometries'];
+                foreach($inners as $i=>$g)$out[$innerOwners[$i]]['holes'][]=array_map(static fn($v)=>[$v[0]-$plan['bounds'][0],$v[1]-$plan['bounds'][1]],$g['coordinates']);
+            }
+            $geometryWarning=null;
+            if($innerFeatures||array_filter($out,static fn($f)=>$f['part'])){
+                // A capability check avoids losing all ordinary buildings on older PostGIS installs.
+                $cap=$db->query("SELECT to_regprocedure('st_triangulatepolygon(geometry)') IS NOT NULL")->fetchColumn();
+                if(in_array($cap,[true,1,'1','t'],true)){
+                    $out=BeamBuildingGeometry::topology($db,$out);$bad=array_filter($out,static fn($f)=>$f['geometry_rejected']??false);
+                    if($bad)$geometryWarning=count($bad).' complex building geometries could not be processed and were omitted.';
+                    $out=array_values(array_filter($out,static fn($f)=>!($f['geometry_rejected']??false)));
+                }
+                else {$out=array_values(array_filter($out,static fn($f)=>!$f['part']&&!$f['holes']));$geometryWarning='Courtyards and building parts require PostGIS 3.3 / GEOS 3.11; complex buildings were omitted.';}
+            }
             foreach($out as &$footprint)$footprint['style']=BeamBuildingStyle::classify($footprint['tags'],$footprint['points'],$landuse);unset($footprint);
-            return ['footprints'=>$out,'source'=>'OpenStreetMap building ways','truncated'=>count($buildings)>1000,'landuse_areas'=>count($landuse),'landuse_truncated'=>count($areas)>500||$areaLimit,'landuse_warning'=>$landuseWarning,'facade_policy'=>'Building tags first, containing mapped land use second; generic fallback. Not legal zoning.'];
+            return ['footprints'=>$out,'source'=>'OpenStreetMap buildings, parts and multipolygons','geometry_warning'=>$geometryWarning,'invalid_features'=>$parsed['invalid'],'truncated'=>count($buildings)>1000,'landuse_areas'=>count($landuse),'landuse_truncated'=>count($areas)>500||$areaLimit,'landuse_warning'=>$landuseWarning,'facade_policy'=>'Building tags first, containing mapped land use second; generic fallback. Not legal zoning.'];
         }catch(JobCancelled $e){throw $e;}
         catch(\Throwable $e){return ['footprints'=>[],'warning'=>'Mapped buildings were unavailable; no guessed buildings were substituted. '.($e instanceof DownloadFailure?$e->getMessage():'Building data processing failed.'),'failure_kind'=>$e instanceof DownloadFailure?($e->retryable?'provider_transient':'provider_permanent'):'processing','source'=>'OpenStreetMap building ways'];}
     }
@@ -78,14 +93,17 @@ final class BeamBuildings
             $reason=$geometry->polygonReason($points);if($reason!==null){$reject($reason);continue;}
             $ground=array_map(static fn($p)=>$raster->height($p[0],$p[1]),$points);$variation=max($ground)-min($ground);
             if($variation>3){$reject('ground_variation');continue;}
-            $overlap=false;foreach($out as $existing)if(BeamPolygon::overlaps($points,$existing['world_footprint'])){$overlap=true;break;}
+            $overlap=false;foreach($out as $existing)if(($footprint['assembly']??$footprint['osm_id']??null)!==($existing['assembly']??'unrelated')&&BeamPolygon::overlaps($points,$existing['world_footprint'])){$overlap=true;break;}
             if($overlap){$reject('overlapping_building');continue;}
-            $tags=$footprint['tags'];$height=6.0;
-            if(preg_match('/^([0-9]+(?:\.[0-9]+)?)(?: m)?$/',(string)($tags['height']??''),$m))$height=(float)$m[1];
-            elseif(is_numeric($tags['building:levels']??null))$height=(float)$tags['building:levels']*3;
-            $height=max(3,min(30,$height));
-            $out[]=['kind'=>'building','position'=>[$cx,$cy,min($ground)-0.2],'points'=>array_map(static fn($p)=>[$p[0]-$cx,$p[1]-$cy],$points),
-                'levels'=>max(1,min(10,is_numeric($tags['building:levels']??null)?(int)$tags['building:levels']:(int)round($height/3))),'style'=>$footprint['style']??BeamBuildingStyle::classify($tags),'world_footprint'=>$points,'radius'=>$radius,'height'=>$height+$variation,'foundation_height_m'=>$variation,'mapped'=>true];
+            $tags=$footprint['tags'];$attributes=BeamBuildingAttributes::read($tags);$height=$attributes['height_m'];
+            $local=static fn($p)=>[$p[0]-$cx,$p[1]-$cy];
+            $out[]=['kind'=>'building','position'=>[$cx,$cy,min($ground)-0.2],'points'=>array_map($local,$points),
+                'holes'=>array_map(static fn($r)=>array_map($local,$r),$footprint['holes']??[]),
+                'roof_triangles'=>array_map(static fn($r)=>array_map($local,$r),$footprint['roof_triangles']??[]),
+                'osm_id'=>$footprint['osm_id']??null,'assembly'=>$footprint['assembly']??null,'part'=>$footprint['part']??false,
+                'attributes'=>$attributes,'inherited_tags'=>array_keys($footprint['inherited_tags']??[]),
+                'levels'=>$attributes['levels'],'style'=>$footprint['style']??BeamBuildingStyle::classify($tags),'world_footprint'=>$points,
+                'radius'=>$radius,'height'=>$height+$variation,'foundation_height_m'=>$variation,'mapped'=>true];
         }
         return ['objects'=>$out,'rejected'=>array_sum($reasons),'rejection_reasons'=>$reasons];
     }
