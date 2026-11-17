@@ -6,7 +6,7 @@ namespace SweepLine;
 final class BeamMedian
 {
     /** Fixed left edge for each contiguous one-way run, including reverse-oriented exports. */
-    public static function anchor(array $points,array $profiles,bool $fixedEnds=false): array
+    public static function anchor(array $points,array $profiles): array
     {
         $out=$points;$n=count($points);$chain=[0.];for($i=1;$i<$n;$i++)$chain[]=$chain[$i-1]+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);
         for($first=0;$first<$n;){
@@ -18,7 +18,7 @@ final class BeamMedian
                 $a=$points[max(0,$i-1)];$b=$points[min($n-1,$i+1)];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$l=hypot($dx,$dy)?:1;
                 $offset=($profiles[$i]['width_m']-$base)/2*($forward?1:-1);
                 // Fade only at shared two-way joins; never step the centreline sideways.
-                $blend=1.;if($fixedEnds){$blend=min($blend,($chain[$i]-$chain[$first])/30.48,($chain[$end]-$chain[$i])/30.48);}if($first>0)$blend=min($blend,($chain[$i]-$chain[$first])/30.48);if($end<$n-1)$blend=min($blend,($chain[$end]-$chain[$i])/30.48);$blend=max(0,min(1,$blend));$offset*=$blend*$blend*(3-2*$blend);
+                $blend=1.;if($first>0)$blend=min($blend,($chain[$i]-$chain[$first])/30.48);if($end<$n-1)$blend=min($blend,($chain[$end]-$chain[$i])/30.48);$blend=max(0,min(1,$blend));$offset*=$blend*$blend*(3-2*$blend);
                 $out[$i][0]+=$dy/$l*$offset;$out[$i][1]-=$dx/$l*$offset;
             }$first=$end+1;
         }return $out;

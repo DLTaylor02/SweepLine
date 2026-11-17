@@ -187,7 +187,7 @@ final class BeamIntersections
             $edgeProfiles=[];
             if($network&&!empty($branch['source_parts'])){
                 $worldSampled=array_map(static fn($p)=>[$p[0]+$bounds[0],$p[1]+$bounds[1]],$sampled);
-                $edgeProfiles=BeamRoadSurface::shoulders(BeamRoadSurface::taper($worldSampled,BeamLanes::profiles($worldSampled,$branch['source_parts'],$bounds)));
+                $edgeProfiles=BeamRoadSurface::shoulders(BeamRoadSurface::taper($worldSampled,BeamLanes::profiles($worldSampled,$branch['source_parts'],$bounds),$structure['bridges']));
             }
             $nodes=[];$branchProfiles=[];
             foreach($sampled as $i=>$p){
@@ -213,12 +213,6 @@ final class BeamIntersections
                 $nodes[]=[$p[0],$p[1],$z];$branchProfiles[]=($edgeProfiles[$i]??$profile)+['unmarked'=>false];
             }
             if(count($nodes)<2){$out['skipped']++;continue;}
-            if($network){
-                $beforeAnchor=$nodes;$nodes=BeamMedian::anchor($nodes,$branchProfiles,true);
-                $structure['bridges']=BeamMedian::remapSpans($structure['bridges'],$beforeAnchor,$nodes);
-                $structure['tunnels']=BeamMedian::remapSpans($structure['tunnels'],$beforeAnchor,$nodes);
-                $chain=[0.];for($j=1;$j<count($nodes);$j++)$chain[]=$chain[$j-1]+hypot($nodes[$j][0]-$nodes[$j-1][0],$nodes[$j][1]-$nodes[$j-1][1]);
-            }
             $connector=$trim<.001?[]:array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample(self::clip($local,$trim)));
             $endOwner=$network?($anchors[$branch['end_node']]??null):null;
             if($endOwner){
@@ -290,17 +284,18 @@ final class BeamIntersections
             if(!empty($j['preserve_through_lanes'])){foreach($j['barrier_openings']??[] as $ranges)foreach($ranges as [$lo,$hi]){$cuts[]=$lo;$cuts[]=$hi;}}
             else{$cuts[]=max(0,$j['along']-$j['radius']);$cuts[]=$j['along']+$j['radius'];}
         }sort($cuts);
-        $sections=BeamJunctionBoundary::sections($road,$profiles);
-        $first=$profiles[0];$first['section_override']=$sections[0];
-        $points=[$road[0]];$out=[$first];$along=0.0;$previous=0.0;
+        $sections=array_filter($profiles,static fn($p)=>isset($p['section_override']))?BeamJunctionBoundary::sections($road,$profiles):null;
+        $points=[$road[0]];$out=[$profiles[0]];$along=0.0;$previous=0.0;
         for($i=1;$i<count($road);$i++){
             $a=$road[$i-1];$b=$road[$i];$length=hypot($b[0]-$a[0],$b[1]-$a[1]);if($length<0.001)continue;
             $at=[];foreach($cuts as $cut)if($cut>$along+0.00001&&$cut<$along+$length-0.00001)$at[]=$cut;$at[]=$along+$length;$at=array_unique($at);
             foreach($at as $cut){
                 $t=($cut-$along)/$length;$points[]=[$a[0]+($b[0]-$a[0])*$t,$a[1]+($b[1]-$a[1])*$t,$a[2]+($b[2]-$a[2])*$t];
                 $p=$profiles[$i];$p['width_m']=$profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t;$p['unmarked']=false;if(isset($profiles[$i-1]['lane_paint'],$profiles[$i]['lane_paint']))foreach($p['lane_paint'] as $paintId=>&$line)foreach(['u','visible'] as $paintKey)$line[$paintKey]=$profiles[$i-1]['lane_paint'][$paintId][$paintKey]*(1-$t)+$profiles[$i]['lane_paint'][$paintId][$paintKey]*$t;unset($line);$p['keep_edge_left']=false;$p['keep_edge_right']=false;$mid=($previous+$cut)/2;
-                $p['section_override']=[];
-                foreach([0,1] as $side){$edge=[];foreach([0,1,2] as $axis)$edge[]=$sections[$i-1][$side][$axis]*(1-$t)+$sections[$i][$side][$axis]*$t;$p['section_override'][]=$edge;}
+                if(isset($profiles[$i-1]['section_override'])||isset($profiles[$i]['section_override'])){
+                    $p['section_override']=[];
+                    foreach([0,1] as $side){$edge=[];foreach([0,1,2] as $axis)$edge[]=$sections[$i-1][$side][$axis]*(1-$t)+$sections[$i][$side][$axis]*$t;$p['section_override'][]=$edge;}
+                }
                 $openLeft=false;$openRight=false;
                 foreach($junctions as $join){
                     if(!empty($join['preserve_through_lanes'])){

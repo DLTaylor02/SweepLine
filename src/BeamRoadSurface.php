@@ -36,11 +36,19 @@ final class BeamRoadSurface
         $t=$afterOneWay===null?($along-$at+30.48)/60.96:($along-$at+($afterOneWay?0:30.48))/30.48;
         $t=max(0,min(1,$t));return $t*$t*(3-2*$t);
     }
-    public static function taper(array $points,array $profiles): array
+    public static function taper(array $points,array $profiles,array $bridges=[]): array
     {
-        $original=$profiles;
         $chain=[0.0];for($i=1;$i<count($points);$i++)$chain[]=$chain[$i-1]+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);
-        $changes=[];for($i=1;$i<count($profiles);$i++)if(abs($profiles[$i]["width_m"]-$profiles[$i-1]["width_m"])>0.01 || $profiles[$i]["lanes"]!==$profiles[$i-1]["lanes"] || ($profiles[$i]["oneway"]??false)!==($profiles[$i-1]["oneway"]??false) || ($profiles[$i]["forward"]??0)!==($profiles[$i-1]["forward"]??0) || ($profiles[$i]["backward"]??0)!==($profiles[$i-1]["backward"]??0))$changes[]=[$chain[$i],$profiles[$i]["width_m"]-$profiles[$i-1]["width_m"],($profiles[$i]["oneway"]??false)!==($profiles[$i-1]["oneway"]??false),$profiles[$i]["oneway"]??false];
+        for($i=1;$i<count($profiles);$i++){
+            $delta=$profiles[$i]['width_m']-$profiles[$i-1]['width_m'];
+            foreach($bridges as $span){
+                $tolerance=max(8.,$chain[$i]-$chain[$i-1])+.01;
+                if($delta>.01&&abs($chain[$i]-$span['start_m'])<=$tolerance)$profiles[$i]['lane_transition_at_m']=$span['start_m']-30.48;
+                elseif($delta<-.01&&abs($chain[$i]-$span['end_m'])<=$tolerance)$profiles[$i]['lane_transition_at_m']=$span['end_m']+30.48;
+            }
+        }
+        $original=$profiles;
+        $changes=[];for($i=1;$i<count($profiles);$i++)if(abs($profiles[$i]["width_m"]-$profiles[$i-1]["width_m"])>0.01 || $profiles[$i]["lanes"]!==$profiles[$i-1]["lanes"] || ($profiles[$i]["oneway"]??false)!==($profiles[$i-1]["oneway"]??false) || ($profiles[$i]["forward"]??0)!==($profiles[$i-1]["forward"]??0) || ($profiles[$i]["backward"]??0)!==($profiles[$i-1]["backward"]??0))$changes[]=[$profiles[$i]['lane_transition_at_m']??$chain[$i],$profiles[$i]["width_m"]-$profiles[$i-1]["width_m"],($profiles[$i]["oneway"]??false)!==($profiles[$i-1]["oneway"]??false),$profiles[$i]["oneway"]??false];
         $baseWidth=$profiles[0]["width_m"];
         foreach($profiles as $i=>&$profile){$width=$baseWidth;$profile["transition"]=false;foreach($changes as [$at,$delta,$split,$afterOneWay]){$t=self::transitionProgress($chain[$i],$at,$split?$afterOneWay:null);$inside=$split?($afterOneWay?$chain[$i]>=$at&&$chain[$i]<=$at+30.48:$chain[$i]>=$at-30.48&&$chain[$i]<=$at):abs($chain[$i]-$at)<30.48;if($inside)$profile["transition"]=true;$width+=$delta*$t;}$profile["width_m"]=max(2.4,$width);}unset($profile);
         return BeamLanePaint::profiles($chain,$profiles,$original);
@@ -67,7 +75,7 @@ final class BeamRoadSurface
     public static function blendTerrainSet(array $surfaces,BeamRaster $raster,float $origin,string $protected,callable $progress): array
     {
         $step=$raster->side/$raster->size;$original=clone $raster;
-        $nearest=str_repeat(pack('g',INF),$raster->size*$raster->size);$nearestCenter=$nearest;$count=0;$maxChange=0.0;
+        $nearest=str_repeat(pack('g',INF),$raster->size*$raster->size);$count=0;$maxChange=0.0;
         $inner=max(1.5,sqrt(2)*$step);$blend=max(6,3*$step);
         foreach($surfaces as $surface){$road=$surface['points'];$profiles=$surface['profiles'];$bridges=$surface['bridges']??[];$chainage=0.0;
         for($i=1;$i<count($road);$i++){
@@ -86,11 +94,9 @@ final class BeamRoadSurface
                 $half=($profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t)/2;
                 $distance=hypot($wx-$a[0]-$dx*$t,$wy-$a[1]-$dy*$t);$edge=max(0,$distance-$half);
                 if($edge>=$inner+$blend)continue;
-                $offset=$key*4;$best=unpack('g',substr($nearest,$offset,4))[1];$centerBest=unpack('g',substr($nearestCenter,$offset,4))[1];
-                if($edge>$best+.00001||(abs($edge-$best)<=.00001&&$distance>=$centerBest))continue;
+                $offset=$key*4;$best=unpack('g',substr($nearest,$offset,4))[1];if($distance>=$best)continue;
                 if(is_infinite($best))$count++;
-                $bytes=pack('g',$edge);for($j=0;$j<4;$j++)$nearest[$offset+$j]=$bytes[$j];
-                $bytes=pack('g',$distance);for($j=0;$j<4;$j++)$nearestCenter[$offset+$j]=$bytes[$j];
+                $bytes=pack('g',$distance);for($j=0;$j<4;$j++)$nearest[$offset+$j]=$bytes[$j];
                 $fade=max(0,min(1,($edge-$inner)/$blend));$fade=$fade*$fade*(3-2*$fade);
                 $before=$original->cell($x,$y);$cross=($profiles[$i-1]['cross_grade']??0)*(1-$t)+($profiles[$i]['cross_grade']??0)*$t;
                 $lateral=(($wx-$a[0]-$dx*$t)*$dy-($wy-$a[1]-$dy*$t)*$dx)/sqrt($length2);
@@ -100,7 +106,7 @@ final class BeamRoadSurface
             }
         }
         }
-        return ['surface_count'=>count($surfaces),'method'=>'Native terrain only; shared nearest-pavement-footprint blend; no shoulder or supporting collision meshes','clearance_target_m'=>0.05,
+        return ['surface_count'=>count($surfaces),'method'=>'Native terrain only; shared nearest-corridor blend; no shoulder or supporting collision meshes','clearance_target_m'=>0.05,
             'inner_margin_m'=>$inner,'blend_width_m'=>$blend,'changed_vertices'=>$count,'maximum_height_change_m'=>$maxChange];
     }
 

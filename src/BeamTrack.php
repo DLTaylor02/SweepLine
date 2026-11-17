@@ -11,11 +11,12 @@ final class BeamTrack
             for($i=1;$i<count($s['points']);$i++)$structures[]=[$s['points'][$i-1],$s['points'][$i]];
         $anchors=array_map(static fn($b)=>$b['points'][0],$input['intersection_data']['branches']??[]);
         $world=BeamPlan::sample(BeamCurve::smooth($input['points'],$anchors,$structures),8,0.001);
-        $profiles=BeamRoadSurface::shoulders(BeamRoadSurface::taper($world,BeamLanes::profiles($world,$input['sources'],$plan['bounds'])));
+        $profileBridges=BeamStructures::spans($world,$input['sources'],true);
+        $profiles=BeamRoadSurface::shoulders(BeamRoadSurface::taper($world,BeamLanes::profiles($world,$input['sources'],$plan['bounds']),$profileBridges));
         $sourceWorld=$world;$world=BeamMedian::anchor($world,$profiles);
         $points=[];$raw=[];$chain=[0.];
         foreach($world as $i=>$p){$local=[$p[0]-$plan['bounds'][0],$p[1]-$plan['bounds'][1]];$points[]=$local;$raw[]=$raster->roadHeight(...$local);if($i)$chain[]=$chain[$i-1]+hypot($local[0]-$points[$i-1][0],$local[1]-$points[$i-1][1]);}
-        $bridges=BeamMedian::remapSpans(BeamStructures::spans($sourceWorld,$input['sources'],true),$sourceWorld,$world);$tunnels=BeamMedian::remapSpans(BeamTunnels::spans($sourceWorld,$input['sources']),$sourceWorld,$world);
+        $bridges=BeamMedian::remapSpans($profileBridges,$sourceWorld,$world);$tunnels=BeamMedian::remapSpans(BeamTunnels::spans($sourceWorld,$input['sources']),$sourceWorld,$world);
         $raw=BeamTunnels::samples($points,$chain,$raw,$tunnels,$raster);$raw=BeamStructures::deckSamples($points,$chain,$raw,$bridges,$raster,'Opposite carriageway ('.($input['road_ref']??$input['road_name']??$input['name']??'unnamed').')');$road=[];
         foreach($points as $i=>$p){
             if($i%100===0)$progress(null);$sum=0.;$weights=0.;$left=$i;
@@ -42,8 +43,9 @@ final class BeamTrack
             }
         }return $mask;
     }
-    public static function write(array $track,array $main,array $mainProfiles,string $prefix,string $path,callable $put,array &$materials,BeamRaster $raster,float $origin,callable $progress,array $otherContext=[]): array
+    public static function write(array $track,array $main,array $mainProfiles,string $prefix,string $path,callable $put,array &$materials,BeamRaster $raster,float $origin,callable $progress,array $otherContext=[],array $placementRoads=[]): array
     {
+        if(!$placementRoads)$placementRoads=BeamRoadClearance::prepare(array_merge([['name'=>'primary','points'=>$main,'profiles'=>$mainProfiles]],$otherContext));
         $key=$track['name'];$road=$track['road'];$profiles=$track['profiles'];$context=$track['context'];$objects=[];$bridgeMaterial=$prefix.'_bridge';
         $static=static fn($name,$file,$position,$collision='Visible Mesh Final')=>['class'=>'TSStatic','name'=>$name,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>$position,'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>$collision,'decalType'=>($collision==='Visible Mesh Final'?'Visible Mesh Final':'None'),'castShadows'=>true];
         $render=BeamIntersections::markingSections($road,$profiles,$context['junctions']);
@@ -76,7 +78,7 @@ final class BeamTrack
                 }
                 $lastPier=-INF;for($i=$first;$i<=$last;$i++)if($track['chain'][$i]-$lastPier>=25){
                     $lastPier=$track['chain'][$i];$p=$road[$i];$ground=$raster->height($p[0],$p[1])-$origin;$height=$p[2]-0.5-$ground;
-                    if($height>0.4){$o=$static($key.'_bridge_'.$bi.'_pier_'.$i,'art/shapes/bridge-pier.dae',[$p[0],$p[1],$ground-0.2]);$o['scale']=[1.5,1.5,$height+0.2];$objects[]=$o;}
+                    if($height>0.4&&!BeamRoadClearance::pierBlocked($p,$ground-.2,$p[2]-.5,$placementRoads,$track['name'])){$o=$static($key.'_bridge_'.$bi.'_pier_'.$i,'art/shapes/bridge-pier.dae',[$p[0],$p[1],$ground-0.2]);$o['scale']=[1.5,1.5,$height+0.2];$objects[]=$o;}
                 }
             }
         }

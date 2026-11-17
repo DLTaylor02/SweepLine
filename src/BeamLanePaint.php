@@ -29,7 +29,7 @@ final class BeamLanePaint
         $maxF=0;$maxB=0;foreach($original as $p){[$f,$b,$oneway]=self::counts($p);if($reverse&&!$oneway)[$f,$b]=[$b,$f];$maxF=max($maxF,$f);$maxB=max($maxB,$b);}
         $ids=['center'];for($i=1;$i<$maxF;$i++)$ids[]='f'.$i;for($i=1;$i<$maxB;$i++)$ids[]='b'.$i;
         $changes=[];$previous=self::state($original[0],$ids,$reverse);
-        for($i=1;$i<count($original);$i++){$current=self::state($original[$i],$ids,$reverse);if($current!==$previous)$changes[]=[$chain[$i],$previous,$current,($original[$i]['oneway']??false)!==($original[$i-1]['oneway']??false),$original[$i]['oneway']??false];$previous=$current;}
+        for($i=1;$i<count($original);$i++){$current=self::state($original[$i],$ids,$reverse);if($current!==$previous)$changes[]=[$original[$i]['lane_transition_at_m']??$chain[$i],$previous,$current,($original[$i]['oneway']??false)!==($original[$i-1]['oneway']??false),$original[$i]['oneway']??false];$previous=$current;}
         $base=self::state($original[0],$ids,$reverse);
         foreach($profiles as $i=>&$p){
             $paint=$base;

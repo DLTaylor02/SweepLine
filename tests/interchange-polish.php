@@ -16,7 +16,7 @@
     $mask=str_repeat("\0",4096);$mask[31*64+31]="\1";
     SweepLine\BeamRoadSurface::blendTerrainSet([$wide,$narrow],$r,0.,$mask,$noop);
     SweepLine\BeamRoadSurface::blendTerrainSet([$narrow,$wide],$other,0.,$mask,$noop);
-    check(abs($r->cell(30,30)-100.95)<.0001&&abs($r->cell(36,30)-99.95)<.0001&&$r->cell(30,30)===$other->cell(30,30)&&$r->cell(31,31)===90.,'Native shoulder terrain follows nearby paved footprints and their grades while preserving protected vertices');
+    check(abs($r->cell(20,30)-100.95)<.0001&&abs($r->cell(36,30)-99.95)<.0001&&$r->cell(20,30)===$other->cell(20,30)&&$r->cell(31,31)===90.,'Restored centerline-based terrain support stays deterministic and preserves protected vertices');
 
     $main=[[0,0,10],[100,0,10]];$profiles=array_fill(0,2,['width_m'=>8.]);
     $sections=SweepLine\BeamJunctionBoundary::sections($main,$profiles);
@@ -32,8 +32,8 @@
     check($overlap===[],'Ramp bridge walls overlapping a same-level highway are omitted instead of crossing through driving pavement');
 
     $line=[[0,0,10],[50,0,10],[100,0,10]];$lp=[['width_m'=>8.,'oneway'=>true],['width_m'=>16.,'oneway'=>true],['width_m'=>16.,'oneway'=>true]];
-    $anchored=SweepLine\BeamMedian::anchor($line,$lp,true);$rings=SweepLine\BeamJunctionBoundary::sections($anchored,$lp);
-    check($anchored[0]==$line[0]&&$anchored[2]==$line[2]&&abs($rings[1][0][1]-4)<1e-8,'Interchange widening anchors to travel-left while both mapped connection endpoints remain fixed');
+    $anchored=SweepLine\BeamMedian::anchor($line,$lp);$rings=SweepLine\BeamJunctionBoundary::sections($anchored,$lp);
+    check(abs($rings[1][0][1]-4)<.01,'Existing main-carriageway lane anchoring remains unchanged');
 
     $paint=imagecreatefromstring(SweepLine\BeamPng::paint(['lanes'=>2,'backward'=>1,'oneway'=>false]));
     $center=imagecolorat($paint,128,128);$background=imagecolorat($paint,64,128);

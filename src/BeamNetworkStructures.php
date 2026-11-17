@@ -122,6 +122,7 @@ final class BeamNetworkStructures
     {
         $objects=[];$material=$prefix.'_bridge';
         $static=static fn($name,$file,$collision='Visible Mesh Final')=>['class'=>'TSStatic','name'=>$name,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>[0,0,0],'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>$collision,'decalType'=>'None','castShadows'=>true];
+        $clearanceRoads=BeamRoadClearance::prepare($obstacles);
         foreach($tracks as $track)if($track['bridges']){
             $put('art/shapes/bridge-pier.dae',BeamAssets::shape($material,'bridge-pier'));
             $put('art/shapes/bridge.materials.json',json_encode([$material=>['class'=>'Material','name'=>$material,'mapTo'=>$material,'version'=>1,'groundType'=>'CONCRETE','Stages'=>[['diffuseColor'=>[.48,.49,.5,1]]]]],JSON_THROW_ON_ERROR));
@@ -136,11 +137,7 @@ final class BeamNetworkStructures
                 [$first,$last]=BeamStructures::indices($track['chain'],$span);$previous=-INF;
                 for($j=$first;$j<=$last;$j++)if($track['chain'][$j]-$previous>=25){
                     $previous=$track['chain'][$j];$p=$track['road'][$j];$ground=$raster->height($p[0],$p[1])-$origin;$height=$p[2]-.5-$ground;
-                    $blocked=false;foreach($obstacles as $other){
-                        if(($other['name']??null)===$key)continue;
-                        $near=BeamIntersections::nearest($p,$other['points'],$other['profiles']);
-                        if($near&&$near['distance']<$near['half_width']+3&&$near['z']<$p[2]&&$near['z']>$ground-1){$blocked=true;break;}
-                    }
+                    $blocked=BeamRoadClearance::pierBlocked($p,$ground-.2,$p[2]-.5,$clearanceRoads,$key);
                     if($height>.4&&!$blocked){$o=$static($key.'_bridge_'.$i.'_pier_'.$j,'art/shapes/bridge-pier.dae');$o['position']=[$p[0],$p[1],$ground-.2];$o['scale']=[1.5,1.5,$height+.2];$objects[]=$o;}
                 }
             }

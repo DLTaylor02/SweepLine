@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace SweepLine;
-/** Explicit physical sign nodes only. No curve-derived signs or guessed roadside offsets. */
+/** Mapped sign nodes; relocation is allowed only for a verified ramp-pavement overlap. */
 final class BeamSigns {
     public static function bearing(mixed $value): ?float {
         if(!is_string($value)&&!is_numeric($value))return null;
@@ -76,9 +76,10 @@ final class BeamSigns {
         }catch(JobCancelled $e){throw $e;}
         catch(\Throwable $e){return ['signs'=>[],'fetch_status'=>'unavailable','warning'=>'Mapped traffic signs were unavailable; no sign positions were invented.','failure_kind'=>$e instanceof DownloadFailure?'provider':'processing'];}
     }
-    public static function write(array $data,array $lines,BeamRaster $raster,float $origin,string $prefix,string $path,callable $put,callable $progress): array {
+    public static function write(array $data,array $lines,BeamRaster $raster,float $origin,string $prefix,string $path,callable $put,callable $progress,array $clearanceLines=[]): array {
+        $clearanceLines=BeamRoadClearance::prepare($clearanceLines?:$lines);
         foreach($lines as $i=>&$line)$line['sign_line_id']=(string)$i;unset($line);
-        $index=empty($data['signs'])?null:new BeamRoadIndex($lines);$objects=[];$placed=[];$rejected=[];$materials=[];$meshes=[];
+        $index=empty($data['signs'])?null:new BeamRoadIndex($lines);$objects=[];$placed=[];$rejected=[];$materials=[];$meshes=[];$assemblyAdjustments=[];
         foreach(array_slice($data['signs']??[],0,1000) as $i=>$sign){
             if($i%50===0)$progress(null);
             $point=$sign['point']??null;if(!is_array($point)||count($point)!==2)continue;
@@ -89,11 +90,29 @@ final class BeamSigns {
                 $profile=$hit['line']['profiles'][$hit['segment']]??$hit['line']['profiles'][0];
                 $half=$profile['width_m']/2;
                 $sign['source_point']=$point;
+                $assemblyKey=($sign['source']??'').':'.($sign['osm_id']??preg_replace('/_p[0-9]+$/','',(string)$sign['id'])).':'.implode(',',$point);
+                if(!array_key_exists($assemblyKey,$assemblyAdjustments))$assemblyAdjustments[$assemblyKey]=BeamRoadClearance::relocateSign($point,$clearanceLines,$raster,$origin);
+                $assembly=$assemblyAdjustments[$assemblyKey];
+                if($assembly===null){$rejected['ramp_clearance_unresolved']=($rejected['ramp_clearance_unresolved']??0)+1;continue;}
+                if($assembly['shift_m']>0){
+                    $point=$assembly['point'];$hit=$index->nearest($point,90);
+                    if(!$hit){$rejected['relocated_outside_corridor']=($rejected['relocated_outside_corridor']??0)+1;continue;}
+                    $profile=$hit['line']['profiles'][$hit['segment']]??$hit['line']['profiles'][0];$half=$profile['width_m']/2;
+                    unset($assembly['point']);$sign['placement_adjustment']=$assembly;
+                }
                 if(($sign['panel_index']??0)>0&&$hit['distance']>0){
                     $a=$hit['line']['points'][$hit['segment']-1];$side=$hit['dx']*($point[1]-$a[1])-$hit['dy']*($point[0]-$a[0]);$offset=1.2*$sign['panel_index']*($side>=0?1:-1);
                     $point=[$point[0]-$hit['dy']*$offset,$point[1]+$hit['dx']*$offset];$hit=$index->nearest($point,90);
                     if(!$hit){$rejected['panel_outside_corridor']=($rejected['panel_outside_corridor']??0)+1;continue;}
                     $profile=$hit['line']['profiles'][$hit['segment']]??$hit['line']['profiles'][0];$half=$profile['width_m']/2;
+                }
+                $adjustment=BeamRoadClearance::relocateSign($point,$clearanceLines,$raster,$origin);
+                if($adjustment===null){$rejected['ramp_clearance_unresolved']=($rejected['ramp_clearance_unresolved']??0)+1;continue;}
+                if($adjustment['shift_m']>0){
+                    $point=$adjustment['point'];$hit=$index->nearest($point,90);
+                    if(!$hit||$hit['raw']<0||$hit['raw']>1){$rejected['relocated_outside_corridor']=($rejected['relocated_outside_corridor']??0)+1;continue;}
+                    $profile=$hit['line']['profiles'][$hit['segment']]??$hit['line']['profiles'][0];$half=$profile['width_m']/2;
+                    unset($adjustment['point']);$adjustment['shift_m']+=($sign['placement_adjustment']['shift_m']??0.);$sign['placement_adjustment']=$adjustment;
                 }
                 $edge=$hit['distance']-$half;
                 if(($sign['bearing']??null)===null){
@@ -114,11 +133,12 @@ final class BeamSigns {
                     $otherProfile=$other['line']['profiles'][$other['segment']]??$other['line']['profiles'][0];
                     $otherEdge=$other['distance']-$otherProfile['width_m']/2;
                     if($otherEdge<0.3)$reason='mapped_position_on_other_pavement';
-                    elseif(abs($otherEdge-$edge)<2)$reason='ambiguous_road_association';
+                    elseif(abs($otherEdge-$edge)<2&&empty($sign['placement_adjustment']))$reason='ambiguous_road_association';
                 }
                 $z=$raster->height(...$point);
                 $a=$hit['line']['points'][$hit['segment']-1];$b=$hit['line']['points'][$hit['segment']];$roadZ=$a[2]+($b[2]-$a[2])*$hit['fraction']+$origin;
                 if(abs($roadZ-$z)>4)$reason='mounting_height_unresolved';
+                if(BeamRoadClearance::hit($point,$clearanceLines,$z-$origin-.5,$z-$origin+3.,.3))$reason='mapped_position_on_other_pavement';
             }
             if($reason!==null){$rejected[$reason]=($rejected[$reason]??0)+1;continue;}
             $code=$sign['code'];
