@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/scene-archive.php';
 // Synthetic large fixed bridge over a valley; no provider requests.
 use SweepLine\{BeamStructures,BeamRaster,BeamMap};
 $largeLine=[[0,0],[100,0],[800,0],[1000,0]];
@@ -35,7 +36,7 @@ $largeFile=tempnam(sys_get_temp_dir(),'sl-large-bridge-');
 try{
  $largeReport=BeamMap::build($largePlan,$largeRaster,str_repeat('8',32),$largeFile,static function($m){});
  $largeZip=new ZipArchive();$largeZip->open($largeFile);$largeBase='levels/sweepline_8888888888888888/';
- $largeObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($largeZip->getFromName($largeBase.'main/MissionGroup/items.level.json'))));
+ $largeObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim(slSceneText($largeZip,$largeBase))));
  check($largeZip->getFromName($largeBase.'art/roads/variation.color.png')===false&&!str_contains($largeZip->getFromName($largeBase.'art/roads/main.materials.json'),'variation.color.png')&&$largeReport['surface_appearance']['asphalt_variation_strength']===0,'Archive uses restored asphalt without the regressed detail-map shader');
  check($largeReport['traffic_sign_data']['placed']===1&&$largeZip->getFromName($largeBase.'art/signs/W1_2L.dae')!==false&&$largeZip->getFromName($largeBase.'art/signs/W1_2L.color.png')!==false,'Generated BeamNG archive contains mapped sign objects, source report and face assets');
  check($largeReport['building_data']['placed']===2&&$largeReport['building_data']['attribute_evidence'][0]['height_m']===18.0&&$largeReport['building_data']['attribute_evidence'][0]['roof_shape']==='gabled','Finished archive retains mapped building height and roof-shape evidence');

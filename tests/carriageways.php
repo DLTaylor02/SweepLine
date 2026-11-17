@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/scene-archive.php';
 use SweepLine\{BeamCarriageways,BeamMap,BeamRaster,BeamPlan,BeamTrack};
 $cwPlan=['name'=>'Test Highway','points'=>[[100,600],[1100,600]],'sources'=>[['points'=>[[100,600],[1100,600]],'direction'=>1,'highway'=>'primary','tags'=>['name'=>'Test Highway','ref'=>'TEST 42','oneway'=>'yes','lanes'=>'2']]]];
 $cwCandidate=['id'=>1,'name'=>'Test Highway','ref'=>'TEST 42','highway'=>'primary','direction'=>1,'points'=>[[1100,630],[100,630]]];
@@ -30,7 +31,7 @@ $cwFile=tempnam(sys_get_temp_dir(),'sl-cw-');
 try{
  $cwReport=BeamMap::build($cwExport,$cwRaster,str_repeat('6',32),$cwFile,static function($m){});
  $cwZip=new ZipArchive();$cwZip->open($cwFile);$cwBase='levels/sweepline_6666666666666666/';
- $cwObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($cwZip->getFromName($cwBase.'main/MissionGroup/items.level.json'))));
+ $cwObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim(slSceneText($cwZip,$cwBase))));
  check($cwZip->getFromName($cwBase.'art/roads/carriageway_0-0.dae')!==false,'Full-length opposite carriageway has its own collision pavement mesh');
  $cwNav=json_decode($cwZip->getFromName($cwBase.'map.json'),true);
  $cwOpposite=array_filter($cwNav['segments'],static fn($s,$name)=>str_starts_with($name,'carriageway_0_'),ARRAY_FILTER_USE_BOTH);
@@ -78,7 +79,7 @@ foreach(['bridge','tunnel'] as $structure){
  try{
   $report=BeamMap::build($p,$raster,str_repeat($structure==='bridge'?'4':'5',32),$file,static function($m){});
   $zip=new ZipArchive();$zip->open($file);$base='levels/sweepline_'.str_repeat($structure==='bridge'?'4':'5',16).'/';
-  $objects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($zip->getFromName($base.'main/MissionGroup/items.level.json'))));
+  $objects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim(slSceneText($zip,$base))));
   if($structure==='bridge'){
    check(count($report['bridges'])===1&&count($report['carriageways']['tracks'][0]['bridges'])===1,'Each carriageway retains its own bridge spans');
    check($zip->getFromName($base.'art/shapes/carriageway_0-deck.dae')!==false,'Opposite bridge includes a closed underside');
@@ -102,7 +103,7 @@ $crossRaster=new BeamRaster($cwN,$cwSide,$cwHeights,$cwColors);$crossFile=tempna
 try{
  $crossReport=BeamMap::build($crossPlan,$crossRaster,str_repeat('3',32),$crossFile,static function($m){});
  $zip=new ZipArchive();$zip->open($crossFile);$base='levels/sweepline_3333333333333333/';
- $objects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($zip->getFromName($base.'main/MissionGroup/items.level.json'))));$triangles=[];
+ $objects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim(slSceneText($zip,$base))));$triangles=[];
  foreach($objects as $object)if(($object['class']??'')==='TSStatic'&&($object['collisionType']??'')==='Visible Mesh Final'&&str_contains($object['shapeName']??'','/art/roads/')){
   $xml=simplexml_load_string($zip->getFromName(ltrim($object['shapeName'],'/')));$xml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
   $v=array_map('floatval',preg_split('/\s+/',trim((string)$xml->xpath('//c:source[@id="positions"]/c:float_array')[0])));

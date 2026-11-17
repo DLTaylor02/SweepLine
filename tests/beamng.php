@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/scene-archive.php';
 // Synthetic rasters and planar road geometry are explicit offline test fixtures.
 use SweepLine\{BeamPlan,BeamLanes,BeamRaster,BeamPng,BeamMap,BeamJobs};
 check(BeamPlan::options([])['resolution']===2048,'BeamNG default terrain resolution is 2048');
@@ -63,7 +64,7 @@ try {
     check($trialEnds[0][0]===$trialEnds[1][1]&&$trialEnds[0][1]===$trialEnds[1][0],'Packaged reverse time trial swaps the exact forward start and finish');
     $root=json_decode(trim($archive->getFromName($base.'main/items.level.json')),true,512,JSON_THROW_ON_ERROR);
     check($root['class']==='SimGroup' && $root['name']==='MissionGroup','Scene root matches installed v0.40 layout');
-    $objects=array_map(static fn($line)=>json_decode($line,true,512,JSON_THROW_ON_ERROR),explode("\n",trim($archive->getFromName($base.'main/MissionGroup/items.level.json'))));
+    $objects=array_map(static fn($line)=>json_decode($line,true,512,JSON_THROW_ON_ERROR),explode("\n",trim(slSceneText($archive,$base))));
     $nativeWater=array_values(array_filter($objects,static fn($o)=>$o['class']==='River'));
     check(count($nativeWater)===5&&$report['water_data']['rendered_features']===2,'Complete BeamNG archive includes bounded native water and provenance report');
     $waterLog=json_decode(substr($archive->getFromName('build.log'),strpos($archive->getFromName('build.log'),'{')),true,512,JSON_THROW_ON_ERROR);
@@ -184,7 +185,7 @@ try{
     $flatReport=BeamMap::build($plan,$flatRaster,str_repeat('b',32),$flatFile,fn($m)=>null);
     $flatZip=new ZipArchive();$flatZip->open($flatFile);
     $flatBase='levels/sweepline_bbbbbbbbbbbbbbbb/';
-    $flatObjects=array_map(fn($line)=>json_decode($line,true),explode("\n",trim($flatZip->getFromName($flatBase.'main/MissionGroup/items.level.json'))));
+    $flatObjects=array_map(fn($line)=>json_decode($line,true),explode("\n",trim(slSceneText($flatZip,$flatBase))));
     $flatRoads=array_values(array_filter($flatObjects,fn($o)=>$o['class']==='MeshRoad'&&str_starts_with($o['name'],'road_')));
     $terrainObject=array_values(array_filter($flatObjects,fn($o)=>$o['class']==='TerrainBlock'))[0];
     $binary=$flatZip->getFromName($flatBase.'theTerrain.ter');$maxGap=0;$minGap=INF;
@@ -243,7 +244,7 @@ $bridgeRaster=new BeamRaster($n,$side,$bridgeHeights,$colors);$bridgeFile=tempna
 try{
     $bridgeReport=BeamMap::build($bridgePlan,$bridgeRaster,str_repeat('c',32),$bridgeFile,fn($m)=>null);
     $bridgeZip=new ZipArchive();$bridgeZip->open($bridgeFile);$bridgeBase='levels/sweepline_cccccccccccccccc/';
-    $bridgeObjects=array_map(fn($line)=>json_decode($line,true),explode("\n",trim($bridgeZip->getFromName($bridgeBase.'main/MissionGroup/items.level.json'))));
+    $bridgeObjects=array_map(fn($line)=>json_decode($line,true),explode("\n",trim(slSceneText($bridgeZip,$bridgeBase))));
     $deck=array_values(array_filter($bridgeObjects,fn($o)=>$o['class']==='MeshRoad' && str_starts_with($o['name'],'road_')))[0];
     $bridgeNode=array_values(array_filter($deck['nodes'],fn($p)=>$p[0]>390&&$p[0]<410))[0];
     check(abs($bridgeNode[2]+$bridgeReport['elevation_origin_m']-100.25)<0.05,'Bridge deck follows approaches rather than valley floor');
@@ -370,7 +371,7 @@ try{
     check(str_contains($buildingMesh,'_building_glass')&&str_contains($buildingMesh,'_building_trim')&&str_contains($buildingMesh,'_building_door'),'Generated residential building includes architectural detail materials');
     $facadeMaterial=array_values($stockReport['building_data']['facade_materials'])[0];
     check(isset($facadeMaterial['normal'],$facadeMaterial['specular']),'Export report records the actual facade texture and shading channels');
-    $contextScene=$stockZip->getFromName($stockBase.'main/MissionGroup/items.level.json');
+    $contextScene=slSceneText($stockZip,$stockBase);
     check($stockReport['guardrail_data']['placed_runs']===1&&$stockReport['guardrail_data']['terminals']===2,'Generated ZIP report includes mapped guardrail placement and rigid terminals');
     check($stockZip->locateName($stockBase.'art/guardrails/main.materials.json')!==false&&str_contains($contextScene,'"name":"mapped_guardrail_0_1"')&&str_contains($contextScene,'eca_guardrail1.dae'),'Generated BeamNG scene references stock mapped guardrail collision sections and its texture binding');
     $guardMaterials=json_decode($stockZip->getFromName($stockBase.'art/guardrails/main.materials.json'),true);

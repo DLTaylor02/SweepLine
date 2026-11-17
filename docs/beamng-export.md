@@ -767,3 +767,10 @@ A surface street can conflict with an approach-derived tunnel roof even when the
 Connected roads are prepared again against corrected parent elevations. Every adjustment is recorded in `tunnel_profile_fitting` in the build report. Final terrain contact may lower tunnel cover only as far as the outer roof; overlapping bores use the highest roof. Cover corrections are bounded to 2 m per vertex and cannot transfer an impossible roof conflict into a deep adjacent excavation. Bridge-ground permissions never override roof constraints. `tunnel_cover_vertices_lowered` records these corrections.
 
 The supplied failure was reproduced and cleared using its local measured geometry, translated and anonymized for regression tests. This validates the captured crossing; a fresh full export is still necessary to check the rest of the network. Existing diagnostic replay repairs terrain only: it does not silently change captured road profiles.
+
+
+### Large native scene loading (0.182.0)
+
+Large exports use native SimGroup subfolders rather than placing every scene object in one MissionGroup file. Each scene load file contains at most 256 records, with hierarchical group indexes for larger scenes. This addresses the oversized single-file loading path implicated by a supplied v0.40.5 log: Lua stack overflow during map.onAddWaypoint, followed by a missing gameCamera loop. The camera messages are downstream symptoms, not evidence that a camera object should be added to the exported level. A successful fresh in-game load is still required to confirm this resolves that runtime failure.
+
+All generated objects, navigation names, positions, radii and map.json connections are retained. Environment and spawn objects stay directly under MissionGroup; small scenes keep their flat layout. The `scene_layout` build-report entry records the object/group counts and maximum records per load file. Archive inspection must recurse through main/MissionGroup subfolders, as BeamNG's native folder loader does. No game files or game Lua are modified.

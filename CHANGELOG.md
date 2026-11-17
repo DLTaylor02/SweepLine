@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.182.0:** Address large BeamNG level loading failures by replacing the single oversized scene file with bounded native SimGroup files and hierarchical indexes. Preserve all object data, waypoint names and navigation connections; retain root environment/spawn objects and flat small scenes. Record scene loading layout, verify large hierarchical scenes and update archive checks to read nested groups. The supplied archive's 27,174 objects and 23,850 navigation segments are retained; in-game loading confirmation remains required.
+
 - **0.181.0:** Reconcile approach-estimated tunnel floors with overlying mapped pavement before terrain shaping, retaining clearance, roof thickness, XY and distant approach anchors. Reprepare connected roads after fitting; reject excessive adjustments or grades. Allow bounded cover corrections only above actual outer roofs, with overlapping-tunnel protection and no deep residual excavation. Record fitting/correction metrics; add generic and anonymized measured two-bore regressions.
 
 - **0.180.0:** Fix reproduced underpass terrain failures caused by freezing ground beneath elevated bridges. Ordinary rendered pavement may lower bridge-ground vertices only when below every covering bridge underside; tunnel cover and same-level structure constraints remain frozen. Preserve road/deck geometry and clearance tolerances, record underpass corrections, add offline --repair replay and anonymized measured plus generic stacked-structure regressions.

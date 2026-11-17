@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/scene-archive.php';
 // Close, mapped one-way roads retain a continuous counterpart and one collision surface per overlap.
 use SweepLine\{BeamMap,BeamRaster};
 $medianMapPoints=[[100,600],[1100,600]];$medianOpposite=[[1100,612],[100,612]];
@@ -11,7 +12,7 @@ $medianMapRaster=new BeamRaster(64,1200,$medianHeights,str_repeat(chr(100),12288
 try{
  $medianMapReport=BeamMap::build($medianMapPlan,$medianMapRaster,str_repeat('a',32),$medianMapFile,static function($m){});
  $medianZip=new ZipArchive();$medianZip->open($medianMapFile);$medianBase='levels/sweepline_aaaaaaaaaaaaaaaa/';
- $medianScene=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($medianZip->getFromName($medianBase.'main/MissionGroup/items.level.json'))));$medianTriangles=[];
+ $medianScene=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim(slSceneText($medianZip,$medianBase))));$medianTriangles=[];
  foreach($medianScene as $object)if(($object['class']??'')==='TSStatic'&&($object['collisionType']??'')==='Visible Mesh Final'&&str_contains($object['shapeName']??'','/art/roads/')){
   $xml=simplexml_load_string($medianZip->getFromName(ltrim($object['shapeName'],'/')));$xml->registerXPathNamespace('c','http://www.collada.org/2005/11/COLLADASchema');
   $v=array_map('floatval',preg_split('/\s+/',trim((string)$xml->xpath('//c:source[@id="positions"]/c:float_array')[0])));

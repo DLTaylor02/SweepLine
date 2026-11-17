@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/scene-archive.php';
 use SweepLine\{BeamBuildLog,BeamLanePaint,BeamRoadSurface,BeamJunctionBoundary,BeamBridgeDeck};
 $diagnosticLog=new BeamBuildLog();$diagnosticLog->event('Downloading elevation (attempt 1/3)');$diagnosticLog->event('Classifying terrain');
 $text=$diagnosticLog->render(['name'=>'Generated test','points'=>[[1,2],[3,4]],'selection'=>['original'=>['clicked_start'=>[0,0]]],'env'=>['password'=>'DO-NOT-EXPORT'],'user'=>['password'=>'DO-NOT-EXPORT']],['building_data'=>['rejection_reasons'=>['pavement_overlap'=>2]]],['primary'=>['points'=>[[0,0,10],[10,0,11]]]],[]);
@@ -42,7 +43,7 @@ try{
  $log=$zip->getFromName('build.log');$logData=json_decode(substr($log,strpos($log,"\n{")+1),true,512,JSON_THROW_ON_ERROR);
  check($logData['inputs']['selection']['original']['clicked_finish']===[0.01,0]&&$logData['generated_geometry']['primary']['points']&&$logData['generated_geometry']['raster_provenance']['dem']['fixture'],'ZIP build.log contains input selection, constructed geometry and raster provenance');
  check(count($logData['archive_files_before_build_log'])>10&&$logData['analysis_and_rejections']['bridge_deck_shell']['spans']===1,'ZIP build.log inventories archive files and structure decisions');
- $objects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($zip->getFromName($base.'main/MissionGroup/items.level.json'))));
+ $objects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim(slSceneText($zip,$base))));
  $rails=array_values(array_filter($objects,static fn($o)=>str_starts_with($o['name']??'','bridge_0_rail_')));
  check(count($rails)===2&&count(array_filter($rails,static fn($o)=>$o['class']==='TSStatic'&&$o['collisionType']==='Visible Mesh Final'))===2,'Short bridge uses two closed collision walls instead of floating MeshRoad rails');
  $deckZ=100.25-$shortReport['elevation_origin_m'];$connected=true;

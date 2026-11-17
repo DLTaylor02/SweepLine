@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/scene-archive.php';
 use SweepLine\{BeamBridgeDeck,BeamPavement};
 $deckPoints=[[0,0,10],[50,0,11],[100,0,12]];
 $deckProfiles=[['width_m'=>8],['width_m'=>10],['width_m'=>12]];
@@ -28,7 +29,7 @@ try{
  $explicitReport=SweepLine\BeamMap::build($explicitPlan,$explicitRaster,str_repeat('7',32),$explicitFile,static function($m){});
  $explicitZip=new ZipArchive();$explicitZip->open($explicitFile);$explicitBase='levels/sweepline_7777777777777777/';
  check($explicitReport['curve_smoothing']['explicit_pavement']&&$explicitZip->getFromName($explicitBase.'art/shapes/bridge-deck.dae')!==false,'Explicit-pavement bridge ZIP includes underside mesh');
- $explicitObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim($explicitZip->getFromName($explicitBase.'main/MissionGroup/items.level.json'))));
+ $explicitObjects=array_map(static fn($line)=>json_decode($line,true),explode("\n",trim(slSceneText($explicitZip,$explicitBase))));
  $shellObjects=array_values(array_filter($explicitObjects,static fn($o)=>($o['name']??'')==='bridge_deck_shell'));
  check(count($shellObjects)===1&&$shellObjects[0]['collisionType']==='None'&&$shellObjects[0]['castShadows'],'Bridge underside is instantiated with shadows and visual-only geometry');
  check($explicitReport['bridge_deck_shell']['spans']===1&&abs($explicitRaster->height(750,800)-60)<0.01,'Bridge underside report preserves span count and valley terrain');
