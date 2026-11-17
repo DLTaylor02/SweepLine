@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.178.0:** Align interchange terrain validation and repair with the actual clipped, height-welded collision pavement instead of original ribbon edges. Share the pavement builder's geometry without mesh serialization, exclude mapped structure intervals, audit triangle/cell intersections and use the same contact surface in late repair. Preserve exported road geometry and protection checks. Add a regression where removed original pavement remains beneath protected ground while all visible pavement is clear.
+
 - **0.177.0:** Allow bounded mixed-cell terrain contact corrections when editable vertices have small interpolation weights, instead of rejecting every such contact. Preserve frozen structure vertices, road geometry and clearance tolerance; reject corrections that would require deep inverse-weight cuts. Record small-weight correction counts and add safe/unsafe boundary regressions.
 
 - **0.176.0:** Repair interchange terrain contacts blocked by coarse structure-mask padding before rejecting a connected edge. Reuse exact corridor/structure-footprint contact correction, retain road geometry and actual bridge/tunnel support, recheck clearance, and record repair diagnostics. Remaining conflicts identify OSM way, chainage and overlap height. Add padded-mask and genuine protected-conflict regressions.

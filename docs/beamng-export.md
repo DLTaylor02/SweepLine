@@ -724,3 +724,9 @@ intersection_context.final_clearance records initial_structure_contacts and exac
 Exact contact repair previously rejected every constraint with editable interpolation weight squared-sum below 0.1. That can leave a small pavement overlap unresolved beside a frozen structure vertex. Partial-cell repair can now solve those constraints when the cumulative editable-vertex cut for that pass stays within 20 percent of terrain-cell spacing, bounded between 0.5 and 2 metres. Negligible editable weights or excessive required cuts are still rejected, and protected vertices never move.
 
 Road elevations and the existing clearance checks are unchanged. small_weight_corrections in exact terrain-contact reports records use of this path. This addresses a reproducible numerical rejection; it does not assume that every protected-structure conflict is safe to excavate.
+
+### Validate rendered interchange pavement (0.178.0)
+
+At joins, exported side-road pavement is clipped against higher-priority roads and height-blended to the actual boundary. Auditing the original centreline ribbon edges could incorrectly reject geometry that had been removed, or compare terrain to the pre-blend height. Interchange clearance now obtains the same collision triangles from the pavement builder, without creating a mesh file, and checks their intersections with both native terrain diagonal choices.
+
+Exact and late contact repair use that same visible, welded surface. Structure intervals are clipped out of ordinary ground checks by chainage; bridge landing contact retains its established contact band. This changes validation/repair inputs, not the renderer's road shape or the clearance tolerance. Original hidden ribbon edges no longer need ground excavation just to satisfy an unrelated check. Genuine terrain overlap with visible ordinary pavement still fails.

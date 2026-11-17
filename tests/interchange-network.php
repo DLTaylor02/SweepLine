@@ -74,7 +74,21 @@
     $fixed=SweepLine\BeamIntersections::conform($context,$contactRaster,0,static fn($m)=>null);
     check(count($fixed['final_clearance']['initial_structure_contacts'])===1&&$fixed['final_clearance']['exact_structure_contact']!==null&&serialize($fixed['roads'])===$beforeRoads,'A road blocked only by padded structure masks receives exact terrain repair without changing or shortening its geometry');
     check($contactRaster->cell(28,19)===105.&&$contactRaster->cell(45,45)===145.,'Exact network contact repair preserves actual bridge ground and tunnel overburden');
-    $context['roads'][0]['name']='protected_tunnel';$context['roads'][0]['points']=[[650,700,100],[800,700,100]];
+    $context['roads'][0]['name']='protected_tunnel';$context['roads'][0]['points']=[[650,700,90],[800,700,90]];
     $rejected=false;try{SweepLine\BeamIntersections::conform($context,$contactRaster,0,static fn($m)=>null);}catch(SweepLine\BeamInterchangeLimit $e){$rejected=str_contains($e->getMessage(),'OSM way 123')&&str_contains($e->getMessage(),'above pavement');}
     check($rejected,'Actual protected structure conflicts still fail with source way and overlap diagnostics');
+
+    $mergeRaster=new SweepLine\BeamRaster(64,640,str_repeat(pack('g',100.35),4096),str_repeat(chr(100),12288));
+    $mergePrimary=[];for($x=50;$x<=600;$x+=10)$mergePrimary[]=[$x,300,100.6];
+    $mergeProfiles=array_fill(0,count($mergePrimary),['width_m'=>8]);$mergeSpan=['start_m'=>100.,'end_m'=>450.];
+    $mergeTrack=['road'=>$mergePrimary,'profiles'=>$mergeProfiles,'chain'=>range(0,550,10),'bridges'=>[$mergeSpan],'tunnels'=>[]];
+    $mergeMask=SweepLine\BeamTrack::mask($mergeTrack,$mergeRaster,str_repeat("\0",4096),static fn($m)=>null);
+    $mergeBranch=['name'=>'clipped_merge','osm_id'=>456,'network'=>true,'points'=>[[250,306,100],[400,306,100]],'profiles'=>[['width_m'=>8],['width_m'=>8]],'join'=>['x'=>250,'y'=>300],'connector'=>[],'bridges'=>[],'tunnels'=>[]];
+    $mergeContext=['network'=>true,'roads'=>[$mergeBranch],'aprons'=>[],'graph'=>['network_edge_count'=>1],'structure_mask'=>$mergeMask,
+        'main_surfaces'=>[['name'=>'primary','points'=>$mergePrimary,'profiles'=>$mergeProfiles,'spans'=>[$mergeSpan]]]];
+    $finished=SweepLine\BeamIntersections::conform($mergeContext,$mergeRaster,0,static fn($m)=>null);
+    $visible=SweepLine\BeamPavement::drivingTriangles($mergeBranch,$mergeContext['main_surfaces']);
+    check(count($visible)>0&&SweepLine\BeamTerrainContact::obstruction($visible,$mergeRaster,0)===null&&SweepLine\BeamIntersections::terrainTop($mergeRaster,300,302)>100.15,
+        'Visible clipped and welded ramp pavement clears terrain even when its removed original edge remains below protected ground');
+    check($finished['roads'][0]['points']===$mergeBranch['points']&&abs($mergeRaster->cell(30,30)-100.35)<.0001,'Rendered-pavement validation preserves road geometry and the supporting bridge vertex');
 })();

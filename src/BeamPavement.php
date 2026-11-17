@@ -17,7 +17,7 @@ final class BeamPavement
     {
         return BeamJunctionBoundary::hit($end,$direction,$road,$profiles,$join);
     }
-    public static function build(array $branch,array $main,array $mainProfiles,string $prefix,?array $surfaceSections=null,array $obstacles=[]): array
+    public static function build(array $branch,array $main,array $mainProfiles,string $prefix,?array $surfaceSections=null,array $obstacles=[],bool $geometryOnly=false): array
     {
         if(!empty($branch['junction_parent'])){$obstacles[]=['road'=>$main,'profiles'=>$mainProfiles];$main=$branch['junction_parent']['points'];$mainProfiles=$branch['junction_parent']['profiles'];}
         if(isset($branch['end_owner']['surface']))$obstacles[]=['road'=>$branch['end_owner']['surface']['points'],'profiles'=>$branch['end_owner']['surface']['profiles']];
@@ -30,7 +30,7 @@ final class BeamPavement
         };
         $sections=$surfaceSections??BeamJunctionBoundary::sections($points,$profiles);
         for($i=1;$i<count($points);$i++){
-            $next=$along+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);$material=$prefix.'_road_'.self::key($profiles[$i]);
+            $next=$along+hypot($points[$i][0]-$points[$i-1][0],$points[$i][1]-$points[$i-1][1]);$material=$geometryOnly?'contact':$prefix.'_road_'.self::key($profiles[$i]);
             $quad($sections[$i-1][0],$sections[$i-1][1],$sections[$i][1],$sections[$i][0],$material,[[0,$along/BeamPng::ROAD_TEXTURE_LENGTH_M],[1,$along/BeamPng::ROAD_TEXTURE_LENGTH_M],[1,$next/BeamPng::ROAD_TEXTURE_LENGTH_M],[0,$next/BeamPng::ROAD_TEXTURE_LENGTH_M]]);$along=$next;
         }
 
@@ -38,13 +38,28 @@ final class BeamPavement
         foreach($rings as $i=>$r)if($i){
             $a=$rings[$i-1][0];$b=$rings[$i-1][1];$c=$r[1];$d=$r[0];
             $v0=($i-1-(count($rings)-1))/BeamPng::ROAD_TEXTURE_LENGTH_M;$v1=($i-(count($rings)-1))/BeamPng::ROAD_TEXTURE_LENGTH_M;
-            $quad($a,$b,$c,$d,$prefix.'_road_'.self::key($profiles[0]),[[0,$v0],[1,$v0],[1,$v1],[0,$v1]]);
+            $quad($a,$b,$c,$d,$geometryOnly?'contact':$prefix.'_road_'.self::key($profiles[0]),[[0,$v0],[1,$v0],[1,$v1],[0,$v1]]);
         }
         if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null);
         foreach($obstacles as $obstacle)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true,!empty($branch['network'])?1.:null);
+        if($geometryOnly)return ['vertices'=>$vertices,'triangles'=>$triangles];
         $independentHeight=(bool)array_filter($obstacles,static fn($obstacle)=>($obstacle['weld_boundary']??true)===false);
         return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge',array_merge($rings?array_slice($rings,0,-1):[],$sections)),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
             'connector_end_seam_m'=>($connector?0.0:null),'boundary_height_welding'=>!$independentHeight,'junction_height_blend_m'=>$independentHeight?0:BeamJunctionBoundary::HEIGHT_BLEND_M,'method'=>$independentHeight?'Exact XY overlap clipping; independent carriageway elevations preserved.':'Exact ribbon boundary; overlapping side pavement removed; junction heights blend continuously into the primary surface.'];
+    }
+
+    /** The same clipped and height-welded triangles used by the exported collision pavement. */
+    public static function drivingTriangles(array $branch,array $mainSurfaces,float $bridgeContactBand=0.): array
+    {
+        $primary=$mainSurfaces[0]??['points'=>[],'profiles'=>[]];$obstacles=[];
+        foreach($mainSurfaces as $surface)if(($surface['name']??null)==='primary')$primary=$surface;
+        foreach($mainSurfaces as $surface)if(($surface['name']??null)!==($primary['name']??null))$obstacles[]=['road'=>$surface['points'],'profiles'=>$surface['profiles']];
+        $mesh=self::build($branch,$primary['points'],$primary['profiles'],'contact',null,$obstacles,true);$triangles=[];
+        foreach($mesh['triangles'] as $face)$triangles[]=array_map(static fn($id)=>$mesh['vertices'][$id],$face['v']);
+        $spans=array_merge($branch['bridges']??[],$branch['tunnels']??[]);
+        foreach($spans as &$span)if(!isset($span['clearance_m'])){$span['start_m']+=$bridgeContactBand;$span['end_m']-=$bridgeContactBand;}unset($span);
+        $spans=array_values(array_filter($spans,static fn($s)=>$s['end_m']>$s['start_m']));
+        return $spans?BeamTerrainContact::excludeSpans($triangles,$branch['points'],$spans):$triangles;
     }
 
     /** Visible thickness only. Never add collision sidewalls at pavement seams. */

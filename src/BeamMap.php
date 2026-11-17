@@ -184,7 +184,7 @@ final class BeamMap
         foreach($carriageways as &$track)unset($track['structure_mask']);unset($track);
         $repairSurfaces=[['name'=>'primary','road'=>$road,'profiles'=>$profiles,'spans'=>$coveredSpans,'render'=>BeamIntersections::markingSections($road,$profiles,$preparedIntersections['junctions'])['points']]];
         foreach($carriageways as $track)$repairSurfaces[]=['name'=>$track['name'],'road'=>$track['road'],'profiles'=>$track['profiles'],'obstacles'=>[['road'=>$road,'profiles'=>$profiles,'weld_boundary'=>false]],'spans'=>array_merge($track['bridges'],$track['tunnels']),'render'=>BeamIntersections::markingSections($track['road'],$track['profiles'],$track['context']['junctions'])['points']];
-        foreach($preparedIntersections['roads'] as $branch)$repairSurfaces[]=['name'=>$branch['name'],'road'=>$branch['points'],'profiles'=>$branch['profiles'],'spans'=>array_merge($branch['bridges']??[],$branch['tunnels']??[])];
+        foreach($preparedIntersections['roads'] as $branch)$repairSurfaces[]=['name'=>$branch['name'],'road'=>$branch['points'],'profiles'=>$branch['profiles'],'spans'=>array_merge($branch['bridges']??[],$branch['tunnels']??[]),'contact_triangles'=>static fn()=>BeamPavement::drivingTriangles($branch,$preparedIntersections['main_surfaces']??[],max(2.,2*$raster->side/$raster->size))];
         $zip=new ZipArchive();if($zip->open($zipPath,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)throw new \RuntimeException('Could not create BeamNG archive.');
 
         // libzip keeps addFromString buffers until close; large terrain meshes

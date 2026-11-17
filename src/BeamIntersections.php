@@ -409,17 +409,17 @@ final class BeamIntersections
             $exact=BeamTerrainContact::clear($surface['points'],$surface['profiles'],$raster,$origin,$mask,$progress);
             $lowered+=$report['lowered_vertices'];$cut=max($cut,$report['maximum_cut_m']);
         }
-        $blocked=self::networkObstructions($prepared,$raster,$origin);$contactRepair=null;$initial=$blocked;
+        $blocked=self::networkObstructions($prepared,$raster,$origin,$progress);$contactRepair=null;$initial=$blocked;
         if($blocked){
             // Broad raster masks include several cells beyond the actual structure.
             // Reuse the exact corridor pass before rejecting a legitimate adjacent road.
             $surfaces=[];
             foreach($prepared['main_surfaces']??[] as $surface)$surfaces[]=['name'=>$surface['name'],'road'=>$surface['points'],'profiles'=>$surface['profiles'],'spans'=>$surface['spans']??[]];
-            foreach($prepared['roads'] as $branch)$surfaces[]=['name'=>$branch['name'],'road'=>$branch['points'],'profiles'=>$branch['profiles'],'spans'=>array_merge($branch['bridges']??[],$branch['tunnels']??[])];
+            foreach($prepared['roads'] as $branch)$surfaces[]=['name'=>$branch['name'],'road'=>$branch['points'],'profiles'=>$branch['profiles'],'spans'=>array_merge($branch['bridges']??[],$branch['tunnels']??[]),'contact_triangles'=>static fn()=>BeamPavement::drivingTriangles($branch,$prepared['main_surfaces']??[],max(2.,2*$raster->side/$raster->size))];
             $progress('Checking exact interchange clearance near structure approaches');
             $contactRepair=BeamTerrainContact::repairCorridors($surfaces,$raster,$origin,$progress);
             foreach($contactRepair['roads'] as $report){$lowered+=$report['lowered_vertices'];$cut=max($cut,$report['maximum_cut_m']);}
-            $blocked=self::networkObstructions($prepared,$raster,$origin);
+            $blocked=self::networkObstructions($prepared,$raster,$origin,$progress);
         }
         if($blocked){$b=$blocked[0];throw new BeamInterchangeLimit(sprintf(
             'Terrain cannot clear interchange edge %s (OSM way %s) at %.0f ft along the edge: terrain is %.2f ft above pavement after exact structure-footprint repair. Protected structure ground was retained; no connected road was shortened.',
@@ -431,17 +431,15 @@ final class BeamIntersections
         return $prepared;
     }
 
-    private static function networkObstructions(array $prepared,BeamRaster $raster,float $origin): array
+    private static function networkObstructions(array $prepared,BeamRaster $raster,float $origin,callable $progress): array
     {
         $blocked=[];
-        foreach($prepared['roads'] as $branch){$at=0.;
-            foreach($branch['points'] as $i=>$p){
-                if($i)$at+=hypot($p[0]-$branch['points'][$i-1][0],$p[1]-$branch['points'][$i-1][1]);
-                foreach(array_merge($branch['bridges']??[],$branch['tunnels']??[]) as $span)if($at>=$span['start_m']&&$at<=$span['end_m'])continue 2;
-                foreach(BeamPavement::section($branch['points'],$branch['profiles'],$i) as $edge){
-                    $overlap=self::terrainTop($raster,$edge[0],$edge[1])-$origin-$edge[2];
-                    if($overlap>.15){$blocked[]=['name'=>$branch['name'],'context_id'=>$branch['context_id']??null,'osm_id'=>$branch['osm_id']??null,'along_m'=>$at,'overlap_m'=>$overlap,'point'=>$edge];break 2;}
-                }
+        foreach($prepared['roads'] as $branch){
+            $progress(null);
+            $triangles=BeamPavement::drivingTriangles($branch,$prepared['main_surfaces']??[]);
+            $hit=BeamTerrainContact::obstruction($triangles,$raster,$origin);
+            if($hit){$index=new BeamRoadIndex([['points'=>$branch['points']]]);$near=$index->nearest($hit['point'],200);
+                $blocked[]=$hit+['name'=>$branch['name'],'context_id'=>$branch['context_id']??null,'osm_id'=>$branch['osm_id']??null,'along_m'=>$near['along']??0.];
             }
         }
         return $blocked;

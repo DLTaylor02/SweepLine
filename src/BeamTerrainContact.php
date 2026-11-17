@@ -84,6 +84,49 @@ final class BeamTerrainContact
         return ['method'=>'Exact pavement/terrain triangle intersections; both native diagonals; lower only','contacts'=>$contacts,'lowered_vertices'=>count($lowered),'maximum_cut_m'=>$lowered?max($lowered):0,'protected_cells_skipped'=>$skipped,'protected_contacts_unresolved'=>$blocked,'partial_cells'=>$partialCells,'small_weight_corrections'=>$smallWeight,'tunnel_hole_cells_skipped'=>$holeSkipped,'clearance_m'=>0.05];
     }
 
+    /** Remove structure intervals while retaining the rendered triangle's actual height plane. */
+    public static function excludeSpans(array $triangles,array $road,array $spans): array
+    {
+        $index=new BeamRoadIndex([['points'=>$road]]);$out=[];
+        $clip=static function(array $poly,float $at,bool $after):array{
+            $result=[];foreach($poly as $i=>$p){$q=$poly[($i+1)%count($poly)];$a=$after?$p[3]-$at:$at-$p[3];$b=$after?$q[3]-$at:$at-$q[3];
+                if($a>=-1e-8)$result[]=$p;
+                if(($a>0&&$b<0)||($a<0&&$b>0)){$t=$a/($a-$b);$v=[];foreach([0,1,2,3] as $axis)$v[]=$p[$axis]+($q[$axis]-$p[$axis])*$t;$result[]=$v;}
+            }return $result;
+        };
+        foreach($triangles as $triangle){
+            $poly=[];foreach($triangle as $p){$hit=$index->nearest($p,200);if(!$hit)throw new \RuntimeException('Rendered pavement could not be matched to its structure chainage.');$poly[]=array_merge($p,[$hit['along']]);}
+            $pieces=[$poly];
+            foreach($spans as $span){$next=[];foreach($pieces as $piece){
+                if(max(array_column($piece,3))<=$span['start_m']||min(array_column($piece,3))>=$span['end_m']){$next[]=$piece;continue;}
+                foreach([$clip($piece,$span['start_m'],false),$clip($piece,$span['end_m'],true)] as $part)if(count($part)>=3)$next[]=$part;
+            }$pieces=$next;if(!$pieces)break;}
+            foreach($pieces as $piece)for($i=1;$i<count($piece)-1;$i++)$out[]=[array_slice($piece[0],0,3),array_slice($piece[$i],0,3),array_slice($piece[$i+1],0,3)];
+        }return $out;
+    }
+    /** Audit actual triangle/terrain intersections, including cell boundaries and both native diagonals. */
+    public static function obstruction(array $triangles,BeamRaster $raster,float $origin,float $tolerance=.15): ?array
+    {
+        $n=$raster->size;$step=$raster->side/$n;
+        foreach($triangles as $pavement){
+            if(abs(BeamPolygon::cross(...$pavement))<1e-9)continue;
+            $xs=array_column($pavement,0);$ys=array_column($pavement,1);
+            for($y=max(0,(int)floor(min($ys)/$step));$y<=min($n-2,(int)floor(max($ys)/$step));$y++)
+            for($x=max(0,(int)floor(min($xs)/$step));$x<=min($n-2,(int)floor(max($xs)/$step));$x++){
+                $corners=[[$x*$step,$y*$step],[($x+1)*$step,$y*$step],[$x*$step,($y+1)*$step],[($x+1)*$step,($y+1)*$step]];
+                foreach([[0,1,2],[1,3,2],[0,1,3],[0,3,2]] as $ids){
+                    $terrain=array_map(static fn($id)=>$corners[$id],$ids);
+                    foreach(self::clip(array_map(static fn($p)=>array_slice($p,0,2),$pavement),$terrain) as $point){
+                        $pw=self::weights($point,$pavement);$tw=self::weights($point,$terrain);if(!$pw||!$tw)continue;
+                        $road=0.;$ground=0.;foreach($pw as $i=>$w)$road+=$w*$pavement[$i][2];
+                        foreach($tw as $i=>$w){$p=$terrain[$i];$ground+=$w*$raster->cell((int)round($p[0]/$step),(int)round($p[1]/$step));}
+                        if($ground-$origin-$road>$tolerance)return ['point'=>[$point[0],$point[1],$road],'overlap_m'=>$ground-$origin-$road,'terrain_grid_m'=>$step];
+                    }
+                }
+            }
+        }return null;
+    }
+
     /** Final contact repair uses actual structure footprints, not shoulder-influence buffers. */
     public static function repairCorridors(array $surfaces,BeamRaster $raster,float $origin,callable $progress,string $holes=''): array
     {
@@ -105,7 +148,7 @@ final class BeamTerrainContact
         }
         $reports=[];
         foreach($surfaces as $surface){
-            $triangles=self::ordinaryTriangles($surface['road'],$surface['profiles'],self::protectedSpans($surface['spans']??[],max(2.,2*$step)),$surface['render']??null);
+            $triangles=isset($surface['contact_triangles'])?($surface['contact_triangles'])():self::ordinaryTriangles($surface['road'],$surface['profiles'],self::protectedSpans($surface['spans']??[],max(2.,2*$step)),$surface['render']??null);
             $triangles=self::visibleTriangles($triangles,$surface['obstacles']??[]);
             $reports[$surface['name']]=self::triangles($triangles,$raster,$origin,$protected,$progress,true,$holes);
         }
