@@ -184,10 +184,11 @@ final class BeamIntersections
             if(isset($finishOwner['surface']))$connectedApproaches[]=$finishOwner['surface']['points'];
             elseif(isset($finishOwner['road_index']))$connectedApproaches[]=$out['roads'][$finishOwner['road_index']]['points'];
             $structure=BeamNetworkStructures::sample($sampled,$branch,$data['branches']??[],$road,$bounds,$raster,$connectedApproaches);$raw=$structure['raw'];
-            $edgeProfiles=[];
+            $edgeProfiles=[];$mappedProfiles=[];
             if($network&&!empty($branch['source_parts'])){
                 $worldSampled=array_map(static fn($p)=>[$p[0]+$bounds[0],$p[1]+$bounds[1]],$sampled);
-                $edgeProfiles=BeamRoadSurface::shoulders(BeamRoadSurface::taper($worldSampled,BeamLanes::profiles($worldSampled,$branch['source_parts'],$bounds),$structure['bridges']));
+                $mappedProfiles=BeamLanes::profiles($worldSampled,$branch['source_parts'],$bounds);
+                $edgeProfiles=BeamRoadSurface::shoulders(BeamRoadSurface::taper($worldSampled,$mappedProfiles,$structure['bridges']));
             }
             $nodes=[];$branchProfiles=[];
             foreach($sampled as $i=>$p){
@@ -231,6 +232,7 @@ final class BeamIntersections
                     $junctionObstacles[]=['road'=>$other['points'],'profiles'=>$other['profiles']];
             }
             $out['roads'][]=['junction_obstacles'=>$junctionObstacles,'parent_name'=>$parent===null?null:$out['roads'][$parent]['name'],'junction_parent'=>$parent===null&&$external===null?null:['points'=>$road,'profiles'=>$profiles],
+                'mapped_profiles'=>array_slice($mappedProfiles,0,count($nodes)),'lane_endpoints'=>[BeamNetworkLanes::identity($branch,$arm[0]),BeamNetworkLanes::identity($branch,end($arm))],
                 'network'=>$network,'external_main'=>$external,'start_node'=>$branch['start_node']??null,'end_node'=>$branch['end_node']??null,'end_owner'=>$endOwner,
                 'bridges'=>$structure['bridges'],'tunnels'=>$structure['tunnels'],'structure_approaches'=>array_intersect_key($structure,array_flip(['approach_before_m','approach_after_m'])),'kind'=>$branch['kind']??'crossroad','context_id'=>$branch['context_id']??null,'name'=>'intersection_context_'.$index,'osm_id'=>$branch['osm_id']??null,'points'=>$nodes,'profiles'=>$branchProfiles,'join'=>$join,'connector'=>$connector];
             $apron=self::clip($local,$trim+1);
@@ -248,6 +250,34 @@ final class BeamIntersections
             else {
                 $childJunctions[$parent][]=$junction;
             }
+        }
+        $synchronized=BeamNetworkLanes::apply($out['roads']);$out['roads']=$synchronized['roads'];$out['lane_transitions']=$synchronized['report'];
+        if($synchronized['report']['joined_boundaries']>0){
+        // Rebuild cached junction footprints after all same-road widths agree.
+        $byName=[];foreach($out['roads'] as $i=>$b)$byName[$b['name']]=$i;
+        $out['junctions']=[];$out['external_junctions']=[];$childJunctions=[];
+        foreach($out['roads'] as $i=>&$b){
+            $parentIndex=isset($b['parent_name'])?($byName[$b['parent_name']]??null):null;
+            $owner=$parentIndex!==null?$out['roads'][$parentIndex]:null;
+            if($owner===null)foreach($mainSurfaces as $s)if($s['name']===($b['external_main']??'primary')){$owner=$s;break;}
+            if($owner===null)continue;
+            $join=self::nearest($b['points'][0],$owner['points'],$owner['profiles']);
+            $b['join']=array_replace($b['join'],$join);
+            $dx=$b['points'][1][0]-$b['points'][0][0];$dy=$b['points'][1][1]-$b['points'][0][1];$len=max(.001,hypot($dx,$dy));
+            $sine=abs($dx/$len*$join['dy']-$dy/$len*$join['dx']);$ramp=$b['kind']==='ramp';
+            $junction=$b['join']+['radius'=>$b['profiles'][0]['width_m']/2/max(.05,$sine),'branch_name'=>$b['name'],'side'=>($join['dx']*$dy-$join['dy']*$dx)>0?'left':'right'];
+            $junction['barrier_openings']=BeamBridgeOpenings::junction($owner['points'],$owner['profiles'],$b,$junction);
+            $junction['preserve_through_lanes']=$ramp||($b['network']&&$sine<.2);
+            if($parentIndex!==null)$childJunctions[$parentIndex][]=$junction;
+            elseif($b['external_main']!==null)$out['external_junctions'][$b['external_main']][]=$junction;
+            else $out['junctions'][]=$junction;
+            foreach($b['junction_obstacles'] as &$obstacle)foreach($out['roads'] as $other){
+                if($obstacle['road']===$other['points']){$obstacle['profiles']=$other['profiles'];break;}
+            }unset($obstacle);
+            if(isset($b['end_owner']['road_index'])){
+                $end=$out['roads'][$b['end_owner']['road_index']];$b['end_owner']['surface']=['points'=>$end['points'],'profiles'=>$end['profiles']];
+            }
+        }unset($b);
         }
         foreach($childJunctions as $index=>$joins){
             $out['roads'][$index]['junctions']=$joins;

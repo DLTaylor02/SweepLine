@@ -14,14 +14,24 @@ final class BeamRoadside {
         $width=min(112,imagesx($small)*3);$height=$width/imagesx($small)*imagesy($small);imagecopyresampled($im,$small,(int)((128-$width)/2),(int)((128-$height)/2),0,0,(int)$width,(int)$height,imagesx($small),imagesy($small));
         ob_start();imagepng($im);$png=ob_get_clean();imagedestroy($small);imagedestroy($im);return $png;
     }
-    public static function write(array $data,array $lines,BeamRaster $raster,float $origin,string $prefix,string $path,callable $put,callable $progress):array{
+    public static function write(array $data,array $lines,BeamRaster $raster,float $origin,string $prefix,string $path,callable $put,callable $progress,array $clearanceLines=[]):array{
         $features=$data['features']??[];
+        $clearanceLines=BeamRoadClearance::prepare($clearanceLines?:$lines);
+        $adjustments=[];$unplaceable=[];
+        foreach($features as &$feature){
+            if(count($feature['points'])!==1||$feature['kind']==='level_crossing')continue;
+            $radius=match($feature['kind']){'power_tower'=>3.,'shelter'=>2.,'bench'=>1.2,'gate'=>4.,default=>.75};
+            $move=BeamRoadClearance::relocateObject($feature['points'][0],$clearanceLines,$raster,$origin,$radius);
+            if($move===null){$unplaceable[$feature['id']]=true;continue;}
+            if($move['shift_m']>0){$adjustments[$feature['id']]=['source_point'=>$feature['points'][0]]+$move;$feature['points'][0]=$move['point'];}
+        }unset($feature);
         usort($features,static fn($a,$b)=>(($a['kind']==='parking'?3:(count($a['points'])===1?0:1))<=>(($b['kind']==='parking'?3:(count($b['points'])===1?0:1))))?:strcmp($a['id'],$b['id']));
         $index=$features?new BeamRoadIndex($lines):null;
         $mesh=new BeamContextMesh($prefix,$path,\Closure::fromCallable($put));$objects=[];$counts=[];$skipped=[];$records=[];$libraries=[];$supports=[];$samples=0;$lights=0;$hedges=0;$crossings=[];$labels=[];$stockCounts=[];$stockInstances=0;$modelPolicy=[];
         $railLines=[];foreach($features as $f)if($f['kind']==='rail')$railLines[]=['points'=>$f['points']];$railIndex=$railLines?new BeamRoadIndex($railLines):null;
         $skip=static function(string $why)use(&$skipped):void{$skipped[$why]=($skipped[$why]??0)+1;};
-        $near=static function(array $p,float $clear=0.)use($index):?array{
+        $near=static function(array $p,float $clear=0.)use($index,$clearanceLines,$raster,$origin):?array{
+            if($clear>=0){$z=$raster->height(...$p)-$origin;if(BeamRoadClearance::hit($p,$clearanceLines,$z-.5,$z+3.,$clear))return null;}
             $hit=$index?->nearest($p,90);if(!$hit||$hit['raw']<0||$hit['raw']>1)return null;
             $profile=$hit['line']['profiles'][$hit['segment']]??$hit['line']['profiles'][0];$edge=$hit['distance']-$profile['width_m']/2;
             return $edge<=60.96-max(0.,$clear)&&$edge>=$clear?$hit:null;
@@ -33,21 +43,22 @@ final class BeamRoadside {
                 $road=$a[2]+($b[2]-$a[2])*$hit['fraction'];if($hit['distance']<=$profile['width_m']/2+.2&&abs($road-$z)<1)$z=max($z,$road);
             }return $z;
         };
-        foreach($features as $f)if(isset($f['osm_id'])&&in_array($f['kind'],['power_pole','power_tower'],true)&&count($f['points'])===1)$supports[$f['osm_id']]=['point'=>$f['points'][0],'height'=>self::height($f['tags'],$f['kind']==='power_tower'?20:8)];
+        foreach($features as $f)if(!isset($unplaceable[$f['id']])&&isset($f['osm_id'])&&in_array($f['kind'],['power_pole','power_tower'],true)&&count($f['points'])===1)$supports[$f['osm_id']]=['point'=>$f['points'][0],'height'=>self::height($f['tags'],$f['kind']==='power_tower'?20:8)];
         foreach($features as $i=>$f){
             if($i%25===0)$progress(null);if($mesh->limited||$samples>=24000){$skip('geometry_budget');break;}
+            if(isset($unplaceable[$f['id']])){$skip('no_clear_roadside_position');continue;}
             $kind=$f['kind'];$p=$f['points'];$tags=$f['tags'];$made=0;
             $mesh->collision(!in_array($kind,['power_line','parking','level_crossing'],true));
             if($kind==='power_line'){
                 for($j=1;$j<count($p);$j++){
                     $a=$supports[(string)($f['node_ids'][$j-1]??'')]??null;$b=$supports[(string)($f['node_ids'][$j]??'')]??null;
                     if(!$a||!$b){$skip('wire_span_missing_mapped_support');continue;}
-                    $length=hypot($p[$j][0]-$p[$j-1][0],$p[$j][1]-$p[$j-1][1]);
+                    $length=hypot($b['point'][0]-$a['point'][0],$b['point'][1]-$a['point'][1]);
                     if($length>1000){$skip('wire_span_too_long');continue;}
                     $n=max(1,(int)ceil($length/4));$previous=null;
                     for($k=0;$k<=$n;$k++){
                         if(++$samples>24000)break;
-                        $t=$k/$n;$point=[$p[$j-1][0]+($p[$j][0]-$p[$j-1][0])*$t,$p[$j-1][1]+($p[$j][1]-$p[$j-1][1])*$t];
+                        $t=$k/$n;$point=[$a['point'][0]+($b['point'][0]-$a['point'][0])*$t,$a['point'][1]+($b['point'][1]-$a['point'][1])*$t];
                         $z=(1-$t)*($ground($a['point'])+$a['height'])+$t*($ground($b['point'])+$b['height'])-4*min(3,$length*.02)*$t*(1-$t);
                         $current=[$point[0],$point[1],$z];$valid=$near($point,-100)!==null&&$z-$surface($point)>=6;
                         if($valid&&$previous){$mesh->beam($previous,$current,.035,.035,'steel');$made++;}
@@ -75,7 +86,12 @@ final class BeamRoadside {
                         if(++$samples>24000||$mesh->limited)break;
                         $a=[$p[$j-1][0]+$dx*$k/$n,$p[$j-1][1]+$dy*$k/$n];$b=[$p[$j-1][0]+$dx*($k+1)/$n,$p[$j-1][1]+$dy*($k+1)/$n];
                         $clear=$kind==='rail'?-100:($kind==='hedge'?1.8:.5);
-                        if(!$near($a,$clear)||!$near($b,$clear))continue;
+                        $safe=true;
+                        for($probe=0;$probe<=8;$probe++){
+                            $t=$probe/8;$sample=[$a[0]+($b[0]-$a[0])*$t,$a[1]+($b[1]-$a[1])*$t];
+                            if(!$near($sample,$clear)){$safe=false;break;}
+                        }
+                        if(!$safe){$skip('linear_segment_pavement_or_corridor_overlap');continue;}
                         $za=$kind==='rail'?$surface($a):$ground($a);$zb=$kind==='rail'?$surface($b):$ground($b);$h=self::height($tags,in_array($kind,['wall','retaining_wall'],true)?1.5:1.2);
                         if($kind==='fence'&&($asset=BeamRoadsideAssets::fence($tags))!==null&&$stockInstances<1500&&abs($zb-$za)<.15){
                             $object=BeamRoadsideAssets::object($asset,'mapped_fence_'.$stockInstances,[($a[0]+$b[0])/2,($a[1]+$b[1])/2,($za+$zb)/2],$h,$yaw,hypot($b[0]-$a[0],$b[1]-$a[1]));
@@ -181,6 +197,6 @@ final class BeamRoadside {
         $materials[$prefix.'_parking']['Stages'][0]=['baseColorMap'=>BeamRoadMaterials::TEXTURES.'_b.color.dds','normalMap'=>BeamRoadMaterials::TEXTURES.'_nm.normal.dds','roughnessMap'=>BeamRoadMaterials::TEXTURES.'_r.data.dds','roughnessFactor'=>.9,'metallicFactor'=>0];
         foreach($labels as $key=>$label){$materials[$key]=['class'=>'Material','name'=>$key,'mapTo'=>$key,'version'=>1.5,'Stages'=>[['baseColorMap'=>$path.$label['file'].'.color.png','roughnessFactor'=>.9]]];$materials[$key.'_back']=['class'=>'Material','name'=>$key.'_back','mapTo'=>$key.'_back','version'=>1,'Stages'=>[['diffuseColor'=>[.5,.5,.5,1]]]];}
         if($result['mesh_parts']||$labels)$put('art/context/main.materials.json',json_encode($materials,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES));
-        return ['objects'=>$objects,'material_libraries'=>array_merge(($result['mesh_parts']||$labels)?[$path.'art/context/main.materials.json']:[],array_keys($libraries)),'report'=>['fetch_status'=>$data['fetch_status']??'not_requested','warning'=>$data['warning']??null,'requests'=>$data['requests']??[],'source'=>'Mapped roadside infrastructure; per-record provider retained','placed_features'=>$counts,'records'=>$records,'crossings'=>$crossings,'skipped'=>$skipped,'skipped_parse'=>$data['skipped']??[],'truncated'=>($data['truncated']??false)||$result['limited']||$samples>=24000,'mesh_parts'=>$result['mesh_parts'],'collision_mesh_parts'=>$result['collision_parts'],'visual_mesh_parts'=>$result['visual_parts'],'primitives'=>$result['primitives'],'lights'=>$lights,'hedge_instances'=>$hedges,'stock_assets'=>$stockCounts,'stock_instances'=>$stockInstances,'stock_policy'=>$modelPolicy,'model_policy'=>'Stock models first when the mapped type, footprint, dimensions and slope fit; generated geometry for unsupported models or exact paths.','collision'=>'Solid roadside objects use stock collision meshes or generated visible-mesh collision. Wires and parking/crossing overlays remain visual-only; road/terrain collision is unchanged.','limits'=>'200 ft from road edges; 2,000 features, 40,000 source points, 24,000 samples, 12,000 mesh primitives, 500 hedge instances, 1,500 stock instances and 64 lights.','estimates'=>'Dimensions, materials, foundations, orientation where absent, cable sag and railway gauge/sleeper spacing may be estimated. No new feature locations or crossings are invented.']];
+        return ['objects'=>$objects,'material_libraries'=>array_merge(($result['mesh_parts']||$labels)?[$path.'art/context/main.materials.json']:[],array_keys($libraries)),'report'=>['fetch_status'=>$data['fetch_status']??'not_requested','warning'=>$data['warning']??null,'requests'=>$data['requests']??[],'source'=>'Mapped roadside infrastructure; per-record provider retained','placed_features'=>$counts,'records'=>$records,'placement_adjustments'=>$adjustments,'crossings'=>$crossings,'skipped'=>$skipped,'skipped_parse'=>$data['skipped']??[],'truncated'=>($data['truncated']??false)||$result['limited']||$samples>=24000,'mesh_parts'=>$result['mesh_parts'],'collision_mesh_parts'=>$result['collision_parts'],'visual_mesh_parts'=>$result['visual_parts'],'primitives'=>$result['primitives'],'lights'=>$lights,'hedge_instances'=>$hedges,'stock_assets'=>$stockCounts,'stock_instances'=>$stockInstances,'stock_policy'=>$modelPolicy,'model_policy'=>'Stock models first when the mapped type, footprint, dimensions and slope fit; generated geometry for unsupported models or exact paths.','collision'=>'Solid roadside objects use stock collision meshes or generated visible-mesh collision. Wires and parking/crossing overlays remain visual-only; road/terrain collision is unchanged.','limits'=>'200 ft from road edges; 2,000 features, 40,000 source points, 24,000 samples, 12,000 mesh primitives, 500 hedge instances, 1,500 stock instances and 64 lights.','estimates'=>'Dimensions, materials, foundations, orientation where absent, cable sag and railway gauge/sleeper spacing may be estimated. No new feature locations or crossings are invented.']];
     }
 }

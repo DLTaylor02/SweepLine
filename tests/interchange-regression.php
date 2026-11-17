@@ -41,4 +41,14 @@
     check($placed['report']['placed']===2&&$placed['report']['records'][0]['source_point']===[100,110]&&isset($placed['report']['records'][0]['placement_adjustment'])&&
         abs($placed['objects'][2]['position'][1]-$placed['objects'][0]['position'][1]-1.2)<1e-7,'Ramp-conflicting compound signs move as an assembly, preserve mapped coordinates in diagnostics and retain panel spacing');
 
+
+    $objectMove=SweepLine\BeamRoadClearance::relocateObject([100,100],$roads,$raster,0.,3.);
+    check($objectMove!==null&&$objectMove['shift_m']>0&&SweepLine\BeamRoadClearance::hit($objectMove['point'],$roads,99.,103.,3.)===null,'Roadside object footprints move clear of ordinary roads as well as ramps');
+    $feature=static fn($id,$kind,$p)=>['id'=>$id,'kind'=>$kind,'points'=>$p,'tags'=>[],'timestamp'=>null];
+    $context=SweepLine\BeamRoadside::write(['features'=>[
+        $feature('pole','power_pole',[[100,110]]),
+        $feature('fence','fence',[[100,105],[100,115]])
+    ]],[$roads[0]],$raster,0.,'clearance','/levels/test/',static fn($p,$s)=>null,$noop,$roads);
+    check(isset($context['report']['placement_adjustments']['pole'])&&($context['report']['placed_features']['power_pole']??0)===1,'Roadside point placement accounts for ramps absent from the nearest-road association list');
+    check(($context['report']['skipped']['linear_segment_pavement_or_corridor_overlap']??0)>0,'Fence segments crossing another exported road are omitted explicitly');
 })();

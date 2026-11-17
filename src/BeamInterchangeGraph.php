@@ -17,7 +17,10 @@ final class BeamInterchangeGraph
             if(count($points)!==count($ids)||count($ids)<2){$note('missing_node_identity',(string)$i,$seed['osm_id']);continue;}
             $root='root_'.hash('sha256',$seed['osm_id'].':'.$ids[0].':'.$ids[1]);$roots[$root]=true;
             $attachments[(string)$ids[0]]=$points[0];
-            $queue[]=['row'=>$seed,'points'=>$points,'ids'=>$ids,'parent'=>null,'root'=>$root,'remaining'=>$rampLimit,'kind'=>'ramp','aligned'=>$seed['profile']['legal_forward']??true];
+            $at=array_search($ids[0],$seed['node_ids']??[]);
+            $aligned=$at!==false?((string)($seed['node_ids'][$at+1]??'')===(string)$ids[1]):
+                (((int)($seed['direction']??0))<0?!($seed['profile']['legal_forward']??false):($seed['profile']['legal_forward']??true));
+            $queue[]=['row'=>$seed,'points'=>$points,'ids'=>$ids,'parent'=>null,'root'=>$root,'remaining'=>$rampLimit,'kind'=>'ramp','aligned'=>$aligned];
         }
         for($head=0;$head<count($queue);$head++){
             $progress(null);$work=$queue[$head];$queue[$head]=null;$points=[];$ids=[];$parts=[];$next=[];$left=$work['remaining'];$distance=0.;$complete=true;$row=$work['row'];$pathSeen=[];$initialAligned=$work['aligned'];$partialKeys=[];
@@ -53,7 +56,7 @@ final class BeamInterchangeGraph
                     $nodeIds[count($arm)-1]='limit:'.hash('sha256',json_encode(end($arm)));
                     $partLength=BeamRampNetwork::length($arm);$complete=false;$note('per_ramp_distance_limit',$work['root'],$row['osm_id']);
                 }
-                $parts[]=['points'=>$arm,'tags'=>$row['tags']??[],'highway'=>$row['highway'],'direction'=>(int)($row['direction']??0),'osm_id'=>$row['osm_id']];
+                $parts[]=['points'=>$arm,'tags'=>$row['tags']??[],'highway'=>$row['highway'],'direction'=>(int)($row['direction']??0),'source_aligned'=>$work['aligned'],'osm_id'=>$row['osm_id']];
                 if(!$points){$points=$arm;$ids=$nodeIds;}else {array_push($points,...array_slice($arm,1));array_push($ids,...array_slice($nodeIds,1));}
                 for($j=1;$j<count($nodeIds);$j++)$pathSeen[self::atom($nodeIds[$j-1],$nodeIds[$j])]=true;
                 $left-=$partLength;$distance+=$partLength;

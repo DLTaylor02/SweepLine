@@ -809,3 +809,21 @@ All generated bridge supports check the complete exported road set, including se
 Sign relocation is a narrowly authorized exception: an assembly must actually overlap a ramp pavement/board-clearance footprint at its mounting elevation. It is moved by the smallest clear candidate distance along a ramp normal, with a 30 m search bound. Candidate positions must clear every exported road; unresolved cases remain omitted. Other signs are not repositioned. Compound panels share their assembly move and retain their outward spacing. Source coordinates remain in records, and placement_adjustment records the reason, distance and affected ramp. The supplied archive contained one matching sign, clearable by about 0.53 m. Road ends and vertically separated overpasses do not authorize unrelated sign moves.
 
 The archive audit also found eleven existing piers failing the new road/vehicle-clearance check. These measurements identify reproducible input cases; they do not replace full-map in-game validation. No road names, OSM IDs or geographic exceptions are encoded in production behavior.
+
+
+### Roadside object pavement clearance (0.186.0)
+
+Poles, streetlights, towers, benches, shelters, bollards, gates and markers are checked against every exported road, including interchange ramps and opposite-carriageway context. Conflicting point objects use the shared roadside relocation search (at most 30 m), retain the 200 ft corridor check, and are omitted if no clear position is available. Cable endpoints follow relocated supports. Source coordinates and moves are recorded in roadside_data.placement_adjustments.
+
+Fence, wall and hedge segments are checked along their length and omitted where they overlap pavement; their mapped paths are not bent around roads. Mapped railways and level crossings retain their intentional crossing treatment. Existing sign movement remains limited to ramp conflicts. These checks supplement the existing building and vegetation pavement exclusions; in-game validation remains necessary.
+
+
+### Connected interchange lane transitions (0.187.0)
+
+Interchange context roads now share their lane-width and divider transitions across verified same-road section boundaries. The same 100 ft each-side taper is applied to a continuous chain, then split back into the original road sections. Mapped centerlines and elevations remain unchanged. Bridge-boundary widening/narrowing retains its approach timing, and junction footprints and cached parent/obstacle widths are refreshed before rendering and terrain shaping.
+
+A continuation requires a genuine shared OSM node, matching road name/reference or source way, compatible classification and travel direction, aligned endpoint tangents, and matching endpoint position/elevation. Ambiguous forks, distinct roads, separate levels and one-way/two-way splits retain their existing treatment. This removes abrupt section-boundary steps without assuming that every road at a junction has the same lane count. OSM turn-lane counts remain source data; this change does not invent surveyed lane geometry or turn arrows.
+
+intersection_context.lane_transitions in the build report records joined boundaries, chain count, changed samples and ambiguous endpoints. A replay of the supplied export, using its recorded legal directions to restore missing original-source orientation, identified 131 continuations across 54 chains. New exports require in-game validation; existing ZIPs are unchanged.
+
+Graph source parts retain source_aligned to distinguish graph traversal order from original OSM direction. Lane matching uses that orientation for one-way legality and asymmetric forward/backward counts; reversing a graph edge no longer silently reverses its traffic attributes.

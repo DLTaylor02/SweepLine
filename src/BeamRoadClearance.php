@@ -38,19 +38,24 @@ final class BeamRoadClearance
     /** Only an actual ramp overlap authorizes moving an otherwise mapped sign. */
     public static function relocateSign(array $point,array $lines,BeamRaster $raster,float $origin): ?array
     {
+        return self::relocateObject($point,$lines,$raster,$origin,.75,true);
+    }
+    /** Move a mapped point only when its footprint overlaps pavement at its mounting height. */
+    public static function relocateObject(array $point,array $lines,BeamRaster $raster,float $origin,float $padding=.75,bool $rampOnly=false): ?array
+    {
         $ground=$raster->height(...$point)-$origin;
         $ramps=array_values(array_filter($lines,static fn($line)=>($line['kind']??'')==='ramp'));
-        $blocked=self::hit($point,$ramps,$ground-.5,$ground+3.,.75);
+        $blocked=self::hit($point,$rampOnly?$ramps:$lines,$ground-.5,$ground+3.,$padding);
         if(!$blocked)return ['point'=>$point,'shift_m'=>0.];
         $n=$blocked['hit'];$normal=[-$n['dy'],$n['dx']];$offset=($point[0]-$n['x'])*$normal[0]+($point[1]-$n['y'])*$normal[1];$options=[];
         foreach([1.,-1.] as $side){
-            $start=max(.5,$n['half_width']+.85-$side*$offset);
+            $start=max(.5,$n['half_width']+$padding+.1-$side*$offset);
             for($distance=$start;$distance<=30.;$distance+=.5){
                 $candidate=[$point[0]+$side*$normal[0]*$distance,$point[1]+$side*$normal[1]*$distance];
                 if(min($candidate)<0||max($candidate)>=$raster->side)continue;
                 $z=$raster->height(...$candidate)-$origin;
-                if(self::hit($candidate,$lines,$z-.5,$z+3.,.75))continue;
-                $options[]=['point'=>$candidate,'shift_m'=>$distance,'reason'=>'ramp_pavement_overlap','ramp'=>$blocked['line']['name']??null];break;
+                if(self::hit($candidate,$lines,$z-.5,$z+3.,$padding))continue;
+                $options[]=['point'=>$candidate,'shift_m'=>$distance,'reason'=>$rampOnly?'ramp_pavement_overlap':'pavement_overlap','ramp'=>$blocked['line']['name']??null];break;
             }
         }
         if(!$options)return null;

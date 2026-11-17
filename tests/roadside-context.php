@@ -32,7 +32,7 @@ use SweepLine\{BeamRoadsideData,BeamRoadside,BeamRoadsideAssets,BeamRaster};
     foreach(['power_pole','power_tower','power_line','streetlight','fence','wall','retaining_wall','hedge','gate','bollard','bus_stop','mile_marker','shelter','bench','rail','level_crossing','parking'] as $kind)
         check(($result['report']['placed_features'][$kind]??0)>0,'Mapped '.$kind.' has a rendered representation');
     check($result['report']['lights']===1&&$result['report']['stock_instances']>6,'Stock-first roadside details include an operational streetlight');
-    check(($result['report']['skipped']['outside_corridor_or_on_pavement']??0)>=2,'Objects outside the corridor or on pavement are omitted rather than moved');
+    check(($result['report']['skipped']['outside_corridor_or_on_pavement']??0)>=1&&count($result['report']['placement_adjustments'])>=1,'Objects outside the corridor are omitted; pavement-conflicting point objects move to a clear roadside position');
     check(isset($files['art/context/main.materials.json'])&&count(array_filter(array_keys($files),static fn($s)=>str_ends_with($s,'.dae')))>0,'Generated paths and fallbacks are packaged with materials');
     check($result['report']['collision_mesh_parts']>0&&$result['report']['visual_mesh_parts']>0,'Solid roadside meshes are separated from visual cable and parking overlays');
     $stockSolid=array_filter($result['objects'],static fn($o)=>str_starts_with($o['name']??'','mapped_stock_')&&in_array($o['collisionType']??'',['Collision Mesh','Visible Mesh Final'],true));
