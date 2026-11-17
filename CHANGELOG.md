@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.181.0:** Reconcile approach-estimated tunnel floors with overlying mapped pavement before terrain shaping, retaining clearance, roof thickness, XY and distant approach anchors. Reprepare connected roads after fitting; reject excessive adjustments or grades. Allow bounded cover corrections only above actual outer roofs, with overlapping-tunnel protection and no deep residual excavation. Record fitting/correction metrics; add generic and anonymized measured two-bore regressions.
+
 - **0.180.0:** Fix reproduced underpass terrain failures caused by freezing ground beneath elevated bridges. Ordinary rendered pavement may lower bridge-ground vertices only when below every covering bridge underside; tunnel cover and same-level structure constraints remain frozen. Preserve road/deck geometry and clearance tolerances, record underpass corrections, add offline --repair replay and anonymized measured plus generic stacked-structure regressions.
 
 - **0.179.0:** Automatically capture bounded terrain-clearance diagnostic ZIPs for failed BeamNG exports. Include local terrain, broad/exact protection flags, actual visible pavement and nearby structure segments, selected coordinates and version; exclude configuration/credentials. Add owner-only Download diagnostic ZIP links with 24-hour expiry, maintenance cleanup and an offline replay CLI. Add capture/replay, secret-exclusion, frontend and native access/retention tests.

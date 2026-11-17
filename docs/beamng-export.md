@@ -758,3 +758,12 @@ php bin/replay-terrain-diagnostic.php path/to/terrain-diagnostic.zip --repair
 ```
 
 The input ZIP is never modified. An output of reproduced=false after repair means the captured visible-pavement obstruction was cleared; exit codes remain 0 for an obstruction, 2 for no obstruction, and 1 for invalid input. A full export may still expose a different uncaptured issue. This change was verified against the supplied failure snapshot and a translated, anonymized regression fixture, without changing road geometry or loosening the clearance tolerance.
+
+
+### Estimated tunnels beneath crossing roads (0.181.0)
+
+A surface street can conflict with an approach-derived tunnel roof even when the real roads are clear. Before terrain shaping, SweepLine compares mapped overlying pavement with estimated tunnel floors. Where necessary it lowers the estimated underground profile, preserving its existing clearance (including posted-clearance margins), the 35 cm roof shell, road XY, and approach anchors at least 50 m outside the portals. The correction uses a smooth 50 m taper, is limited to 2 m, and must retain an approach grade of at most 12%. Non-estimated profiles and conflicts outside these constraints are rejected rather than forced through. These are estimates, not measurements of the actual underground road.
+
+Connected roads are prepared again against corrected parent elevations. Every adjustment is recorded in `tunnel_profile_fitting` in the build report. Final terrain contact may lower tunnel cover only as far as the outer roof; overlapping bores use the highest roof. Cover corrections are bounded to 2 m per vertex and cannot transfer an impossible roof conflict into a deep adjacent excavation. Bridge-ground permissions never override roof constraints. `tunnel_cover_vertices_lowered` records these corrections.
+
+The supplied failure was reproduced and cleared using its local measured geometry, translated and anonymized for regression tests. This validates the captured crossing; a fresh full export is still necessary to check the rest of the network. Existing diagnostic replay repairs terrain only: it does not silently change captured road profiles.

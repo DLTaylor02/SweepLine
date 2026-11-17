@@ -173,3 +173,29 @@ $approachBefore=$tCoverage($tGroundValues,70,164.4);$approachAfter=$tCoverage($t
 check($approachBefore!==null&&$approachAfter!==null&&abs($approachBefore-10.2)<1e-6&&abs($approachAfter-10.2)<1e-6,'Tunnel terrain supports both road edges fifty metres beyond the portals');
 $fadeBefore=$tCoverage($tGroundValues,50,164.4);$fadeAfter=$tCoverage($tGroundValues,270,155.6);
 check($fadeBefore>10&&$fadeBefore<10.2&&$fadeAfter>10&&$fadeAfter<10.2,'Extended tunnel approach support blends back into original terrain at its outer ends');
+
+(function():void{
+$make=static function($id,$points,$ids,$class='motorway_link',$at=0){
+ $tags=['highway'=>$class,'lanes'=>'2'];$p=SweepLine\BeamLanes::infer($tags,$class,0);
+ return ['osm_id'=>$id,'highway'=>$class,'direction'=>0,'tags'=>$tags,'points'=>$points,'node_ids'=>$ids,'point_index'=>$at,'profile'=>$p,'width_m'=>$p['width_m']];
+};
+$seed=$make(1,[[40,160],[160,120]],[1,2]);$seed['full_points']=$seed['points'];$seed['arm_nodes']=[1,2];
+$network=SweepLine\BeamRampNetwork::walk([$seed],static fn($node)=>$node===2?[$make(2,[[160,40],[160,120],[160,280]],[3,2,4],'secondary',1)]:[],static fn($m)=>null);
+$plan=['terrain_style'=>'aerial','name'=>'Synthetic crossing street','alternate_names'=>[],'resolution'=>64,'padding_miles'=>.5,'epsg'=>32611,'bounds'=>[0,0,320,320],'points'=>[[40,160],[280,160]],'sources'=>[
+ ['points'=>[[40,160],[120,160]],'tags'=>['lanes'=>'2'],'highway'=>'secondary','direction'=>0],
+ ['points'=>[[120,160],[200,160]],'tags'=>['lanes'=>'2','tunnel'=>'yes'],'highway'=>'secondary','direction'=>0],
+ ['points'=>[[200,160],[280,160]],'tags'=>['lanes'=>'2'],'highway'=>'secondary','direction'=>0]
+ ],'center'=>[-100,40],'oneway'=>false,'intersection_data'=>$network];
+$heights='';for($y=63;$y>=0;$y--)for($x=0;$x<64;$x++)$heights.=pack('g',100+max(0.,4.8-abs($x*5-160)/10));
+$r=new SweepLine\BeamRaster(64,320,$heights,str_repeat(chr(100),12288));
+$file=tempnam(sys_get_temp_dir(),'sl-tunnel-crossing-');
+try{$report=SweepLine\BeamMap::build($plan,$r,str_repeat('a',32),$file,static fn($m)=>null);
+ check(count($report['tunnel_profile_fitting'])===1&&$report['tunnel_profile_fitting'][0]['lowering_m']>.6&&$report['tunnel_data']['spans'][0]['clearance_m']===4.8,'Full ZIP fits an estimated bore under a crossing street while retaining tunnel clearance');
+ check($report['intersection_context']['network_manifest']['prepared']===3&&$report['intersection_context']['network_manifest']['missing_context_ids']===[],'Repreparing tunnel approaches preserves the complete connected crossing-road network');
+ $zip=new ZipArchive();$zip->open($file);$base='levels/sweepline_aaaaaaaaaaaaaaaa/';
+ $saved=json_decode($zip->getFromName($base.'sweepline-report.json'),true,512,JSON_THROW_ON_ERROR);
+ check($saved['tunnel_profile_fitting']==json_decode(json_encode($report['tunnel_profile_fitting'],JSON_THROW_ON_ERROR),true,512,JSON_THROW_ON_ERROR)&&$zip->getFromName($base.'art/tunnels/interior.dae')!==false,'Final archive retains fitted-profile diagnostics and generated tunnel collision geometry');
+ $zip->close();
+}finally{if(is_file($file))unlink($file);}
+
+})();

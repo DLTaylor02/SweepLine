@@ -61,7 +61,7 @@ final class BeamTerrainDiagnostic
             foreach($data['nearby_surfaces'] as $surface)foreach($surface['segments'] as $segment)$surfaces[]=['road'=>[$segment['a'],$segment['b']],
                 'profiles'=>[['width_m'=>$segment['width_a_m']],['width_m'=>$segment['width_b_m']]],'spans'=>$surface['spans'],'chainage_offset'=>$segment['start_m']];
             $constraints=BeamTerrainContact::structureConstraints($surfaces,$raster,static fn($m)=>null);
-            BeamTerrainContact::triangles($data['visible_pavement_triangles'],$raster,(float)$data['origin_m'],$constraints['mask'],static fn($m)=>null,true,'',$constraints['bridge_undersides']);
+            BeamTerrainContact::triangles($data['visible_pavement_triangles'],$raster,(float)$data['origin_m'],$constraints['mask'],static fn($m)=>null,true,'',$constraints['bridge_undersides'],$constraints['tunnel_roofs']);
         }
         return BeamTerrainContact::obstruction($data['visible_pavement_triangles'],$raster,(float)$data['origin_m']);
     }
