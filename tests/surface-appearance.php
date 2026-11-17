@@ -1,8 +1,8 @@
 <?php
 (function():void{
     $material=\SweepLine\BeamRoadMaterials::material('test','/levels/test/art/roads/paint.color.png',[]);
-    $base=$material['Stages'][0];$paint=$material['Stages'][1];
-    check($material['activeLayers']===2&&!isset($paint['detailMap'])&&$paint['opacityMap']==='/levels/test/art/roads/paint.paint.data.png','Asphalt variation does not modulate or mask lane paint');
+    $base=$material['Stages'][0];$paint=\SweepLine\BeamRoadMaterials::paintMaterial('paint','/levels/test/art/roads/paint.color.png');
+    check($material['activeLayers']===1&&$paint['alphaTest']&&$paint['Stages'][0]['diffuseMap']==='/levels/test/art/roads/paint.color.png','Asphalt and single-sample alpha paint use independent surfaces');
     check(!isset($base['detailMap'])&&!isset($base['detailBaseColorMapStrength'])&&!isset($paint['detailMap']),'Road material excludes the detail-map shader feature added in v0.152.0');
     check($material['groundType']==='ASPHALT'&&isset($base['normalMap'],$base['roughnessMap']),'Restored material retains stock asphalt physics and PBR surface detail');
     $uniform=[110,115,105];

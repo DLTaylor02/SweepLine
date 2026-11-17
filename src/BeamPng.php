@@ -18,6 +18,20 @@ final class BeamPng
     {
         return self::rgb(256,self::ROAD_TEXTURE_HEIGHT,static fn($x,$y)=>self::roadPixel($profile,$x,$y%256));
     }
+    /** Color and coverage share one RGBA sample, avoiding independently filtered masks. */
+    public static function paint(array $profile): string
+    {
+        $raw='';
+        for($y=0;$y<self::ROAD_TEXTURE_HEIGHT;$y++){
+            $raw.="\0";
+            for($x=0;$x<256;$x++){
+                $c=self::roadPixel($profile,$x,$y%256);$visible=$c[0]>150;
+                $raw.=chr($c[0]).chr($c[1]).chr($c[2]).chr($visible?255:0);
+            }
+        }
+        $chunk=static fn($type,$data)=>pack('N',strlen($data)).$type.$data.pack('N',crc32($type.$data));
+        return "\x89PNG\r\n\x1a\n".$chunk('IHDR',pack('NNCCCCC',256,self::ROAD_TEXTURE_HEIGHT,8,6,0,0,0)).$chunk('IDAT',gzcompress($raw,6)).$chunk('IEND','');
+    }
     public static function paintMask(array $profile): string
     {
         return self::rgb(256,self::ROAD_TEXTURE_HEIGHT,static function($x,$y)use($profile){$value=self::roadPixel($profile,$x,$y%256)[0]>150?255:0;return [$value,$value,$value];});
@@ -26,7 +40,12 @@ final class BeamPng
     {
             $noise=(($x*17+$y*31)%11)-5;$color=[62+$noise,63+$noise,65+$noise];
             $edgeMargin=isset($profile['shoulder_m'])?(int)round(255*$profile['shoulder_m']/$profile['width_m']):0;
-            if(!empty($profile['unmarked'])){if((!empty($profile['keep_edge_left'])&&abs($x-$edgeMargin)<=1)||(!empty($profile['keep_edge_right'])&&abs($x-(255-$edgeMargin))<=1))return [235,235,225];return $color;}
+            if(!empty($profile['unmarked'])){
+                if(!empty($profile['keep_edge_left'])&&abs($x-$edgeMargin)<=1)return !empty($profile['oneway'])&&($profile['legal_forward']??true)?[235,190,35]:[235,235,225];
+                if(!empty($profile['keep_edge_right'])&&abs($x-(255-$edgeMargin))<=1)return !empty($profile['oneway'])&&!($profile['legal_forward']??true)?[235,190,35]:[235,235,225];
+                return $color;
+            }
+            if((!empty($profile['open_edge_left'])&&abs($x-$edgeMargin)<=1)||(!empty($profile['open_edge_right'])&&abs($x-(255-$edgeMargin))<=1))return $color;
             $margin=isset($profile['shoulder_m'])?(int)round(255*$profile['shoulder_m']/$profile['width_m']):0;
             if($margin?abs($x-$margin)<=1||abs($x-(255-$margin))<=1:$x<5||$x>250){
                 $inner=!empty($profile['oneway'])&&(($profile['legal_forward']??true)?$x<128:$x>=128);

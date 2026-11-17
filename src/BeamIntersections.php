@@ -213,6 +213,12 @@ final class BeamIntersections
                 $nodes[]=[$p[0],$p[1],$z];$branchProfiles[]=($edgeProfiles[$i]??$profile)+['unmarked'=>false];
             }
             if(count($nodes)<2){$out['skipped']++;continue;}
+            if($network){
+                $beforeAnchor=$nodes;$nodes=BeamMedian::anchor($nodes,$branchProfiles,true);
+                $structure['bridges']=BeamMedian::remapSpans($structure['bridges'],$beforeAnchor,$nodes);
+                $structure['tunnels']=BeamMedian::remapSpans($structure['tunnels'],$beforeAnchor,$nodes);
+                $chain=[0.];for($j=1;$j<count($nodes);$j++)$chain[]=$chain[$j-1]+hypot($nodes[$j][0]-$nodes[$j-1][0],$nodes[$j][1]-$nodes[$j-1][1]);
+            }
             $connector=$trim<.001?[]:array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample(self::clip($local,$trim)));
             $endOwner=$network?($anchors[$branch['end_node']]??null):null;
             if($endOwner){
@@ -237,6 +243,8 @@ final class BeamIntersections
             $apronSurface=array_map(static fn($p)=>[$p[0],$p[1],$join['z']+(($p[0]-$join['x'])*$join['dx']+($p[1]-$join['y'])*$join['dy'])*$join['grade']],BeamPlan::sample($apron));
             $out['aprons'][]=['points'=>$apron,'width_m'=>$profile['width_m'],'surface'=>$apronSurface];
             $junction=$join+['radius'=>$profile['width_m']/2/$sine,'branch_name'=>'intersection_context_'.$index,'side'=>($join['dx']*$dy-$join['dy']*$dx)>0?'left':'right'];
+            $junction['barrier_openings']=BeamBridgeOpenings::junction($road,$profiles,$out['roads'][count($out['roads'])-1],$junction);
+            $junction['preserve_through_lanes']=$ramp||($network&&$sine<.2);
             if($network){
                 $owner=['road_index'=>count($out['roads'])-1,'point'=>end($nodes)];
                 $anchors[$branch['end_node']]??=$owner;
@@ -277,23 +285,35 @@ final class BeamIntersections
     /** Split only at marking boundaries; all new points lie on the original centreline. */
     public static function markingSections(array $road,array $profiles,array $junctions): array
     {
-        if(!$junctions){foreach($profiles as &$profile){$profile['unmarked']=false;$profile['keep_edge_left']=false;$profile['keep_edge_right']=false;}unset($profile);return ['points'=>$road,'profiles'=>$profiles];}
-        $cuts=[];foreach($junctions as $j){$cuts[]=max(0,$j['along']-$j['radius']);$cuts[]=$j['along']+$j['radius'];}sort($cuts);
-        $points=[$road[0]];$out=[$profiles[0]];$along=0.0;$previous=0.0;
+        if(!$junctions){foreach($profiles as &$profile){$profile['unmarked']=false;$profile['keep_edge_left']=false;$profile['keep_edge_right']=false;$profile['open_edge_left']=false;$profile['open_edge_right']=false;}unset($profile);return ['points'=>$road,'profiles'=>$profiles];}
+        $cuts=[];foreach($junctions as $j){
+            if(!empty($j['preserve_through_lanes'])){foreach($j['barrier_openings']??[] as $ranges)foreach($ranges as [$lo,$hi]){$cuts[]=$lo;$cuts[]=$hi;}}
+            else{$cuts[]=max(0,$j['along']-$j['radius']);$cuts[]=$j['along']+$j['radius'];}
+        }sort($cuts);
+        $sections=BeamJunctionBoundary::sections($road,$profiles);
+        $first=$profiles[0];$first['section_override']=$sections[0];
+        $points=[$road[0]];$out=[$first];$along=0.0;$previous=0.0;
         for($i=1;$i<count($road);$i++){
             $a=$road[$i-1];$b=$road[$i];$length=hypot($b[0]-$a[0],$b[1]-$a[1]);if($length<0.001)continue;
             $at=[];foreach($cuts as $cut)if($cut>$along+0.00001&&$cut<$along+$length-0.00001)$at[]=$cut;$at[]=$along+$length;$at=array_unique($at);
             foreach($at as $cut){
                 $t=($cut-$along)/$length;$points[]=[$a[0]+($b[0]-$a[0])*$t,$a[1]+($b[1]-$a[1])*$t,$a[2]+($b[2]-$a[2])*$t];
                 $p=$profiles[$i];$p['width_m']=$profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t;$p['unmarked']=false;if(isset($profiles[$i-1]['lane_paint'],$profiles[$i]['lane_paint']))foreach($p['lane_paint'] as $paintId=>&$line)foreach(['u','visible'] as $paintKey)$line[$paintKey]=$profiles[$i-1]['lane_paint'][$paintId][$paintKey]*(1-$t)+$profiles[$i]['lane_paint'][$paintId][$paintKey]*$t;unset($line);$p['keep_edge_left']=false;$p['keep_edge_right']=false;$mid=($previous+$cut)/2;
+                $p['section_override']=[];
+                foreach([0,1] as $side){$edge=[];foreach([0,1,2] as $axis)$edge[]=$sections[$i-1][$side][$axis]*(1-$t)+$sections[$i][$side][$axis]*$t;$p['section_override'][]=$edge;}
                 $openLeft=false;$openRight=false;
-                foreach($junctions as $join)if(abs($mid-$join['along'])<$join['radius']){$p['unmarked']=true;if(($join['side']??'')!=='right')$openLeft=true;if(($join['side']??'')!=='left')$openRight=true;}
+                foreach($junctions as $join){
+                    if(!empty($join['preserve_through_lanes'])){
+                        foreach($join['barrier_openings']??[] as $side=>$ranges)foreach($ranges as [$lo,$hi])if($mid>$lo&&$mid<$hi){if($side==='left')$openLeft=true;else $openRight=true;}
+                    }elseif(abs($mid-$join['along'])<$join['radius']){$p['unmarked']=true;if(($join['side']??'')!=='right')$openLeft=true;if(($join['side']??'')!=='left')$openRight=true;}
+                }
+                $p['open_edge_left']=$openLeft;$p['open_edge_right']=$openRight;
                 if($p['unmarked']){$p['keep_edge_left']=!$openLeft;$p['keep_edge_right']=!$openRight;}
                 $out[]=$p;$previous=$cut;
             }
             $along+=$length;
         }
-        $out[0]['unmarked']=$out[1]['unmarked']??false;$out[0]['keep_edge_left']=$out[1]['keep_edge_left']??false;$out[0]['keep_edge_right']=$out[1]['keep_edge_right']??false;
+        $out[0]['open_edge_left']=$out[1]['open_edge_left']??false;$out[0]['open_edge_right']=$out[1]['open_edge_right']??false;$out[0]['unmarked']=$out[1]['unmarked']??false;$out[0]['keep_edge_left']=$out[1]['keep_edge_left']??false;$out[0]['keep_edge_right']=$out[1]['keep_edge_right']??false;
         return ['points'=>$points,'profiles'=>$out];
     }
 

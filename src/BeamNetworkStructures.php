@@ -128,8 +128,9 @@ final class BeamNetworkStructures
             $sections=BeamJunctionBoundary::sections($track['road'],$track['profiles']);$key=$track['name'];
             $deck=BeamBridgeDeck::build($track['road'],$sections,$track['bridges'],$material);
             $file='art/shapes/'.$key.'-deck.dae';$put($file,$deck['xml']);$objects[]=$static($key.'_deck',$file,'None');
+            $wallObstacles=array_values(array_filter($obstacles,static fn($other)=>($other['name']??null)!==$track['name']));
             foreach($track['bridges'] as $i=>$span){
-                foreach(BeamBridgeDeck::barriers($track['road'],$sections,$span,$material,$track['junctions']??[]) as $side=>$xml){
+                foreach(BeamBridgeDeck::barriers($track['road'],$sections,$span,$material,$track['junctions']??[],$wallObstacles) as $side=>$xml){
                     $file='art/shapes/'.$key.'-bridge-'.$i.'-'.$side.'.dae';$put($file,$xml);$objects[]=$static($key.'_bridge_'.$i.'_rail_'.$side,$file);
                 }
                 [$first,$last]=BeamStructures::indices($track['chain'],$span);$previous=-INF;

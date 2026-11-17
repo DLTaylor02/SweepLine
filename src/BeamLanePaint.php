@@ -76,6 +76,9 @@ final class BeamLanePaint
     }
     public static function build(array $branch,array $sections,array $main,array $mainProfiles,string $prefix,array $obstacles=[]): ?array
     {
+        if(!empty($branch['junction_parent'])){$obstacles[]=['road'=>$main,'profiles'=>$mainProfiles];$main=$branch['junction_parent']['points'];$mainProfiles=$branch['junction_parent']['profiles'];}
+        if(isset($branch['end_owner']['surface']))$obstacles[]=['road'=>$branch['end_owner']['surface']['points'],'profiles'=>$branch['end_owner']['surface']['profiles']];
+        array_push($obstacles,...($branch['junction_obstacles']??[]));
         $points=$branch['points'];$profiles=$branch['profiles'];$vertices=[];$triangles=[];$along=0.;
         $surface=static function($ringA,$ringB,$u,$t){
             $a=$ringA[0];$b=$ringA[1];$c=$ringB[1];$d=$ringB[0];$left=[];$right=[];
@@ -91,6 +94,8 @@ final class BeamLanePaint
             sort($cuts);$cuts=array_values(array_unique($cuts));$seen=[];
             foreach($profiles[$i]['lane_paint']??[] as $id=>$end){
                 $begin=$profiles[$i-1]['lane_paint'][$id]??$end;if(max($begin['visible'],$end['visible'])<0.001)continue;
+                if((!empty($profiles[$i]['open_edge_left'])&&max($begin['u'],$end['u'])<.0001)||
+                    (!empty($profiles[$i]['open_edge_right'])&&min($begin['u'],$end['u'])>.9999))continue;
                 $signature=sprintf('%.6f:%.6f:%d',$begin['u'],$end['u'],$end['yellow']);if(isset($seen[$signature]))continue;$seen[$signature]=true;
                 for($j=1;$j<count($cuts);$j++){
                     $lo=$cuts[$j-1];$hi=$cuts[$j];$mid=($lo+$hi)/2;

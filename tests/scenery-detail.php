@@ -24,9 +24,9 @@
     check(count($rails)===5&&$rails[0]['collisionType']==='Collision Mesh'&&str_contains($rails[0]['shapeName'],'eca_guardrail1.dae'),'Mapped rails use native rail and post assets with collision meshes');
     $rot=$rails[1]['rotationMatrix'];$dot=$rot[0]*$rot[6]+$rot[1]*$rot[7]+$rot[2]*$rot[8];
     check(abs($dot)<1e-9&&$rot[2]>0,'Stock rail orientation follows graded runs with orthogonal axes');
-    $m=\SweepLine\BeamRoadMaterials::material('sl_road','/levels/test/art/roads/paint.color.png',$profiles[0]);$s=$m['Stages'][0];$paint=$m['Stages'][1];
-    check($m['version']===1.5&&$m['activeLayers']===2&&$m['groundType']==='ASPHALT'&&str_contains($s['baseColorMap'],'AsphaltRoad_variation_01')&&$paint['baseColorMap']==='/levels/test/art/roads/paint.color.png','Lightly weathered stock asphalt is the base and lane paint occupies a separate masked PBR layer');
-    check(!isset($s['opacityMap'])&&!isset($m['translucent'])&&$paint['opacityMap']==='/levels/test/art/roads/paint.paint.data.png','Road remains opaque while only its lane-paint layer uses a mask');
+    $m=\SweepLine\BeamRoadMaterials::material('sl_road','/levels/test/art/roads/paint.color.png',$profiles[0]);$s=$m['Stages'][0];$paint=\SweepLine\BeamRoadMaterials::paintMaterial('paint','/levels/test/art/roads/paint.color.png');
+    check($m['version']===1.5&&$m['activeLayers']===1&&$m['groundType']==='ASPHALT'&&str_contains($s['baseColorMap'],'AsphaltRoad_variation_01')&&$paint['Stages'][0]['diffuseMap']==='/levels/test/art/roads/paint.color.png','Weathered stock asphalt retains its detail while lane color comes from a separate paint surface');
+    check(!isset($s['opacityMap'])&&!isset($m['translucent'])&&$paint['alphaTest']&&!$paint['translucent'],'Road stays opaque and lane paint uses a single alpha-tested sample');
     check(\SweepLine\BeamRockPalette::stockAsset([140,140,135])==='neutral_rock'&&\SweepLine\BeamRockPalette::stockAsset([170,120,85])==='utah_rock','Rock palette selects matching native mesh and distance appearances instead of tinting red billboards');
     $asphaltRepeat=\SweepLine\BeamPng::ROAD_TEXTURE_LENGTH_M;
     check($asphaltRepeat===48&&\SweepLine\BeamPng::PAINT_REPEAT_LENGTH_M===12,'Asphalt repeats four times less often with an independent paint period');

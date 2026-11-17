@@ -50,7 +50,7 @@ final class BeamTrack
         $surfaces=array_merge([['name'=>$key]+$render],$context['roads']);$report=[];
         foreach($surfaces as $i=>$surface){
             foreach($surface['profiles'] as $p){$m=BeamPavement::key($p);if(isset($materials[$m]))continue;
-                $file='art/roads/'.$m.'.color.png';$materials[$m]=BeamRoadMaterials::material($prefix.'_road_'.$m,$path.$file,$p);$put($file,BeamPng::road($p));$put(BeamRoadMaterials::maskPath($file),BeamPng::paintMask($p));
+                $file='art/roads/'.$m.'.color.png';$materials[$m]=BeamRoadMaterials::material($prefix.'_road_'.$m,$path.$file,$p);$materials['paint_'.$m]=BeamRoadMaterials::paintMaterial($prefix.'_road_paint_'.$m,$path.$file);$put($file,BeamPng::paint($p));
             }
             $sections=$i===0?BeamJunctionBoundary::renderSections($road,$profiles,$surface['points']):null;
             $obstacles=[['road'=>$main,'profiles'=>$mainProfiles,'weld_boundary'=>$i!==0,'preserve_junction_paint'=>$i===0&&!empty($track['shared_junctions'])]];if($i)foreach($otherContext as $other){
@@ -62,6 +62,7 @@ final class BeamTrack
             $edge='art/roads/'.$key.'-'.$i.'-edge.dae';$put($edge,$mesh['fascia_xml']);$objects[]=$static($key.'_edge_'.$i,$edge,$mesh['position'],'None');
             $paint=BeamLanePaint::build($surface,$sections??BeamJunctionBoundary::sections($surface['points'],$surface['profiles']),$road,$profiles,$prefix,$obstacles);
             if($paint){$file='art/roads/'.$key.'-'.$i.'-paint.dae';$put($file,$paint['xml']);$o=$static($key.'_paint_'.$i,$file,$paint['position'],'None');$o['castShadows']=false;$objects[]=$o;unset($paint['xml']);$mesh['lane_transition_paint']=$paint;}
+            $objects[]=BeamRoadMaterials::writePaint($mesh,$prefix,'art/roads/'.$key.'-'.$i.'-markings.dae',$path,$put,$key.'_markings_'.$i);
             unset($mesh['xml'],$mesh['fascia_xml']);$mesh['boundary_height_mode']=$i===0?'Independent carriageway elevation; XY overlap clipping only':'Mapped junction boundary welding';$report[]=$mesh;
         }
         if($track['bridges']){

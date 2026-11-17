@@ -36,15 +36,22 @@ final class BeamBridgeDeck
     }
 
     /** Closed collision barriers share the deck edge, with foundations extending into its slab. */
-    public static function barriers(array $points,array $sections,array $span,string $material,array $junctions=[]): array
+    public static function barriers(array $points,array $sections,array $span,string $material,array $junctions=[],array $obstacles=[]): array
     {
+        foreach($obstacles as $other){
+            $open=[];foreach([0=>'left',1=>'right'] as $side=>$name)$open[$name]=BeamBridgeOpenings::intervals($points,$sections,$other['points'],$other['profiles'],$side,[$span['start_m'],$span['end_m']],[-1.1,.5]);
+            if($open['left']||$open['right'])$junctions[]=['barrier_openings'=>$open];
+        }
         if($junctions){
             $out=[];
             foreach(['left','right'] as $side){
                 $intervals=[[$span['start_m'],$span['end_m']]];
-                foreach($junctions as $join)if(($join['side']??null)===$side){
-                    $lo=$join['along']-$join['radius']-1;$hi=$join['along']+$join['radius']+1;$next=[];
-                    foreach($intervals as [$a,$b]){if($b<=$lo||$a>=$hi)$next[]=[$a,$b];else{if($a<$lo)$next[]=[$a,$lo];if($b>$hi)$next[]=[$hi,$b];}}$intervals=$next;
+                foreach($junctions as $join){
+                    $cuts=isset($join['barrier_openings'])?($join['barrier_openings'][$side]??[]):
+                        ((($join['side']??null)===$side)?[[$join['along']-$join['radius']-1,$join['along']+$join['radius']+1]]:[]);
+                    foreach($cuts as [$lo,$hi]){
+                        $next=[];foreach($intervals as [$a,$b]){if($b<=$lo||$a>=$hi)$next[]=[$a,$b];else{if($a<$lo)$next[]=[$a,$lo];if($b>$hi)$next[]=[$hi,$b];}}$intervals=$next;
+                    }
                 }
                 foreach($intervals as $i=>[$lo,$hi])if($hi-$lo>.01){$part=$span;$part['start_m']=$lo;$part['end_m']=$hi;$parts=self::barriers($points,$sections,$part,$material);$out[$side.'_'.$i]=$parts[$side];}
             }

@@ -5,7 +5,7 @@ namespace SweepLine;
 /** One welded top surface per side road, including its junction connector. */
 final class BeamPavement
 {
-    public static function key(array $p): string {return $p['lanes'].'_'.$p['backward'].'_'.(int)$p['oneway'].(!empty($p['oneway'])&&!($p['legal_forward']??true)?'_reverse':'').(!empty($p['unmarked'])?'_junction':'').(!empty($p['keep_edge_left'])?'_edgeL':'').(!empty($p['keep_edge_right'])?'_edgeR':'').(!empty($p['lane_paint_segment'])?'_taper':'').(isset($p['shoulder_m'])?'_s'.(int)round(255*$p['shoulder_m']/$p['width_m']):'');}
+    public static function key(array $p): string {return $p['lanes'].'_'.$p['backward'].'_'.(int)$p['oneway'].(!empty($p['oneway'])&&!($p['legal_forward']??true)?'_reverse':'').(!empty($p['unmarked'])?'_junction':'').(!empty($p['open_edge_left'])?'_openL':'').(!empty($p['open_edge_right'])?'_openR':'').(!empty($p['keep_edge_left'])?'_edgeL':'').(!empty($p['keep_edge_right'])?'_edgeR':'').(!empty($p['lane_paint_segment'])?'_taper':'').(isset($p['shoulder_m'])?'_s'.(int)round(255*$p['shoulder_m']/$p['width_m']):'');}
     public static function section(array $points,array $profiles,int $i): array
     {
         if(isset($profiles[$i]['section_override']))return $profiles[$i]['section_override'];
