@@ -33,7 +33,6 @@ final class BeamStructures
         }
         usort($hits,static fn($a,$b)=>$a[0]<=>$b[0]);$spans=[];
         foreach($hits as [$lo,$hi]){$last=count($spans)-1;if($last>=0&&$lo<=$spans[$last]["end_m"]+0.2)$spans[$last]["end_m"]=max($spans[$last]["end_m"],$hi);else $spans[]=["start_m"=>$lo,"end_m"=>$hi];}
-        if(count($spans)>16)throw new \InvalidArgumentException("This export exceeds the 16-bridge limit.");
         foreach($spans as &$span){$span["length_m"]=$span["end_m"]-$span["start_m"];
             if($span["length_m"]<8)throw new \InvalidArgumentException("A selected bridge is shorter than the reliable eight-meter deck sampling limit.");
             if($span["length_m"]>self::MAX_LENGTH_M)throw new \InvalidArgumentException("A selected bridge is longer than the 2000-meter estimated-bridge export limit.");

@@ -22,4 +22,6 @@ use SweepLine\{BeamRaster,BeamStructures};
         try{BeamStructures::deckSamples($points,$chain,array_fill(0,9,100.),$span,$raster($side,$bump,$grade));check(false,'Unsafe bridge estimate rejected');}
         catch(RuntimeException $error){check(true,'Substantial conflicts, grade and clearance limits remain enforced');}
     }
+    $sources=[];for($i=0;$i<17;$i++)$sources[]=['points'=>[[100+$i*150,0],[120+$i*150,0]],'tags'=>['bridge'=>'yes']];
+    check(count(BeamStructures::spans([[0,0],[3000,0]],$sources,true))===17,'More than sixteen individually valid bridges are accepted without a count or aggregate-length budget');
 })();

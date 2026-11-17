@@ -105,9 +105,6 @@ final class BeamMap
         foreach($carriageways as &$track)$track['context']['junctions']=array_merge($track['context']['junctions'],$preparedIntersections['external_junctions'][$track['name']]??[]);unset($track);
         $preparedIntersections=BeamTraffic::turnarounds($preparedIntersections,$road,$profiles,$raster,$origin,$progress,$plan['building_data']['footprints']??[]);
         $networkStructures=BeamNetworkStructures::tracks($preparedIntersections);
-        $networkBridgeCount=array_sum(array_map(static fn($t)=>count($t['bridges']),$networkStructures));
-        if(count($bridges)+array_sum(array_map(static fn($t)=>count($t['bridges']),$carriageways))+$networkBridgeCount>16)
-            throw new \RuntimeException('Combined highway and interchange network exceeds the 16-bridge export limit.');
         $tunnelTracks=array_merge($carriageways,$networkStructures);
         $explicitPavement=(bool)$carriageways||(bool)$tunnels||(bool)$preparedIntersections['roads']||$rounded!==$plan['points']||$world!==$sourceWorld;
         $progress('Shaping the road corridor while preserving surrounding terrain');

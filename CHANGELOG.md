@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.175.0:** Remove bridge-count limits for individual roads and the combined highway/interchange export. Do not replace them with a total bridge-length budget. Retain individual structure validation and add a regression accepting seventeen valid spans.
+
 - **0.174.0:** Fix dense legacy refreshes hitting the combined 30,000-way cap after successful downloads. Keep source tiles as separately bounded imports, validate them without activation, verify their complete coverage and atomically switch all replacement regions together. Preserve original coverage on any child failure, mark replaced parents split, scale child continuity halos, split oversized responses immediately and retain per-import/storage limits. Add over-30k acquisition and native activation/rollback regressions.
 
 - **0.173.0:** Make full-region refresh acquisition resilient to transient provider failures: cancellation-aware 5/10-second retry waits, proactive subdivision of large requests, adaptive subdivision after repeated failures, bounded request counts and streaming OSM-identity deduplication. Validate the complete merged extract before normal atomic import; preserve active data on any failure. Record piece/request/split counts and add deterministic retry, merge, cancellation and outage regressions.
