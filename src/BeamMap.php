@@ -263,12 +263,18 @@ final class BeamMap
             $roadGround=['files'=>[],'materials'=>[],'report'=>null];
             if($explicitPavement){
                 $progress('Refining terrain at exact pavement edges');
-                $groundSurfaces=[['road'=>$road,'profiles'=>$profiles,'spans'=>$coveredSpans]];
-                foreach($carriageways as $track)$groundSurfaces[]=['road'=>$track['road'],'profiles'=>$track['profiles'],'spans'=>array_merge($track['bridges'],$track['tunnels'])];
-                foreach(array_merge([$preparedIntersections],array_column($carriageways,'context')) as $context)foreach($context['roads'] as $branch)
-                    $groundSurfaces[]=['triangles'=>static fn()=>BeamPavement::drivingTriangles($branch,$context['main_surfaces']??[])];
+                $groundSurfaces=(static function()use($road,$profiles,$coveredSpans,$carriageways,$preparedIntersections): \Generator{
+                    yield ['road'=>$road,'profiles'=>$profiles,'spans'=>$coveredSpans];
+                    foreach($carriageways as $track)yield ['road'=>$track['road'],'profiles'=>$track['profiles'],'spans'=>array_merge($track['bridges'],$track['tunnels'])];
+                    $mainSurfaces=$preparedIntersections['main_surfaces']??[];
+                    foreach($preparedIntersections['roads'] as $branch)yield ['triangles'=>static fn()=>BeamPavement::drivingTriangles($branch,$mainSurfaces)];
+                    foreach($carriageways as $track){
+                        $mainSurfaces=$track['context']['main_surfaces']??[];
+                        foreach($track['context']['roads'] as $branch)yield ['triangles'=>static fn()=>BeamPavement::drivingTriangles($branch,$mainSurfaces)];
+                    }
+                })();
                 $roadGround=BeamRoadGround::write($groundSurfaces,$raster,$origin,$categories,$groundLayers,$terrainStyle,$prefix.'_road_ground',$path,$putMesh,$progress,$maxHeight);
-                $categories=$roadGround['layers'];unset($roadGround['layers'],$groundSurfaces,$context,$branch);
+                $categories=$roadGround['layers'];unset($roadGround['layers'],$groundSurfaces);
             }
             $progress('Writing collision terrain and generic surface materials');
             // v0.40 terrain UVs are in layer/grid units, not world meters.

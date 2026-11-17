@@ -69,12 +69,15 @@ final class BeamGroundMaterials
     }
     public static function write(array $surface,string $file,callable $put): array
     {
-        $files=[];$part=0;
-        foreach(array_chunk($surface['faces'],self::batchSize(),true) as $faces){
+        gc_mem_caches();$files=[];$part=0;$faces=[];$batch=self::batchSize();
+        $emit=static function()use(&$faces,&$files,&$part,$surface,$file,$put):void{
+            if(!$faces)return;
             $name=$part?substr($file,0,-4).'-'.$part.'.dae':$file;
             $put($name,BeamAssets::mesh($surface['vertices'],$faces,array_key_first($surface['materials'])??'terrain',$surface['uv'],$surface['face_materials'],$surface['detail_uv']));
-            $files[]=$name;$part++;
-        }return $files;
+            $files[]=$name;$part++;$faces=[];
+        };
+        foreach($surface['faces'] as $id=>$face){$faces[$id]=$face;if(count($faces)>=$batch)$emit();}
+        $emit();return $files;
     }
     public static function xml(array $surface): string
     {

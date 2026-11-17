@@ -34,3 +34,15 @@ try{
  $text=file_get_contents($logPath);$data=json_decode(substr($text,strpos($text,'{')),true,512,JSON_THROW_ON_ERROR);
  check($data['inputs']['sources']===$plan['sources']&&$data['generated_geometry']['points'][0][0]===1.5&&!str_contains($text,'never-export'),'Streamed diagnostics preserve structured geometry and the existing secret allowlist');
 }finally{unlink($logPath);}
+
+$pipes=[];
+$child=proc_open([PHP_BINARY,'-n','-d','memory_limit=96M',__DIR__.'/fixtures/road-ground-memory.php'],
+    [0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,null,null,['bypass_shell'=>true]);
+if(!is_resource($child))throw new RuntimeException('Cannot start road-ground memory regression.');
+fclose($pipes[0]);$out=stream_get_contents($pipes[1]);$errors=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$status=proc_close($child);
+$measurement=json_decode($out,true);
+check($status===0&&($measurement['cells']??0)>10000&&($measurement['triangles']??0)>25000&&($measurement['files']??0)>1,
+    'Exact road-ground refinement completes a full multi-tile road network with 50 MiB resident in a 96 MiB worker');
+check($status===0&&($measurement['extra_peak']??PHP_INT_MAX)<16*1048576&&($measurement['bytes']??0)>1048576,
+    'Tiled source indexing and adaptive preparation keep additional terrain heap below 16 MiB without omitting mesh output');
+if($status!==0)fwrite(STDERR,$errors);

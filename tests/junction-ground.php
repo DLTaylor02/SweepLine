@@ -74,4 +74,11 @@
     $mesh=SweepLine\BeamPavement::build($child,$main['points'],$main['profiles'],'test',null,[],true);
     $seam=false;$correct=true;foreach($mesh['vertices'] as $p)if(abs($p[1]-85)<1e-7){$seam=true;if(abs($p[2]-11)>1e-7)$correct=false;}
     check($seam&&$correct,'A child welds to its parent final collision top instead of the obsolete raw ribbon height');
+
+    $beforeStreams=count(get_resources('stream'));$cancelled=false;
+    try{
+        SweepLine\BeamRoadGround::write([$road],$raster,0.,$layers,$layers,'stock','cancel','/levels/test/',$put,
+            static function($m):void{throw new RuntimeException('fixture cancellation');});
+    }catch(RuntimeException $e){$cancelled=$e->getMessage()==='fixture cancellation';}
+    check($cancelled&&count(get_resources('stream'))===$beforeStreams,'Cancellation closes the private refinement geometry workspace');
 })();
