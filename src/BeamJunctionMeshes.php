@@ -19,7 +19,7 @@ final class BeamJunctionMeshes
             if($end!==null&&isset($prepared['roads'][$end])&&isset($tops[$prepared['roads'][$end]['name']]))
                 $r['end_owner']['surface']['collision_top']=$tops[$prepared['roads'][$end]['name']];
             $mesh=BeamPavement::build($r,$primary['points'],$primary['profiles'],'contact',null,$obstacles,true);
-            $tops[$r['name']]=BeamJunctionBoundary::encode($mesh);$triangles+=count($mesh['triangles']);
+            $r['collision_top']=$tops[$r['name']]=BeamJunctionBoundary::encode($mesh);$triangles+=count($mesh['triangles']);
         }unset($r);
         $prepared['junction_collision_surfaces']=['roads'=>count($tops),'triangles'=>$triangles,'method'=>'Shared final clipped collision tops, compactly encoded; one owner per overlap'];
         return $prepared;

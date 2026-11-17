@@ -58,7 +58,7 @@ final class BeamRampJunctions
         foreach($prepared['main_surfaces']??[] as $s)if(isset($prepared['external_junctions'][$s['name']]))$prepared['external_junctions'][$s['name']]=$refresh($prepared['external_junctions'][$s['name']],$s);
         foreach($prepared['roads'] as &$r)if(isset($r['junctions']))$r['junctions']=$refresh($r['junctions'],$r);unset($r);
         $prepared['ramp_junction_fills']=['junctions'=>$count,'area_before_parent_clipping_m2'=>$area,'approach_length_m'=>30.48,'method'=>'Fill merge concavities; original highway pavement and lane geometry unchanged'];
-        return $prepared;
+        return BeamJunctionPaint::prepare($prepared);
     }
     private static function hull(array $points): array
     {

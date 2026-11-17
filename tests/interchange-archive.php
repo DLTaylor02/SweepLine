@@ -30,6 +30,12 @@
         check($report['carriageways']['mapped_junction_links']>=1,'Shared interchange navigation joins the opposite carriageway');
         $zip=new ZipArchive();$zip->open($file);$base='levels/sweepline_6666666666666666/';
         check($zip->getFromName($base.'map.json')!==false,'Whole interchange publishes its connected minimap graph');
+        $materials=json_decode($zip->getFromName($base.'art/roads/main.materials.json'),true,512,JSON_THROW_ON_ERROR);$references=[];$resolved=true;
+        foreach($materials as $m)if(isset($m['Stages'][0]['diffuseMap'])){
+            $png=ltrim($m['Stages'][0]['diffuseMap'],'/');$dds=preg_replace('/\.png$/D','.dds',$png);$references[$dds]=true;
+            if($zip->locateName($png)!==false||substr((string)$zip->getFromName($dds),0,4)!=='DDS ')$resolved=false;
+        }
+        check($resolved&&count($references)>0&&count($references)===$report['surface_appearance']['paint_texture_count']&&!$report['surface_appearance']['paint_texture_runtime_conversion'],'Primary, ramp and opposite-carriageway paint resolve shared cooked DDS files without source PNGs');
         $log=$zip->getFromName('build.log');$document=json_decode(substr($log,strpos($log,'{')),true,512,JSON_THROW_ON_ERROR);
         $roads=array_filter($document['generated_geometry']['intersections']['roads'],static fn($r)=>!empty($r['network']));
         check(count(array_filter($roads,static fn($r)=>$r['kind']==='receiving_road'))===4,'All receiving-road arms remain in final exported geometry');

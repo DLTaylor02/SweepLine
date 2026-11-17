@@ -64,8 +64,14 @@ final class BeamPavement
             [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,1.,base64_encode($bytes));
         }
         if($geometryOnly)return ['vertices'=>$vertices,'triangles'=>$triangles];
+        $xml=self::collada($vertices,$triangles,$origin);$paintXml=$xml;$paintCount=count($triangles);
+        if(!empty($branch['paint_exclusions'])){
+            [$paintVertices,$paintTriangles]=BeamJunctionPaint::clip($vertices,$triangles,$branch['paint_exclusions']);
+            $paintCount=count($paintTriangles);$paintXml=$paintCount?self::collada($paintVertices,$paintTriangles,$origin):null;
+            unset($paintVertices,$paintTriangles);
+        }
         $independentHeight=(bool)array_filter($obstacles,static fn($obstacle)=>($obstacle['weld_boundary']??true)===false);
-        return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge',array_merge($rings?array_slice($rings,0,-1):[],$sections)),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
+        return ['xml'=>$xml,'paint_xml'=>$paintXml,'paint_triangles'=>$paintCount,'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge',array_merge($rings?array_slice($rings,0,-1):[],$sections)),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
             'connector_end_seam_m'=>($connector?0.0:null),'boundary_height_welding'=>!$independentHeight,'junction_height_blend_m'=>$independentHeight?0:BeamJunctionBoundary::HEIGHT_BLEND_M,'method'=>$independentHeight?'Exact XY overlap clipping; independent carriageway elevations preserved.':'Exact ribbon boundary; overlapping side pavement removed; junction heights blend continuously into the primary surface.'];
     }
 

@@ -127,6 +127,7 @@ final class BeamLanePaint
             $bytes='';foreach(array_unique($tops) as $top)$bytes.=base64_decode($top,true);
             [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,1.,base64_encode($bytes));
         }
+        [$vertices,$triangles]=BeamJunctionPaint::clip($vertices,$triangles,$branch['paint_exclusions']??'');
         if(!$triangles)return null;
         foreach($vertices as &$v)$v[2]+=0.006;unset($v);
         return ['xml'=>BeamPavement::collada($vertices,$triangles,$points[0]),'position'=>$points[0],'triangles'=>count($triangles),'collision'=>'None','method'=>'The outermost right-hand driving lane opens/closes against the paved outer edge; surviving lane boundaries remain continuous.'];

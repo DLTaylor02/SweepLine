@@ -21,16 +21,19 @@ final class BeamPng
     /** Color and coverage share one RGBA sample, avoiding independently filtered masks. */
     public static function paint(array $profile): string
     {
-        $raw='';
-        for($y=0;$y<self::ROAD_TEXTURE_HEIGHT;$y++){
-            $raw.="\0";
-            for($x=0;$x<256;$x++){
-                $c=self::roadPixel($profile,$x,$y%256);$visible=$c[0]>150;
-                $raw.=chr($c[0]).chr($c[1]).chr($c[2]).chr($visible?255:0);
-            }
-        }
+        $pixels=self::paintPixels($profile);$raw='';
+        for($y=0;$y<self::ROAD_TEXTURE_HEIGHT;$y++)$raw.="\0".substr($pixels,$y*256*4,256*4);
         $chunk=static fn($type,$data)=>pack('N',strlen($data)).$type.$data.pack('N',crc32($type.$data));
         return "\x89PNG\r\n\x1a\n".$chunk('IHDR',pack('NNCCCCC',256,self::ROAD_TEXTURE_HEIGHT,8,6,0,0,0)).$chunk('IDAT',gzcompress($raw,6)).$chunk('IEND','');
+    }
+    /** Original marking artwork, shared by PNG tests and GPU-ready export textures. */
+    public static function paintPixels(array $profile): string
+    {
+        $row='';
+        for($y=0;$y<256;$y++)for($x=0;$x<256;$x++){
+            $c=self::roadPixel($profile,$x,$y);$row.=chr($c[0]).chr($c[1]).chr($c[2]).chr($c[0]>150?255:0);
+        }
+        return str_repeat($row,intdiv(self::ROAD_TEXTURE_HEIGHT,256));
     }
     public static function paintMask(array $profile): string
     {

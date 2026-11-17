@@ -135,7 +135,7 @@ try {
     for($i=0;$i<$count;$i++){$length=ord($terrain[$offset++]);$material=substr($terrain,$offset,$length);$offset+=$length;check(isset($terrainMaterials[$material]),'Terrain byte-length material name resolves');}
     check($offset===strlen($terrain),'Terrain binary has no missing or extra payload');
     $textures=json_decode($archive->getFromName($base.'art/roads/main.materials.json'),true,512,JSON_THROW_ON_ERROR);
-    foreach($roads as $road){$material=$textures[$road['topMaterial']];$paint=$textures[str_replace('_road_','_road_paint_',$road['topMaterial'])];check(str_starts_with($material['Stages'][0]['baseColorMap'],'/assets/')&&$archive->locateName(ltrim($paint['Stages'][0]['diffuseMap'],'/'))!==false&&$paint['alphaTest'],'Stock asphalt and independent local paint texture references resolve');}
+    foreach($roads as $road){$material=$textures[$road['topMaterial']];$paint=$textures[str_replace('_road_','_road_paint_',$road['topMaterial'])];check(str_starts_with($material['Stages'][0]['baseColorMap'],'/assets/')&&$archive->locateName(preg_replace('/\.png$/D','.dds',ltrim($paint['Stages'][0]['diffuseMap'],'/')))!==false&&$paint['alphaTest'],'Stock asphalt and independent local paint texture references resolve');}
     foreach($objects as $o)if($o['class']==='TSStatic') {
         check(simplexml_load_string($archive->getFromName(ltrim($o['shapeName'],'/')),SimpleXMLElement::class,LIBXML_NONET)!==false,'Procedural scenery mesh is valid COLLADA');
         break;

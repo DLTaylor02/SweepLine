@@ -21,9 +21,19 @@ final class BeamRoadMaterials
             'alphaTest'=>true,'alphaRef'=>128,'translucent'=>false,'castShadows'=>false,
             'Stages'=>[['diffuseMap'=>$texture,'diffuseColor'=>[1,1,1,1],'specularPower'=>1,'useAnisotropic'=>true]]];
     }
-    public static function writePaint(array $mesh,string $prefix,string $file,string $path,callable $put,string $name,float $offset=.004): array
+    /** Identical paint shares one DDS; logical PNG references follow BeamNG's resolver. */
+    public static function writeTexture(array $profile,callable $put,array &$cache): string
     {
-        $put($file,str_replace($prefix.'_road_',$prefix.'_road_paint_',$mesh['xml']));
+        $pixels=BeamPng::paintPixels($profile);$hash=hash('sha256',$pixels);
+        if(isset($cache[$hash]))return $cache[$hash];
+        $file='art/roads/paint-'.substr($hash,0,32).'.color.png';
+        $put(substr($file,0,-4).'.dds',BeamDds::rgba(256,BeamPng::ROAD_TEXTURE_HEIGHT,$pixels));
+        return $cache[$hash]=$file;
+    }
+    public static function writePaint(array $mesh,string $prefix,string $file,string $path,callable $put,string $name,float $offset=.004): ?array
+    {
+        $xml=array_key_exists('paint_xml',$mesh)?$mesh['paint_xml']:$mesh['xml'];if($xml===null)return null;
+        $put($file,str_replace($prefix.'_road_',$prefix.'_road_paint_',$xml));
         $position=$mesh['position'];$position[2]+=$offset;
         return ['class'=>'TSStatic','name'=>$name,'__parent'=>'MissionGroup','shapeName'=>$path.$file,'position'=>$position,
             'rotationMatrix'=>[1,0,0,0,1,0,0,0,1],'scale'=>[1,1,1],'collisionType'=>'None','decalType'=>'None','castShadows'=>false];
