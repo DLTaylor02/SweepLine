@@ -35,7 +35,7 @@
         $failed=false;try{SweepLine\BeamRampBackfill::ensure($db,$plan,$dir,static fn($m)=>null,static function(){throw new SweepLine\DownloadFailure('Offline failure',false);});}catch(RuntimeException $e){$failed=str_contains($e->getMessage(),'refresh failed');}
         $active->execute([$region]);
         check($failed&&(int)$active->fetchColumn()===$replacement,'Unavailable source stops export and preserves the active regional dataset');
-        $failed=false;try{SweepLine\BeamRampBackfill::ensure($db,$plan,$dir,static fn($m)=>null,static function($url,$path){file_put_contents($path,'<osm><remark>incomplete</remark></osm>');});}catch(RuntimeException $e){$failed=true;}
+        $failed=false;try{SweepLine\BeamRampBackfill::ensure($db,$plan,$dir,static fn($m)=>null,static function($url,$path){file_put_contents($path,'<osm><remark>incomplete</remark></osm>');},static fn()=>null);}catch(RuntimeException $e){$failed=true;}
         $active->execute([$region]);
         check($failed&&(int)$active->fetchColumn()===$replacement,'Invalid replacement source cannot activate or mark the region current');
         $incomplete=str_replace('<nd ref="9"/>','<nd ref="999999"/>',$xml);

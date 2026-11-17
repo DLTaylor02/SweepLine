@@ -41,8 +41,8 @@ final class BeamRampBackfill
             $db->prepare('UPDATE import_jobs SET ramp_context_version=2 WHERE id=?')->execute([$job]);$db->commit();return $added;
         }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
     }
-    public static function ensure(\PDO $db,array $plan,string $dir,callable $progress,?callable $download=null): array
+    public static function ensure(\PDO $db,array $plan,string $dir,callable $progress,?callable $download=null,?callable $sleep=null): array
     {
-        return BeamRegionRefresh::ensure($db,$plan,$dir,$progress,$download);
+        return BeamRegionRefresh::ensure($db,$plan,$dir,$progress,$download,$sleep);
     }
 }

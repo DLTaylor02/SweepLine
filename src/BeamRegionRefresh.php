@@ -21,7 +21,7 @@ final class BeamRegionRefresh
             if(!$root||libxml_get_errors())throw new \RuntimeException('Region refresh returned incomplete XML; current region data was retained.');
         }finally{if($opened)$xml->close();libxml_clear_errors();libxml_use_internal_errors($old);}
     }
-    public static function ensure(\PDO $db,array $plan,string $dir,callable $progress,?callable $download=null): array
+    public static function ensure(\PDO $db,array $plan,string $dir,callable $progress,?callable $download=null,?callable $sleep=null): array
     {
         $lines=[$plan['points']];foreach($plan['carriageways']??[] as $t)$lines[]=$t['points'];
         $q=$db->prepare("SELECT r.id region_id,r.slug,j.id job_id,(SELECT payload FROM data_tasks WHERE task_key=r.slug AND kind='roads' LIMIT 1) tile,ST_AsGeoJSON(j.coverage) coverage,ST_AsGeoJSON(ST_ExteriorRing(j.coverage),7) ring,ST_Area(j.coverage::geography) area
@@ -51,15 +51,8 @@ final class BeamRegionRefresh
                 $bounds=$tile['bounds']??[min(array_column($ring,0)),min(array_column($ring,1)),max(array_column($ring,0)),max(array_column($ring,1))];
                 $halo=CoveragePlanner::halo($tile+['bounds'=>$bounds]);
                 [$w,$s,$e,$n]=$bounds;$w=max(-180,$w-$halo);$e=min(180,$e+$halo);$s=max(-90,$s-$halo);$n=min(90,$n+$halo);
-                $poly=$s.' '.$w.' '.$s.' '.$e.' '.$n.' '.$e.' '.$n.' '.$w.' '.$s.' '.$w;
-                if(strlen($poly)>100000)throw new \RuntimeException('Region refresh coverage is too complex.');
-                $query='[out:xml][timeout:180][maxsize:134217728];way[highway~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service)$"](poly:"'.$poly.'");(._;>;);out body;';
-                for($attempt=1;;$attempt++){
-                    try{
-                        $download(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$path,104857600,http_build_query(['data'=>$query]),static fn($m)=>$progress('Matching road network: refreshing '.$row['slug'].' · '.$m),240);
-                        break;
-                    }catch(DownloadFailure $e){if(!$e->retryable||$attempt>=3)throw $e;$progress('Matching road network: retrying region refresh ('.($attempt+1).'/3)');usleep(250000*$attempt);}
-                }
+                $acquisition=BeamRegionDownload::fetch(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$path,[$w,$s,$e,$n],$download,
+                    static fn($m)=>$progress('Matching road network: refreshing '.$row['slug'].' - '.$m),$sleep);
                 self::validate($path);$sourceHash=hash_file('sha256',$path);$progress('Matching road network: importing refreshed region '.$row['slug']);
                 $insert=$db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage,allow_empty,started_at,ramp_context_version)
                     VALUES (?,'running',?,ST_SetSRID(ST_GeomFromGeoJSON(?),4326),true,now(),?) RETURNING *");
@@ -72,7 +65,7 @@ final class BeamRegionRefresh
                     }
                 };
                 (new Importer($db,$checkpoint))->run($job);
-                $report['upgraded']++;$report['refreshed_regions'][]=['region_id'=>(int)$row['region_id'],'previous_job_id'=>(int)$row['job_id'],'job_id'=>(int)$job['id'],'source_sha256'=>$sourceHash];
+                $report['upgraded']++;$report['refreshed_regions'][]=['region_id'=>(int)$row['region_id'],'previous_job_id'=>(int)$row['job_id'],'job_id'=>(int)$job['id'],'source_sha256'=>$sourceHash,'acquisition'=>$acquisition];
             }catch(\Throwable $e){
                 if($db->inTransaction())$db->rollBack();
                 if($job)$db->prepare("UPDATE import_jobs SET status='failed',error='Region refresh failed; previous active dataset retained',finished_at=now() WHERE id=? AND status='running'")->execute([$job['id']]);
