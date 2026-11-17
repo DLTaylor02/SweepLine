@@ -718,3 +718,9 @@ Preparation tasks use the existing split/complete hierarchy, so successful split
 Broad raster protection masks extend several cells outside actual bridge/tunnel footprints. If they leave a network road obstructed, the exporter now runs the existing exact corridor contact pass before deciding the edge is unsupported. That pass protects actual structure footprints and tunnel cover, then rechecks pavement clearance without changing or shortening roads. Maps without a blocked contact retain the existing processing path.
 
 intersection_context.final_clearance records initial_structure_contacts and exact_structure_contact diagnostics when this repair is needed. Unresolved conflicts still stop the export and identify the OSM way, distance along the edge and terrain overlap height; protection is not simply disabled.
+
+### Mixed-cell numerical contact correction (0.177.0)
+
+Exact contact repair previously rejected every constraint with editable interpolation weight squared-sum below 0.1. That can leave a small pavement overlap unresolved beside a frozen structure vertex. Partial-cell repair can now solve those constraints when the cumulative editable-vertex cut for that pass stays within 20 percent of terrain-cell spacing, bounded between 0.5 and 2 metres. Negligible editable weights or excessive required cuts are still rejected, and protected vertices never move.
+
+Road elevations and the existing clearance checks are unchanged. small_weight_corrections in exact terrain-contact reports records use of this path. This addresses a reproducible numerical rejection; it does not assume that every protected-structure conflict is safe to excavate.

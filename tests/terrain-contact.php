@@ -90,3 +90,14 @@ BeamTerrainContact::repairCorridors([
  ['name'=>'opposite','road'=>$lowRoad,'profiles'=>$priorityProfiles,'spans'=>[],'obstacles'=>[['road'=>$priorityRoad,'profiles'=>$priorityProfiles,'weld_boundary'=>false]]]
 ],$priorityRaster,0,static function($m){});
 check($priorityRaster->cell(25,22)===99.&&$priorityRaster->cell(25,28)<99,'Hidden clipped counterpart pavement cannot dig a ledge beneath the selected road');
+
+$mix=new SweepLine\BeamRaster(16,160,str_repeat(pack('g',100.21),256),str_repeat(chr(100),768));
+$mask=str_repeat("\0",256);$mask[0]="\1";
+// At least 15% editable weight keeps the required correction below the two-metre safeguard.
+$tri=[[[1.5,1.5,100.],[2.,1.5,100.],[1.5,2.,100.]]];
+$stats=BeamTerrainContact::triangles($tri,$mix,0,$mask,static fn($m)=>null,true);
+$clear=true;foreach($tri[0] as $point)if(SweepLine\BeamIntersections::terrainTop($mix,$point[0],$point[1])>99.96)$clear=false;
+check($clear&&$stats['small_weight_corrections']>0&&abs($mix->cell(0,0)-100.21)<.0001,'Small overlap near a frozen terrain vertex is resolved through bounded editable weights while protected ground stays unchanged');
+$deep=new SweepLine\BeamRaster(16,160,str_repeat(pack('g',100.21),256),str_repeat(chr(100),768));$before=$deep->heights;
+$stats=BeamTerrainContact::triangles([[[.001,.001,100.],[.002,.001,100.],[.001,.002,100.]]],$deep,0,$mask,static fn($m)=>null,true);
+check($stats['protected_contacts_unresolved']>0&&$deep->heights===$before,'Negligible editable weights cannot produce a deep excavation to satisfy a frozen-corner conflict');

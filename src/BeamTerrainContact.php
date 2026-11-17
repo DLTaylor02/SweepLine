@@ -37,7 +37,7 @@ final class BeamTerrainContact
     }
     public static function triangles(array $triangles,BeamRaster $raster,float $origin,string $protected,callable $progress,bool $partialCells=false,string $holes=''): array
     {
-        $n=$raster->size;$step=$raster->side/$n;$lowered=[];$contacts=0;$skipped=0;$blocked=0;$holeSkipped=0;
+        $n=$raster->size;$step=$raster->side/$n;$lowered=[];$contacts=0;$skipped=0;$blocked=0;$holeSkipped=0;$smallWeight=0;
         foreach($triangles as $i=>$pavement){
             if($i%100===0)$progress(null);
             if(abs(BeamPolygon::cross(...$pavement))<1e-9)continue;
@@ -60,7 +60,18 @@ final class BeamTerrainContact
                         $target=$origin-0.05;$height=0.;$norm=0.;
                         foreach($pw as $k=>$w)$target+=$w*$pavement[$k][2];
                         foreach($tw as $k=>$w){$id=$ids[$indices[$k]];$height+=$w*$raster->cell($id%$n,intdiv($id,$n));if($editable[$indices[$k]])$norm+=$w*$w;}
-                        $contacts++;$excess=$height-$target;if($excess<=0.00001)continue;if($norm<0.1){$blocked++;continue;}
+                        $contacts++;$excess=$height-$target;if($excess<=0.00001)continue;
+                        if($norm<0.1){
+                            // Small editable weights need not imply an unsafe excavation.
+                            // Solve the same constraint only when the cumulative correction
+                            // stays within a modest fraction of one terrain cell.
+                            $safe=$partialCells&&$norm>1e-12;$limit=max(.5,min(2.,$step*.2));
+                            if($safe)foreach($tw as $k=>$w)if($w>0&&$editable[$indices[$k]]){
+                                $id=$ids[$indices[$k]];$delta=$excess*$w/$norm+.0001;
+                                if(($lowered[$id]??0)+$delta>$limit){$safe=false;break;}
+                            }
+                            if(!$safe){$blocked++;continue;}$smallWeight++;
+                        }
                         foreach($tw as $k=>$w)if($w>0&&$editable[$indices[$k]]){
                             $id=$ids[$indices[$k]];$delta=$excess*$w/$norm+0.0001;
                             $raster->put($id%$n,intdiv($id,$n),$raster->cell($id%$n,intdiv($id,$n))-$delta);
@@ -70,7 +81,7 @@ final class BeamTerrainContact
                 }
             }
         }
-        return ['method'=>'Exact pavement/terrain triangle intersections; both native diagonals; lower only','contacts'=>$contacts,'lowered_vertices'=>count($lowered),'maximum_cut_m'=>$lowered?max($lowered):0,'protected_cells_skipped'=>$skipped,'protected_contacts_unresolved'=>$blocked,'partial_cells'=>$partialCells,'tunnel_hole_cells_skipped'=>$holeSkipped,'clearance_m'=>0.05];
+        return ['method'=>'Exact pavement/terrain triangle intersections; both native diagonals; lower only','contacts'=>$contacts,'lowered_vertices'=>count($lowered),'maximum_cut_m'=>$lowered?max($lowered):0,'protected_cells_skipped'=>$skipped,'protected_contacts_unresolved'=>$blocked,'partial_cells'=>$partialCells,'small_weight_corrections'=>$smallWeight,'tunnel_hole_cells_skipped'=>$holeSkipped,'clearance_m'=>0.05];
     }
 
     /** Final contact repair uses actual structure footprints, not shoulder-influence buffers. */

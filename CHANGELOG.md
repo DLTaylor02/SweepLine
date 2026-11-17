@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.177.0:** Allow bounded mixed-cell terrain contact corrections when editable vertices have small interpolation weights, instead of rejecting every such contact. Preserve frozen structure vertices, road geometry and clearance tolerance; reject corrections that would require deep inverse-weight cuts. Record small-weight correction counts and add safe/unsafe boundary regressions.
+
 - **0.176.0:** Repair interchange terrain contacts blocked by coarse structure-mask padding before rejecting a connected edge. Reuse exact corridor/structure-footprint contact correction, retain road geometry and actual bridge/tunnel support, recheck clearance, and record repair diagnostics. Remaining conflicts identify OSM way, chainage and overlap height. Add padded-mask and genuine protected-conflict regressions.
 
 - **0.175.0:** Remove bridge-count limits for individual roads and the combined highway/interchange export. Do not replace them with a total bridge-length budget. Retain individual structure validation and add a regression accepting seventeen valid spans.
