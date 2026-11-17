@@ -154,7 +154,7 @@ final class DataWorker
             $this->db->beginTransaction();
             $q=$this->db->prepare('INSERT INTO regions(slug,name) VALUES (?,?) ON CONFLICT(slug) DO UPDATE SET name=excluded.name RETURNING id');
             $q->execute([$tile['key'],'Roads near '.round(($s+$n)/2,3).', '.round(($w+$e)/2,3)]); $region=$q->fetchColumn();
-            $q=$this->db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage,allow_empty,started_at,ramp_context_version) VALUES (?,'running',?,ST_MakeEnvelope(?,?,?,?,4326),true,now(),2) RETURNING *");
+            $q=$this->db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage,allow_empty,started_at,ramp_context_version) VALUES (?,'running',?,ST_MakeEnvelope(?,?,?,?,4326),true,now(),3) RETURNING *");
             $q->execute([$region,$path,$w,$s,$e,$n]); $job=$q->fetch(PDO::FETCH_ASSOC);
             $this->db->prepare('UPDATE data_tasks SET import_job_id=? WHERE id=?')->execute([$job['id'],$id]);
             $this->db->commit(); $this->progress($id,'Analyzing connected roads and driving profiles');

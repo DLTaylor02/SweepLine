@@ -9,3 +9,18 @@
     $private=$way;$private['tags']['access']='private';check(SweepLine\BeamRampBackfill::parse(['elements'=>[$private]])===[],'Restricted ramps remain excluded by ingestion');
 })();
 function rejectsRuntime(callable $f):bool {try{$f();return false;}catch(RuntimeException $e){return true;}}
+
+(function():void{
+    $file=tempnam(sys_get_temp_dir(),'sl-region-source-');
+    try{
+        file_put_contents($file,'<?xml version="1.0"?><osm version="0.6"><node id="1" lat="39" lon="-119"/></osm>');
+        SweepLine\BeamRegionRefresh::validate($file);
+        check(true,'Region refresh accepts a complete genuine-format OSM XML document');
+        $rejected=0;
+        foreach(['<html>provider error</html>','<osm><remark>timed out</remark></osm>','<osm><node id="1">'] as $bad){
+            file_put_contents($file,$bad);
+            try{SweepLine\BeamRegionRefresh::validate($file);}catch(RuntimeException $e){$rejected++;}
+        }
+        check($rejected===3,'Region refresh rejects provider errors and truncated extracts before importing');
+    }finally{if(is_file($file))unlink($file);}
+})();

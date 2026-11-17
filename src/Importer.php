@@ -121,7 +121,7 @@ final class Importer
             $q->execute(array_merge([$id],$nodes)); $coords=[];
             while ($row=$q->fetch(PDO::FETCH_ASSOC)) { $this->checkpoint(); $coords[$row['osm_id']]=[(float)$row['lon'],(float)$row['lat']]; }
             $points=[]; foreach ($nodes as $node) { if (!isset($coords[$node])) { $missing++; continue 2; } $points[]=$coords[$node]; }
-            if (Geometry::length($points)<(str_ends_with($t['highway'],'_link')?0.1:15)) { continue; }
+            if (Geometry::length($points)<0.1) { continue; }
             $direction=match($t['oneway']??'') {'yes','1','true'=>1,'-1'=>-1,default=>(($t['junction']??'')==='roundabout' || $t['highway']==='motorway') ? 1 : 0};
             $insert->execute([$id,(int)$way['id'],$t['name']??null,$t['ref']??null,$t['highway'],$direction,$t['surface']??null,self::speed($t['maxspeed']??null),json_encode($nodes),json_encode((object)$t),json_encode(['type'=>'LineString','coordinates'=>$points])]);
             $segment=(int)$insert->fetchColumn();

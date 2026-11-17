@@ -170,6 +170,12 @@ final class BeamJobs
             }
             if(!$this->rasterSource){
                 $rampIngestion=BeamRampBackfill::ensure($this->db,$plan,$dir,$progress);
+                if($rampIngestion['upgraded']){
+                    $progress('Matching refreshed road network and opposite carriageways');
+                    $plan['carriageway_data']=BeamCarriageways::fetch($this->db,$plan,$progress);
+                    $plan['carriageways']=$plan['carriageway_data']['tracks'];unset($plan['carriageway_data']['tracks']);
+                    if($plan['carriageways']){$extent=$plan['points'];foreach($plan['carriageways'] as $t)array_push($extent,...$t['points']);$plan['bounds']=BeamPlan::square($extent,$plan['padding_miles']*1609.344);}
+                }
                 $progress('Matching road network and ramp connections');$networkProgress=static fn($m)=>$progress(null);
                 $networkPlan=$plan;$networkPlan['context_lines']=[$plan['points']];
                 foreach($plan['carriageways']??[] as $track){$networkPlan['context_lines'][]=$track['points'];array_push($networkPlan['sources'],...$track['sources']);}

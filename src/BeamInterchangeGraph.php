@@ -51,12 +51,7 @@ final class BeamInterchangeGraph
                     if(count($arm)<2)break;
                     $nodeIds=array_slice($nodeIds,0,count($arm));
                     $nodeIds[count($arm)-1]='limit:'.hash('sha256',json_encode(end($arm)));
-                    $partLength=BeamRampNetwork::length($arm);
-                // Context distance is a target, not permission to cut a mapped structure.
-                // Keep the whole tagged piece and real approach road after it, across way IDs.
-                if(BeamNetworkStructures::tagged($row['tags']??[])&&$left<$partLength+80.){
-                    $left=$partLength+80.;$extensions[]=['root'=>$work['root'],'osm_id'=>$row['osm_id'],'approach_m'=>80.];
-                }$complete=false;$note('per_ramp_distance_limit',$work['root'],$row['osm_id']);
+                    $partLength=BeamRampNetwork::length($arm);$complete=false;$note('per_ramp_distance_limit',$work['root'],$row['osm_id']);
                 }
                 $parts[]=['points'=>$arm,'tags'=>$row['tags']??[],'highway'=>$row['highway'],'direction'=>(int)($row['direction']??0),'osm_id'=>$row['osm_id']];
                 if(!$points){$points=$arm;$ids=$nodeIds;}else {array_push($points,...array_slice($arm,1));array_push($ids,...array_slice($nodeIds,1));}

@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.172.0:** Fix missing bridge-approach connectivity caused by dropping non-link OSM ways shorter than 15 metres. Retain short mapped motor-road segments, and automatically refresh obsolete regional datasets from complete fresh OSM extracts through the normal atomic importer before BeamNG network matching. Preserve active data on provider/validation/import failure, retain tile continuity halos, record refreshed source hashes, and reuse current topology versions. Add real-import refresh/rollback and source validation regressions.
+
 - **0.171.0:** Prevent ramp/receiving-road context budgets from cutting through bridges or tunnels; retain the complete mapped structure pieces and 80 metres of connected finish approach, subject to existing map/geometry limits. Use known finish-carriageway connections for approach sampling, allow sharp connected junctions, fix 2D approach lookup warnings, and report missing approach lengths/OSM way IDs without blaming highway selection endpoints. Add bridge-boundary regressions and report the structure preparation activity in export progress.
 
 - **0.170.0:** Include mapped bridges and tunnels in ramp/receiving-road networks using the existing approach-based estimators. Protect structure geometry/terrain, sample connected approaches, generate bridge undersides/barriers/piers and tunnel interiors/openings/fixtures, preserve grade-separated pavement/paint and leave bridge-junction barrier openings. Record network structure diagnostics and fail explicitly for unsupported estimates. Add geometry and complete-ZIP regressions.
