@@ -5,7 +5,11 @@ $topology=static fn(array $features)=>BuildingGeometry::topology($db,$features,t
 $outer=[[0,0],[20,0],[20,20],[0,20]];
 $hole=[[5,5],[15,5],[15,15],[5,15]];
 $prepared=$topology([['osm_id'=>'relation/1','part'=>false,'points'=>$outer,'holes'=>[$hole],'tags'=>['height'=>'30']]]);
-check(count($prepared)===1&&count($prepared[0]['holes'])===1,'Native building topology preserves a mapped courtyard');
+if(count($prepared)!==1||!is_array($prepared[0]['holes']??null)||!is_array($prepared[0]['roof_triangles']??null)){
+    $diagnostics=array_map(static fn($f)=>array_intersect_key($f,array_flip(['geometry_rejected','reason','failure_stage','sqlstate'])),$prepared);
+    throw new RuntimeException('Native courtyard returned an invalid result in '.SweepLine\Version::label().'; topology diagnostics: '.json_encode($diagnostics,JSON_THROW_ON_ERROR).'; database: '.$db->query('SELECT postgis_full_version()')->fetchColumn());
+}
+check(count($prepared[0]['holes'])===1,'Native building topology preserves a mapped courtyard');
 $area=array_sum(array_map(static fn($t)=>abs(BuildingPolygon::area($t)),$prepared[0]['roof_triangles']));
 check(abs($area-300)<1e-6,'Native constrained triangulation leaves the courtyard roof and floor open');
 foreach($prepared[0]['roof_triangles'] as $tri){
