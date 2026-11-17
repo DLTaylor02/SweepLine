@@ -261,7 +261,8 @@ final class BeamIntersections
             $owner=$parentIndex!==null?$out['roads'][$parentIndex]:null;
             if($owner===null)foreach($mainSurfaces as $s)if($s['name']===($b['external_main']??'primary')){$owner=$s;break;}
             if($owner===null)continue;
-            $join=self::nearest($b['points'][0],$owner['points'],$owner['profiles']);
+            // Refresh width at the original attachment, not at a trimmed ramp surface start.
+            $join=self::nearest([$b['join']['x'],$b['join']['y']],$owner['points'],$owner['profiles']);
             $b['join']=array_replace($b['join'],$join);
             $dx=$b['points'][1][0]-$b['points'][0][0];$dy=$b['points'][1][1]-$b['points'][0][1];$len=max(.001,hypot($dx,$dy));
             $sine=abs($dx/$len*$join['dy']-$dy/$len*$join['dx']);$ramp=$b['kind']==='ramp';

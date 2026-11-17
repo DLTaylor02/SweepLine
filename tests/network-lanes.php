@@ -69,4 +69,18 @@
     $receiving=array_values(array_filter($network['branches'],static fn($r)=>$r['osm_id']===501))[0];
     $rp=SweepLine\BeamLanes::profiles($receiving['points'],$receiving['source_parts'],[-1,-1,101,1]);
     check($receiving['source_parts'][0]['source_aligned']===false&&!$rp[0]['legal_forward'],'Graph acquisition carries reversed source orientation into production lane matching');
+
+    $ramp=$branch(3,[[30,50],[190,60]],1,40,50);$ramp['kind']='ramp';
+    $withRamp=$data;$withRamp['branches'][]=$ramp;$withRamp['graph']['attachments'][40]=[30,50];
+    $prepared=SweepLine\BeamIntersections::prepare($withRamp,$main,$mp,$raster,[0,0,256,256],0.,[],static fn($m)=>null);
+    $r=$prepared['roads'][2];
+    check(count($r['connector'])>1&&hypot($r['points'][0][0]-30,$r['points'][0][1]-50)>1&&
+        abs($r['join']['x']-30)<1e-8&&abs($r['join']['y']-50)<1e-8,
+        'Refreshing shared lane widths preserves the original ramp attachment instead of projecting the trimmed surface start');
+    $nav=SweepLine\BeamTraffic::graph($main,$mp,$prepared);$nodes=array_column($nav['objects'],null,'name');$phantom=false;
+    foreach($nav['segments'] as $id=>$s)if(str_starts_with($id,'network_2_')){
+        [$u,$v]=array_map(static fn($name)=>$nodes[$name]['position'],$s['nodes']);
+        if(abs($u[0]-30)<1e-8&&abs($v[0]-30)<1e-8&&abs($u[1]-$v[1])>.05)$phantom=true;
+    }
+    check(!$phantom,'Trimmed ramp navigation does not introduce a phantom return edge along its parent highway');
 })();

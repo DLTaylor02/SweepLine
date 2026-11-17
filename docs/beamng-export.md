@@ -827,3 +827,8 @@ A continuation requires a genuine shared OSM node, matching road name/reference 
 intersection_context.lane_transitions in the build report records joined boundaries, chain count, changed samples and ambiguous endpoints. A replay of the supplied export, using its recorded legal directions to restore missing original-source orientation, identified 131 continuations across 54 chains. New exports require in-game validation; existing ZIPs are unchanged.
 
 Graph source parts retain source_aligned to distinguish graph traversal order from original OSM direction. Lane matching uses that orientation for one-way legality and asymmetric forward/backward counts; reversing a graph edge no longer silently reverses its traffic attributes.
+
+
+### Trimmed ramp attachment preservation (0.188.0)
+
+Lane-width refreshes use the original junction attachment, not the trimmed pavement surface start. A ramp may have a connector between its mapped attachment and that surface start; projecting the latter back onto the highway changes connectivity. Retaining the attachment prevents false parent-road shortcut loops and preserves navigation node identity while updating widths. This addresses the supplied v0.187 map-loading failure in BeamNG's navigation optimizer; in-game loading remains a separate validation step.
