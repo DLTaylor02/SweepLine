@@ -101,3 +101,21 @@ check($clear&&$stats['small_weight_corrections']>0&&abs($mix->cell(0,0)-100.21)<
 $deep=new SweepLine\BeamRaster(16,160,str_repeat(pack('g',100.21),256),str_repeat(chr(100),768));$before=$deep->heights;
 $stats=BeamTerrainContact::triangles([[[.001,.001,100.],[.002,.001,100.],[.001,.002,100.]]],$deep,0,$mask,static fn($m)=>null,true);
 check($stats['protected_contacts_unresolved']>0&&$deep->heights===$before,'Negligible editable weights cannot produce a deep excavation to satisfy a frozen-corner conflict');
+
+// Ordinary underpasses may correct ground beneath an elevated bridge, never tunnel cover.
+$underRaster=new SweepLine\BeamRaster(64,640,str_repeat(pack('g',105),4096),str_repeat(chr(100),12288));
+$deck=[];for($x=50;$x<=600;$x+=10)$deck[]=[$x,300,110];
+$underProfiles=array_fill(0,count($deck),['width_m'=>16]);$bridgeSpan=['start_m'=>100.,'end_m'=>450.];
+$lower=['name'=>'ordinary_underpass','road'=>[[200,300,100],[400,300,100]],'profiles'=>[['width_m'=>8],['width_m'=>8]],'spans'=>[]];
+$upper=['name'=>'elevated_bridge','road'=>$deck,'profiles'=>$underProfiles,'spans'=>[$bridgeSpan]];
+$deckBefore=serialize($deck);$underBefore=serialize($lower['road']);
+$report=BeamTerrainContact::repairCorridors([$upper,$lower],$underRaster,0,static fn($m)=>null);
+$lowerTriangles=BeamTerrainContact::ordinaryTriangles($lower['road'],$lower['profiles'],[]);
+check($report['roads']['ordinary_underpass']['bridge_underpass_vertices_lowered']>0&&BeamTerrainContact::obstruction($lowerTriangles,$underRaster,0)===null&&serialize($deck)===$deckBefore&&serialize($lower['road'])===$underBefore,'Ordinary roads clear bridge-ground constraints without changing either road elevation or bridge geometry');
+$tunnel=$upper;$tunnel['spans'][0]['clearance_m']=4.8;
+$constraints=BeamTerrainContact::structureConstraints([$upper,$tunnel],$underRaster,static fn($m)=>null);
+$center=30*64+30;
+check(($constraints['mask'][$center]??"\0")==="\1"&&!isset($constraints['bridge_undersides'][$center]),'Overlapping tunnel cover takes priority over bridge-ground edit permissions');
+$lowBridge=$upper;foreach($lowBridge['road'] as &$v)$v[2]=108;unset($v);
+$constraints=BeamTerrainContact::structureConstraints([$upper,$lowBridge],$underRaster,static fn($m)=>null);
+check(abs($constraints['bridge_undersides'][$center]-107.5)<.0001,'Stacked bridges use the lowest underside rather than allowing excavation based only on a higher deck');

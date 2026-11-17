@@ -11,9 +11,9 @@ final class BeamTerrainDiagnostic
         $x0=max(0,$gx-9);$x1=min($n-1,$gx+9);$y0=max(0,$gy-9);$y1=min($n-1,$gy+9);
         $surfaces=[];foreach($prepared['main_surfaces']??[] as $s)$surfaces[]=['name'=>$s['name'],'road'=>$s['points'],'profiles'=>$s['profiles'],'spans'=>$s['spans']??[]];
         foreach($prepared['roads'] as $s)$surfaces[]=['name'=>$s['name'],'osm_id'=>$s['osm_id']??null,'road'=>$s['points'],'profiles'=>$s['profiles'],'spans'=>array_merge($s['bridges']??[],$s['tunnels']??[])];
-        $exact=BeamTerrainContact::structureMask($surfaces,$raster,static fn($m)=>null);$broad=$prepared['structure_mask']??'';
-        $heights=[];$flags=[];$broadFlags=[];
-        for($y=$y0;$y<=$y1;$y++){$h=[];$f=[];$bf=[];for($x=$x0;$x<=$x1;$x++){$h[]=$raster->cell($x,$y);$f[]=(int)(($exact[$y*$n+$x]??"\0")!=="\0");$bf[]=(int)(($broad[$y*$n+$x]??"\0")!=="\0");}$heights[]=$h;$flags[]=$f;$broadFlags[]=$bf;}
+        $constraints=BeamTerrainContact::structureConstraints($surfaces,$raster,static fn($m)=>null);$exact=$constraints['mask'];$broad=$prepared['structure_mask']??'';
+        $heights=[];$flags=[];$broadFlags=[];$undersides=[];
+        for($y=$y0;$y<=$y1;$y++){$h=[];$f=[];$bf=[];$u=[];for($x=$x0;$x<=$x1;$x++){$h[]=$raster->cell($x,$y);$f[]=(int)(($exact[$y*$n+$x]??"\0")!=="\0");$bf[]=(int)(($broad[$y*$n+$x]??"\0")!=="\0");$u[]=$constraints['bridge_undersides'][$y*$n+$x]??null;}$heights[]=$h;$flags[]=$f;$broadFlags[]=$bf;$undersides[]=$u;}
         $bounds=[($x0+1)*$step,($y0+1)*$step,($x1-1)*$step,($y1-1)*$step];[$w,$s,$e,$north]=$bounds;
         $rectangle=[[[$w,$s],[$e,$s],[$e,$north]],[[$w,$s],[$e,$north],[$w,$north]]];$triangles=[];$truncated=false;
         foreach($prepared['roads'] as $b)if($b['name']===$hit['name']){
@@ -32,7 +32,7 @@ final class BeamTerrainDiagnostic
             if($near)$structures[]=['name'=>$surface['name'],'osm_id'=>$surface['osm_id']??null,'spans'=>$surface['spans'],'segments'=>$near];
         }
         return ['schema'=>1,'application_version'=>Version::number(),'captured_at'=>gmdate('c'),'hit'=>$hit,'origin_m'=>$origin,
-            'raster'=>['size'=>$n,'side_m'=>$raster->side,'spacing_m'=>$step,'x0'=>$x0,'y0'=>$y0,'heights_m'=>$heights,'exact_protected'=>$flags,'broad_protected'=>$broadFlags],
+            'raster'=>['size'=>$n,'side_m'=>$raster->side,'spacing_m'=>$step,'x0'=>$x0,'y0'=>$y0,'heights_m'=>$heights,'exact_protected'=>$flags,'broad_protected'=>$broadFlags,'bridge_undersides_relative_m'=>$undersides],
             'visible_pavement_triangles'=>$triangles,'nearby_surfaces'=>$structures,'contact_report'=>$repair,'truncated'=>$truncated];
     }
     public static function write(string $path,array $capture,array $plan,string $message): void
@@ -48,7 +48,7 @@ final class BeamTerrainDiagnostic
         }finally{$zip->close();}
         chmod($path,0600);
     }
-    public static function replay(array $data): ?array
+    public static function replay(array $data,bool $repair=false): ?array
     {
         if(($data['schema']??null)!==1||!empty($data['truncated']))throw new \InvalidArgumentException('Unsupported or truncated diagnostic.');
         $r=$data['raster'];$n=(int)$r['size'];if($n<2||$n>2048||!is_finite((float)$r['side_m'])||$r['side_m']<=0)throw new \InvalidArgumentException('Invalid diagnostic raster size.');
@@ -56,6 +56,13 @@ final class BeamTerrainDiagnostic
         foreach($r['heights_m'] as $row)if(count($row)>32||$r['x0']+count($row)>$n)throw new \InvalidArgumentException('Invalid diagnostic window.');
         $flat=str_repeat(pack('g',0),$n*$n);$raster=new BeamRaster($n,(float)$r['side_m'],$flat,str_repeat("\0",$n*$n*3));
         foreach($r['heights_m'] as $y=>$row)foreach($row as $x=>$height)$raster->put($r['x0']+$x,$r['y0']+$y,(float)$height);
+        if($repair){
+            $surfaces=[];
+            foreach($data['nearby_surfaces'] as $surface)foreach($surface['segments'] as $segment)$surfaces[]=['road'=>[$segment['a'],$segment['b']],
+                'profiles'=>[['width_m'=>$segment['width_a_m']],['width_m'=>$segment['width_b_m']]],'spans'=>$surface['spans'],'chainage_offset'=>$segment['start_m']];
+            $constraints=BeamTerrainContact::structureConstraints($surfaces,$raster,static fn($m)=>null);
+            BeamTerrainContact::triangles($data['visible_pavement_triangles'],$raster,(float)$data['origin_m'],$constraints['mask'],static fn($m)=>null,true,'',$constraints['bridge_undersides']);
+        }
         return BeamTerrainContact::obstruction($data['visible_pavement_triangles'],$raster,(float)$data['origin_m']);
     }
 }

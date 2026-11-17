@@ -422,7 +422,7 @@ final class BeamIntersections
             $blocked=self::networkObstructions($prepared,$raster,$origin,$progress);
         }
         if($blocked){$b=$blocked[0];$message=sprintf(
-            'Terrain cannot clear interchange edge %s (OSM way %s) at %.0f ft along the edge: terrain is %.2f ft above pavement after exact structure-footprint repair. Protected structure ground was retained; no connected road was shortened.',
+            'Terrain cannot clear interchange edge %s (OSM way %s) at %.0f ft along the edge: terrain is %.2f ft above pavement after exact structure-footprint repair. Tunnel cover and same-level structure constraints were retained; no connected road was shortened.',
             $b['name'],$b['osm_id']??'unknown',$b['along_m']/.3048,$b['overlap_m']/.3048);
             try{$diagnostic=BeamTerrainDiagnostic::capture($prepared,$raster,$origin,$b,$contactRepair??[]);}
             catch(\Throwable $captureError){throw new BeamInterchangeLimit($message.' Diagnostic capture was unavailable.',0,$captureError);}

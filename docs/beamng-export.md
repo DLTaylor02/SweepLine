@@ -746,3 +746,15 @@ php bin/replay-terrain-diagnostic.php path/to/terrain-diagnostic.zip
 ```
 
 The command reconstructs the captured raster window and reruns visible-pavement clearance. It prints a JSON `reproduced` flag and contact measurements. Exit 0 means the obstruction reproduced, 2 means no obstruction reproduced, and 1 means the diagnostic was invalid/unsupported/truncated. This capture/replay path diagnoses the existing failure; it does not relax terrain clearance or synthesize missing source data. It uses the existing PHP XML/ZIP infrastructure and requires no migration.
+
+### Ground beneath elevated bridges (0.180.0)
+
+Exact terrain contact now distinguishes a bridge deck from the ground beneath it. For an ordinary rendered driving triangle below the covering bridge's underside, ground vertices under that bridge may be lowered to clear the road. The deck geometry/elevation is not moved; generic supports are generated against the corrected ground later in the build. Where bridges overlap, the lowest covering underside governs permission. Any overlapping tunnel-cover constraint prevents this permission, and driving triangles at/above the underside cannot release frozen ground. This rule is geometric and applies to all exported regions; it contains no road IDs or location-specific exceptions.
+
+bridge_underpass_vertices_lowered and bridge_ground_vertices appear in contact reports. Diagnostic snapshots additionally record bridge_undersides_relative_m (relative to the export elevation origin). Replay can apply the current repair to a copy of the captured terrain:
+
+```bash
+php bin/replay-terrain-diagnostic.php path/to/terrain-diagnostic.zip --repair
+```
+
+The input ZIP is never modified. An output of reproduced=false after repair means the captured visible-pavement obstruction was cleared; exit codes remain 0 for an obstruction, 2 for no obstruction, and 1 for invalid input. A full export may still expose a different uncaptured issue. This change was verified against the supplied failure snapshot and a translated, anonymized regression fixture, without changing road geometry or loosening the clearance tolerance.

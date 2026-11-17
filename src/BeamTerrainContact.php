@@ -35,9 +35,9 @@ final class BeamTerrainContact
         }
         return $polygon;
     }
-    public static function triangles(array $triangles,BeamRaster $raster,float $origin,string $protected,callable $progress,bool $partialCells=false,string $holes=''): array
+    public static function triangles(array $triangles,BeamRaster $raster,float $origin,string $protected,callable $progress,bool $partialCells=false,string $holes='',array $bridgeUndersides=[]): array
     {
-        $n=$raster->size;$step=$raster->side/$n;$lowered=[];$contacts=0;$skipped=0;$blocked=0;$holeSkipped=0;$smallWeight=0;
+        $n=$raster->size;$step=$raster->side/$n;$lowered=[];$contacts=0;$skipped=0;$blocked=0;$holeSkipped=0;$smallWeight=0;$underpassLowered=[];
         foreach($triangles as $i=>$pavement){
             if($i%100===0)$progress(null);
             if(abs(BeamPolygon::cross(...$pavement))<1e-9)continue;
@@ -46,8 +46,11 @@ final class BeamTerrainContact
             for($x=max(0,(int)floor(min($xs)/$step));$x<=min($n-2,(int)floor(max($xs)/$step));$x++){
                 if(($holes[$y*$n+$x]??"\0")==="\xff"){$holeSkipped++;continue;}
                 $ids=[$y*$n+$x,$y*$n+$x+1,($y+1)*$n+$x,($y+1)*$n+$x+1];
-                // Structure support and other protected corridors must never be excavated here.
-                $editable=[];foreach($ids as $id)$editable[]=($protected[$id]??"\0")==="\0";
+                // Tunnel cover stays frozen. Ground below an elevated bridge may
+                // be lowered by an ordinary driving surface below its underside.
+                $editable=[];$top=max(array_column($pavement,2));
+                foreach($ids as $id)$editable[]=($protected[$id]??"\0")==="\0"
+                    ||($partialCells&&isset($bridgeUndersides[$id])&&$top<$bridgeUndersides[$id]-.05);
                 if(!in_array(true,$editable,true)||(!$partialCells&&in_array(false,$editable,true))){$skipped++;continue;}
                 $corners=[[$x*$step,$y*$step],[($x+1)*$step,$y*$step],[$x*$step,($y+1)*$step],[($x+1)*$step,($y+1)*$step]];
                 // Check both engine diagonal choices, not only a bilinear height sample.
@@ -76,12 +79,13 @@ final class BeamTerrainContact
                             $id=$ids[$indices[$k]];$delta=$excess*$w/$norm+0.0001;
                             $raster->put($id%$n,intdiv($id,$n),$raster->cell($id%$n,intdiv($id,$n))-$delta);
                             $lowered[$id]=($lowered[$id]??0)+$delta;
+                            if(($protected[$id]??"\0")!=="\0")$underpassLowered[$id]=true;
                         }
                     }
                 }
             }
         }
-        return ['method'=>'Exact pavement/terrain triangle intersections; both native diagonals; lower only','contacts'=>$contacts,'lowered_vertices'=>count($lowered),'maximum_cut_m'=>$lowered?max($lowered):0,'protected_cells_skipped'=>$skipped,'protected_contacts_unresolved'=>$blocked,'partial_cells'=>$partialCells,'small_weight_corrections'=>$smallWeight,'tunnel_hole_cells_skipped'=>$holeSkipped,'clearance_m'=>0.05];
+        return ['method'=>'Exact pavement/terrain triangle intersections; both native diagonals; lower only','contacts'=>$contacts,'lowered_vertices'=>count($lowered),'maximum_cut_m'=>$lowered?max($lowered):0,'protected_cells_skipped'=>$skipped,'protected_contacts_unresolved'=>$blocked,'partial_cells'=>$partialCells,'small_weight_corrections'=>$smallWeight,'bridge_underpass_vertices_lowered'=>count($underpassLowered),'tunnel_hole_cells_skipped'=>$holeSkipped,'clearance_m'=>0.05];
     }
 
     /** Remove structure intervals while retaining the rendered triangle's actual height plane. */
@@ -128,11 +132,11 @@ final class BeamTerrainContact
     }
 
     /** Final contact repair uses actual structure footprints, not shoulder-influence buffers. */
-    public static function structureMask(array $surfaces,BeamRaster $raster,callable $progress): string
+    public static function structureConstraints(array $surfaces,BeamRaster $raster,callable $progress): array
     {
-        $n=$raster->size;$step=$raster->side/$n;$protected=str_repeat("\0",$n*$n);
+        $n=$raster->size;$step=$raster->side/$n;$protected=str_repeat("\0",$n*$n);$bridgeUndersides=[];$tunnels=[];
         foreach($surfaces as $surface){
-            $road=$surface['road'];$profiles=$surface['profiles'];$spans=self::protectedSpans($surface['spans']??[],max(2.,2*$step));$along=0.;
+            $road=$surface['road'];$profiles=$surface['profiles'];$spans=self::protectedSpans($surface['spans']??[],max(2.,2*$step));$along=(float)($surface['chainage_offset']??0.);
             for($i=1;$i<count($road);$i++){
                 if($i%100===0)$progress(null);$a=$road[$i-1];$b=$road[$i];$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$length=hypot($dx,$dy);$start=$along;$along+=$length;if($length<1e-6)continue;
                 $near=[];foreach($spans as $span)if($span['start_m']<=$along&&$span['end_m']>=$start)$near[]=$span;
@@ -140,25 +144,35 @@ final class BeamTerrainContact
                 for($y=max(0,(int)floor((min($a[1],$b[1])-$radius)/$step));$y<=min($n-1,(int)ceil((max($a[1],$b[1])+$radius)/$step));$y++)
                 for($x=max(0,(int)floor((min($a[0],$b[0])-$radius)/$step));$x<=min($n-1,(int)ceil((max($a[0],$b[0])+$radius)/$step));$x++){
                     $t=(($x*$step-$a[0])*$dx+($y*$step-$a[1])*$dy)/($length*$length);if($t<0||$t>1)continue;
-                    $at=$start+$t*$length;$covered=false;foreach($near as $span)if($at>=$span['start_m']&&$at<=$span['end_m']){$covered=true;break;}
+                    $at=$start+$t*$length;$covered=false;$isTunnel=false;foreach($near as $span)if($at>=$span['start_m']&&$at<=$span['end_m']){$covered=true;if(isset($span['clearance_m']))$isTunnel=true;}
                     if(!$covered)continue;$half=($profiles[$i-1]['width_m']*(1-$t)+$profiles[$i]['width_m']*$t)/2+0.5;
-                    if(hypot($x*$step-$a[0]-$dx*$t,$y*$step-$a[1]-$dy*$t)<=$half)$protected[$y*$n+$x]="\1";
+                    if(hypot($x*$step-$a[0]-$dx*$t,$y*$step-$a[1]-$dy*$t)<=$half){
+                        $id=$y*$n+$x;$protected[$id]="\1";
+                        if($isTunnel)$tunnels[$id]=true;
+                        else{$underside=$a[2]+($b[2]-$a[2])*$t-BeamBridgeDeck::DEPTH_M;$bridgeUndersides[$id]=min($bridgeUndersides[$id]??INF,$underside);}
+                    }
                 }
             }
         }
-        return $protected;
+        foreach($tunnels as $id=>$_)unset($bridgeUndersides[$id]);
+        return ['mask'=>$protected,'bridge_undersides'=>$bridgeUndersides];
+    }
+
+    public static function structureMask(array $surfaces,BeamRaster $raster,callable $progress): string
+    {
+        return self::structureConstraints($surfaces,$raster,$progress)['mask'];
     }
 
     public static function repairCorridors(array $surfaces,BeamRaster $raster,float $origin,callable $progress,string $holes=''): array
     {
-        $n=$raster->size;$step=$raster->side/$n;$protected=self::structureMask($surfaces,$raster,$progress);
+        $n=$raster->size;$step=$raster->side/$n;$constraints=self::structureConstraints($surfaces,$raster,$progress);$protected=$constraints['mask'];
         $reports=[];
         foreach($surfaces as $surface){
             $triangles=isset($surface['contact_triangles'])?($surface['contact_triangles'])():self::ordinaryTriangles($surface['road'],$surface['profiles'],self::protectedSpans($surface['spans']??[],max(2.,2*$step)),$surface['render']??null);
             $triangles=self::visibleTriangles($triangles,$surface['obstacles']??[]);
-            $reports[$surface['name']]=self::triangles($triangles,$raster,$origin,$protected,$progress,true,$holes);
+            $reports[$surface['name']]=self::triangles($triangles,$raster,$origin,$protected,$progress,true,$holes,$constraints['bridge_undersides']);
         }
-        return ['method'=>'Exact ordinary-pavement contact with only actual structure-footprint vertices frozen; mixed terrain cells remain editable','protected_vertices'=>substr_count($protected,"\1"),'abutment_contact_band_m'=>max(2.,2*$step),'roads'=>$reports];
+        return ['method'=>'Exact ordinary-pavement contact; tunnel cover frozen; bridge ground editable downward only below elevated undersides','protected_vertices'=>substr_count($protected,"\1"),'bridge_ground_vertices'=>count($constraints['bridge_undersides']),'abutment_contact_band_m'=>max(2.,2*$step),'roads'=>$reports];
     }
     /** Clip by chainage inside each existing pavement triangle, retaining its exact plane. */
     public static function ordinaryTriangles(array $road,array $profiles,array $spans,?array $render=null): array

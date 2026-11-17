@@ -11,7 +11,7 @@
     try{SweepLine\BeamIntersections::conform($prepared,$raster,0,static fn($m)=>null);}catch(SweepLine\BeamTerrainConflict $e){$capture=$e->diagnostic;}
     check($capture!==null&&count($capture['raster']['heights_m'])<=19,'Actual terrain-clearance exception captures a bounded local snapshot');
     $hit=SweepLine\BeamTerrainDiagnostic::replay($capture);
-    check($hit!==null&&$hit['overlap_m']>0,'Captured pavement and terrain reproduce the clearance failure offline');
+    check($hit!==null&&$hit['overlap_m']>0&&SweepLine\BeamTerrainDiagnostic::replay($capture,true)!==null,'Captured tunnel conflict reproduces offline and remains protected during underpass repair');
     check(array_sum(array_map('array_sum',$capture['raster']['exact_protected']))>0&&count($capture['nearby_surfaces'])>0,'Diagnostic records the actual protection flags and nearby structure geometry');
     $file=tempnam(sys_get_temp_dir(),'sl-terrain-diagnostic-');
     try{
@@ -21,4 +21,10 @@
         check(!str_contains($json,'PRIVATE-SENTINEL')&&$data['selection']['start']===[200,300],'ZIP retains selected road coordinates while excluding unapproved configuration and credentials');
         check(SweepLine\BeamTerrainDiagnostic::replay($data)!==null,'Serialized diagnostic ZIP retains replayable floating-point geometry');
     }finally{if(is_file($file))unlink($file);}
+})();
+
+(function():void{
+    $data=json_decode(file_get_contents(__DIR__.'/fixtures/bridge-underpass-contact.json'),true,512,JSON_THROW_ON_ERROR);
+    check(SweepLine\BeamTerrainDiagnostic::replay($data)!==null&&SweepLine\BeamTerrainDiagnostic::replay($data,true)===null,
+        'An anonymized measured bridge-ground failure reproduces before correction and clears through the general underpass rule');
 })();
