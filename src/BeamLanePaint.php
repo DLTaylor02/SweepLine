@@ -51,7 +51,7 @@ final class BeamLanePaint
      * originating carriageway surface is hidden by primary-priority clipping. */
     private static function trimPaint(array $vertices,array $triangles,array $other): array
     {
-        if(empty($other['preserve_junction_paint']))return BeamJunctionBoundary::trim($vertices,$triangles,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true,$other['vertical_gap']??null);
+        if(empty($other['preserve_junction_paint']))return BeamJunctionBoundary::trim($vertices,$triangles,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true,$other['vertical_gap']??null,$other['collision_top']??null);
         $normal=[];$overlay=[];$cutters=BeamJunctionBoundary::cutters($other['road'],$other['profiles'],$vertices,$other['sections']??null);
         $grid=[];foreach($cutters as $id=>$cut)for($y=(int)floor(min(array_column($cut,1))/25);$y<=(int)floor(max(array_column($cut,1))/25);$y++)for($x=(int)floor(min(array_column($cut,0))/25);$x<=(int)floor(max(array_column($cut,0))/25);$x++)$grid[$x.':'.$y][]=$id;
         foreach($triangles as $triangle){
@@ -63,7 +63,7 @@ final class BeamLanePaint
             }unset($point);
             $overlay[]=['points'=>$points,'uv'=>$triangle['uv'],'material'=>$triangle['material']];
         }
-        [$out,$faces]=BeamJunctionBoundary::trim($vertices,$normal,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true,$other['vertical_gap']??null);
+        [$out,$faces]=BeamJunctionBoundary::trim($vertices,$normal,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true,$other['vertical_gap']??null,$other['collision_top']??null);
         foreach($overlay as $triangle){$base=count($out);array_push($out,...$triangle['points']);$faces[]=['v'=>[$base,$base+1,$base+2],'uv'=>$triangle['uv'],'material'=>$triangle['material']];}
         return [$out,$faces];
     }
@@ -77,7 +77,7 @@ final class BeamLanePaint
     public static function build(array $branch,array $sections,array $main,array $mainProfiles,string $prefix,array $obstacles=[]): ?array
     {
         if(!empty($branch['junction_parent'])){$obstacles[]=['road'=>$main,'profiles'=>$mainProfiles];$main=$branch['junction_parent']['points'];$mainProfiles=$branch['junction_parent']['profiles'];}
-        if(isset($branch['end_owner']['surface']))$obstacles[]=['road'=>$branch['end_owner']['surface']['points'],'profiles'=>$branch['end_owner']['surface']['profiles']];
+        if(isset($branch['end_owner']['surface']))$obstacles[]=['road'=>$branch['end_owner']['surface']['points'],'profiles'=>$branch['end_owner']['surface']['profiles'],'collision_top'=>$branch['end_owner']['surface']['collision_top']??null];
         array_push($obstacles,...($branch['junction_obstacles']??[]));
         $points=$branch['points'];$profiles=$branch['profiles'];$vertices=[];$triangles=[];$along=0.;
         $surface=static function($ringA,$ringB,$u,$t){
@@ -116,8 +116,17 @@ final class BeamLanePaint
             }
         }
         if(!$triangles)return null;
-        if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null);
-        foreach($obstacles as $other){if(!empty($branch['network']))$other['vertical_gap']=1.;[$vertices,$triangles]=self::trimPaint($vertices,$triangles,$other);}
+        $tops=[];
+        if(isset($branch['junction_parent_top']))$tops[]=$branch['junction_parent_top'];
+        elseif(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null);
+        foreach($obstacles as $other){
+            if(isset($other['collision_top'])&&empty($other['preserve_junction_paint'])){$tops[]=$other['collision_top'];continue;}
+            if(!empty($branch['network']))$other['vertical_gap']=1.;[$vertices,$triangles]=self::trimPaint($vertices,$triangles,$other);
+        }
+        if($tops){
+            $bytes='';foreach(array_unique($tops) as $top)$bytes.=base64_decode($top,true);
+            [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,1.,base64_encode($bytes));
+        }
         if(!$triangles)return null;
         foreach($vertices as &$v)$v[2]+=0.006;unset($v);
         return ['xml'=>BeamPavement::collada($vertices,$triangles,$points[0]),'position'=>$points[0],'triangles'=>count($triangles),'collision'=>'None','method'=>'The outermost right-hand driving lane opens/closes against the paved outer edge; surviving lane boundaries remain continuous.'];

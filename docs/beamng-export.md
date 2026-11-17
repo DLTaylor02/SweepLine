@@ -832,3 +832,16 @@ Graph source parts retain source_aligned to distinguish graph traversal order fr
 ### Trimmed ramp attachment preservation (0.188.0)
 
 Lane-width refreshes use the original junction attachment, not the trimmed pavement surface start. A ramp may have a connector between its mapped attachment and that surface start; projecting the latter back onto the highway changes connectivity. Retaining the attachment prevents false parent-road shortcut loops and preserves navigation node identity while updating widths. This addresses the supplied v0.187 map-loading failure in BeamNG's navigation optimizer; in-game loading remains a separate validation step.
+
+
+### Connected junction surfaces and exact edge ground (0.189.0)
+
+Shared OSM junctions now receive common local grading across their pavement footprints. A regularized local slope fit prevents nearly straight inputs from producing extreme transverse grades. Approach blends retain distant samples; mapped structure spans and their shared endpoint anchors are protected. Selected primary road geometry remains authoritative. Adjacent ribbons share local grading fields through graph connectivity, not a location lookup.
+
+Downstream junctions clip against the owner's final clipped collision surface. This avoids welding to an obsolete raw ribbon after the owner has itself joined another road. Final tops use compact base64-encoded little-endian float64 XYZ triangles internally and in detailed build diagnostics; BeamJunctionBoundary::decode can read them. Paint and terrain checks use the same ownership geometry.
+
+Mapped ramp attachments can receive bounded paved merge aprons, using the parent edge and actual ramp edge with 100 ft of parent approach context. Aprons fill concavities while retaining the selected highway's geometry and through-lane layout. Existing pavement is subtracted to avoid duplicate collision sheets. Grade-separated crossings do not receive at-grade fill. Barrier/marking openings include the actual added pavement.
+
+Where the coarse elevation grid cannot meet narrow pavement, affected native terrain cells are split along the actual exported road boundary. Refined ground uses the existing classification, aerial/palette tint and stock detail materials. The pavement footprint is removed from this ground surface; surviving ground meets it at a 5 cm target clearance and blends outward. Collision consists only of the ground top, with no vertical shoulder collision walls. Native cells are replaced once, and surrounding terrain is retained. Existing tunnel/median replacement cells retain their ownership and shared boundary heights. Bridge and tunnel deck spans are excluded. Ground serialization uses bounded file-backed batches rather than retaining a whole extra terrain mesh in PHP memory.
+
+The build report records intersection_context.junction_grading, ramp_junction_fills, junction_collision_surfaces and road_edge_ground. Synthetic fixtures verify translated coordinates, different grades, structures, collision coverage and material continuity; supplied geometry is used only for development audits. No road names, OSM IDs, states or coordinates select production behavior. Elevations and junction engineering remain estimates, and fresh exports require in-game validation.

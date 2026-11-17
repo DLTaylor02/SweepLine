@@ -5,7 +5,7 @@ namespace SweepLine;
 /** Actual at-grade pavement intersections with a bridge edge, in bridge chainage. */
 final class BeamBridgeOpenings
 {
-    public static function intervals(array $road,array $sections,array $other,array $profiles,int $side,array $window,array $heightRange=[-.5,.5]): array
+    public static function intervals(array $road,array $sections,array $other,array $profiles,int $side,array $window,array $heightRange=[-.5,.5],array $extraTriangles=[]): array
     {
         $segments=[];$vertices=[];$along=0.;
         for($i=1;$i<count($road);$i++){
@@ -14,7 +14,7 @@ final class BeamBridgeOpenings
             $a=$sections[$i-1][$side];$b=$sections[$i][$side];$segments[]=[$a,$b,$start,$along];array_push($vertices,$a,$b);
         }
         if(!$segments||count($other)<2)return [];
-        $cutters=BeamJunctionBoundary::cutters($other,$profiles,$vertices);$intervals=[];
+        $cutters=array_merge(BeamJunctionBoundary::cutters($other,$profiles,$vertices),$extraTriangles);$intervals=[];
         foreach($segments as [$a,$b,$start,$end])foreach($cutters as $triangle){
             if(max($a[0],$b[0])<min(array_column($triangle,0))||min($a[0],$b[0])>max(array_column($triangle,0))||max($a[1],$b[1])<min(array_column($triangle,1))||min($a[1],$b[1])>max(array_column($triangle,1)))continue;
             $lo=max(0.,($window[0]-$start)/($end-$start));$hi=min(1.,($window[1]-$start)/($end-$start));
@@ -38,10 +38,12 @@ final class BeamBridgeOpenings
     public static function junction(array $road,array $profiles,array $branch,array $join): array
     {
         $points=array_merge($branch['connector']??[],$branch['points']);
-        $p=array_merge(array_fill(0,count($branch['connector']??[]),$branch['profiles'][0]),$branch['profiles']);
+        $cp=$branch['profiles'][0];unset($cp['section_override']);$cps=[];
+        foreach($branch['connector']??[] as $i=>$point)$cps[]=$cp+(isset($branch['connector_sections'][$i])?['section_override'=>$branch['connector_sections'][$i]]:[]);
+        $p=array_merge($cps,$branch['profiles']);
         $sections=BeamJunctionBoundary::sections($road,$profiles);$out=[];
         foreach([0=>'left',1=>'right'] as $side=>$name)$out[$name]=self::intervals($road,$sections,$points,$p,$side,
-            [max(0.,$join['along']-$join['radius']-1),$join['along']+$join['radius']+1]);
+            [max(0.,$join['along']-max($join['radius'],empty($branch['junction_fill'])?0.:30.48)-1),$join['along']+max($join['radius'],empty($branch['junction_fill'])?0.:30.48)+1],[-.5,.5],$branch['junction_fill']??[]);
         return $out;
     }
 }

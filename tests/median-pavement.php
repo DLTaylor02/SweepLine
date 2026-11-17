@@ -47,7 +47,7 @@ try{
  $allPbr=true;foreach($groundMaterials as $mat)$allPbr=$allPbr&&$mat['version']===1.5&&isset($mat['Stages'][0]['baseColorMap']);
  check($allPbr,'Exported median materials use the shared terrain PBR pipeline');
  $terrainBytes=$medianZip->getFromName($medianBase.'theTerrain.ter');$medianLayerBytes=substr($terrainBytes,5+64*64*2,64*64);
- check(substr_count($medianLayerBytes,chr(255))===$medianMapReport['median']['refined_surface']['replacement_cells'],'Exported median replaces native collision cells instead of overlaying them');
+ check(substr_count($medianLayerBytes,chr(255))===$medianMapReport['median']['refined_surface']['replacement_cells']+($medianMapReport['intersection_context']['road_edge_ground']['replacement_cells']??0),'Exported median replaces native collision cells instead of overlaying them');
 
  $medianZip->close();
  check(glob($medianDirectory.'/sl-mesh-*')===[],'Successful ZIP export removes private file-backed mesh sources');

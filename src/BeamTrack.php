@@ -51,7 +51,7 @@ final class BeamTrack
         $render=BeamIntersections::markingSections($road,$profiles,$context['junctions']);
         $surfaces=array_merge([['name'=>$key]+$render],$context['roads']);$report=[];
         foreach($surfaces as $i=>$surface){
-            foreach($surface['profiles'] as $p){$m=BeamPavement::key($p);if(isset($materials[$m]))continue;
+            foreach(BeamPavement::materialProfiles($surface) as $p){$m=BeamPavement::key($p);if(isset($materials[$m]))continue;
                 $file='art/roads/'.$m.'.color.png';$materials[$m]=BeamRoadMaterials::material($prefix.'_road_'.$m,$path.$file,$p);$materials['paint_'.$m]=BeamRoadMaterials::paintMaterial($prefix.'_road_paint_'.$m,$path.$file);$put($file,BeamPng::paint($p));
             }
             $sections=$i===0?BeamJunctionBoundary::renderSections($road,$profiles,$surface['points']):null;

@@ -6,6 +6,14 @@ namespace SweepLine;
 final class BeamPavement
 {
     public static function key(array $p): string {return $p['lanes'].'_'.$p['backward'].'_'.(int)$p['oneway'].(!empty($p['oneway'])&&!($p['legal_forward']??true)?'_reverse':'').(!empty($p['unmarked'])?'_junction':'').(!empty($p['open_edge_left'])?'_openL':'').(!empty($p['open_edge_right'])?'_openR':'').(!empty($p['keep_edge_left'])?'_edgeL':'').(!empty($p['keep_edge_right'])?'_edgeR':'').(!empty($p['lane_paint_segment'])?'_taper':'').(isset($p['shoulder_m'])?'_s'.(int)round(255*$p['shoulder_m']/$p['width_m']):'');}
+    public static function fillProfile(array $branch): array
+    {
+        return array_replace($branch['profiles'][0],['unmarked'=>true,'keep_edge_left'=>false,'keep_edge_right'=>false]);
+    }
+    public static function materialProfiles(array $branch): array
+    {
+        return !empty($branch['junction_fill'])?[...$branch['profiles'],self::fillProfile($branch)]:$branch['profiles'];
+    }
     public static function section(array $points,array $profiles,int $i): array
     {
         if(isset($profiles[$i]['section_override']))return $profiles[$i]['section_override'];
@@ -20,7 +28,7 @@ final class BeamPavement
     public static function build(array $branch,array $main,array $mainProfiles,string $prefix,?array $surfaceSections=null,array $obstacles=[],bool $geometryOnly=false): array
     {
         if(!empty($branch['junction_parent'])){$obstacles[]=['road'=>$main,'profiles'=>$mainProfiles];$main=$branch['junction_parent']['points'];$mainProfiles=$branch['junction_parent']['profiles'];}
-        if(isset($branch['end_owner']['surface']))$obstacles[]=['road'=>$branch['end_owner']['surface']['points'],'profiles'=>$branch['end_owner']['surface']['profiles']];
+        if(isset($branch['end_owner']['surface']))$obstacles[]=['road'=>$branch['end_owner']['surface']['points'],'profiles'=>$branch['end_owner']['surface']['profiles'],'collision_top'=>$branch['end_owner']['surface']['collision_top']??null];
         array_push($obstacles,...($branch['junction_obstacles']??[]));
         $points=$branch['points'];$profiles=$branch['profiles'];$origin=$points[0];$vertices=[];$lookup=[];$triangles=[];$along=0.0;
         $vertex=static function($p)use(&$vertices,&$lookup){$key=implode(',',array_map(static fn($v)=>sprintf('%.7F',$v),$p));if(isset($lookup[$key]))return $lookup[$key];$id=count($vertices);$vertices[]=$p;$lookup[$key]=$id;return $id;};
@@ -40,8 +48,21 @@ final class BeamPavement
             $v0=($i-1-(count($rings)-1))/BeamPng::ROAD_TEXTURE_LENGTH_M;$v1=($i-(count($rings)-1))/BeamPng::ROAD_TEXTURE_LENGTH_M;
             $quad($a,$b,$c,$d,$geometryOnly?'contact':$prefix.'_road_'.self::key($profiles[0]),[[0,$v0],[1,$v0],[1,$v1],[0,$v1]]);
         }
-        if(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null);
-        foreach($obstacles as $obstacle)[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true,!empty($branch['network'])?1.:null);
+        foreach($branch['junction_fill']??[] as $fill){
+            $p=self::fillProfile($branch);
+            $triangles[]=['v'=>array_map($vertex,$fill),'uv'=>[[0,0],[1,0],[1,1]],'material'=>$geometryOnly?'contact':$prefix.'_road_'.self::key($p)];
+        }
+        $tops=[];
+        if(isset($branch['junction_parent_top']))$tops[]=$branch['junction_parent_top'];
+        elseif(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null);
+        foreach($obstacles as $obstacle){
+            if(isset($obstacle['collision_top'])){$tops[]=$obstacle['collision_top'];continue;}
+            [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true,!empty($branch['network'])?1.:null);
+        }
+        if($tops){
+            $bytes='';foreach(array_unique($tops) as $top)$bytes.=base64_decode($top,true);
+            [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,1.,base64_encode($bytes));
+        }
         if($geometryOnly)return ['vertices'=>$vertices,'triangles'=>$triangles];
         $independentHeight=(bool)array_filter($obstacles,static fn($obstacle)=>($obstacle['weld_boundary']??true)===false);
         return ['xml'=>self::collada($vertices,$triangles,$origin),'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge',array_merge($rings?array_slice($rings,0,-1):[],$sections)),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
@@ -90,7 +111,11 @@ final class BeamPavement
         if(!empty($branch['network'])&&empty($branch['connector']))return [];
         if((($branch['kind']??'')==='ramp'||!empty($branch['junction_parent']))&&count($branch['connector']??[])>=2){
             $line=$branch['connector'];$last=$branch['points'][0];if(hypot(end($line)[0]-$last[0],end($line)[1]-$last[1])>.001)$line[]=$last;
-            return BeamJunctionBoundary::sections($line,array_fill(0,count($line),$branch['profiles'][0]));
+            $profile=$branch['profiles'][0];unset($profile['section_override']);
+            $rings=BeamJunctionBoundary::sections($line,array_fill(0,count($line),$profile));
+            foreach($branch['connector_sections']??[] as $i=>$ring)$rings[$i]=$ring;
+            $rings[count($rings)-1]=self::section($branch['points'],$branch['profiles'],0);
+            return $rings;
         }
         $points=$branch['points'];$profiles=$branch['profiles'];$ends=self::section($points,$profiles,0);
         $dx=$points[1][0]-$points[0][0];$dy=$points[1][1]-$points[0][1];$length=hypot($dx,$dy)?:1;$direction=[$dx/$length,$dy/$length];

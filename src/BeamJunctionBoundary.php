@@ -79,12 +79,37 @@ final class BeamJunctionBoundary
         return $out;
     }
 
-    public static function trim(array $vertices,array $triangles,array $road,array $profiles,?array $surfaceSections=null,bool $weldBoundary=true,?float $verticalGap=null): array
+
+    /** Compact, JSON-safe final collision tops for downstream junction clipping. */
+    public static function encode(array $mesh): string
     {
-        $cutters=self::cutters($road,$profiles,$vertices,$surfaceSections);$s=$surfaceSections??self::sections($road,$profiles);$result=[];$out=[];$lookup=[];$edges=[];
+        $bytes='';foreach($mesh['triangles'] as $face)foreach($face['v'] as $id)$bytes.=pack('e3',...$mesh['vertices'][$id]);
+        return base64_encode($bytes);
+    }
+    public static function decode(string $encoded): array
+    {
+        $bytes=base64_decode($encoded,true);if($bytes===false||strlen($bytes)%72!==0)throw new \RuntimeException('Invalid junction collision geometry.');
+        $out=[];for($offset=0;$offset+72<=strlen($bytes);$offset+=72){$v=array_values(unpack('e9',substr($bytes,$offset,72)));$out[]=[array_slice($v,0,3),array_slice($v,3,3),array_slice($v,6,3)];}
+        return $out;
+    }
+    public static function trim(array $vertices,array $triangles,array $road,array $profiles,?array $surfaceSections=null,bool $weldBoundary=true,?float $verticalGap=null,?string $collisionTop=null): array
+    {
+        $cutters=$collisionTop===null?self::cutters($road,$profiles,$vertices,$surfaceSections):[];$s=$collisionTop===null?($surfaceSections??self::sections($road,$profiles)):[];$result=[];$out=[];$lookup=[];$edges=[];
         $xs=array_column($vertices,0);$ys=array_column($vertices,1);if(!$xs)return [$vertices,$triangles];
         $bounds=[min($xs)-self::HEIGHT_BLEND_M,min($ys)-self::HEIGHT_BLEND_M,max($xs)+self::HEIGHT_BLEND_M,max($ys)+self::HEIGHT_BLEND_M];
-        if($weldBoundary)for($i=1;$i<count($s);$i++)foreach([0,1] as $side){
+        if($collisionTop!==null){
+            $cutters=[];$boundary=[];
+            foreach(self::decode($collisionTop) as $tri){
+                if(max(array_column($tri,0))<$bounds[0]||min(array_column($tri,0))>$bounds[2]||max(array_column($tri,1))<$bounds[1]||min(array_column($tri,1))>$bounds[3])continue;
+                $cutters[]=$tri;
+                foreach([[0,1],[1,2],[2,0]] as [$u,$v]){
+                    $a=$tri[$u];$b=$tri[$v];$keys=[];foreach([$a,$b] as $p)$keys[]=sprintf('%.6f:%.6f:%.6f',...$p);sort($keys);$key=implode('|',$keys);
+                    if(isset($boundary[$key]))$boundary[$key]['count']++;else $boundary[$key]=['count'=>1,'edge'=>[$a,$b]];
+                }
+            }
+            if($weldBoundary)foreach($boundary as $edge)if($edge['count']===1)$edges[]=$edge['edge'];
+        }
+        if($collisionTop===null&&$weldBoundary)for($i=1;$i<count($s);$i++)foreach([0,1] as $side){
             $a=$s[$i-1][$side];$b=$s[$i][$side];
             if(max($a[0],$b[0])<$bounds[0]||min($a[0],$b[0])>$bounds[2]||max($a[1],$b[1])<$bounds[1]||min($a[1],$b[1])>$bounds[3])continue;
             $edges[]=[$a,$b];
