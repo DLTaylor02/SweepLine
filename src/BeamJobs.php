@@ -100,6 +100,8 @@ final class BeamJobs
         if(!empty($row['report']['traffic_sign_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['traffic_sign_data']['warning']);
         if(!empty($row['report']['guardrail_data']['warning']))$row['warning']=trim(($row['warning']??'').' '.$row['report']['guardrail_data']['warning']);
         if($row['status']==='complete')$row['download_url']='/api/beamng/'.$id.'/download';
+        if($row['status']==='failed'&&!empty($row['report']['diagnostic_available'])&&strtotime($row['expires_at']??'')>time()&&is_file($this->directory($id).'/diagnostics.zip'))
+            $row['diagnostic_url']='/api/beamng/'.$id.'/diagnostics';
         return $row;
     }
     public function cancel(string $id,?int $user=null): array
@@ -122,6 +124,15 @@ final class BeamJobs
         header('Content-Length: '.fstat($handle)['size']);
         fpassthru($handle);fclose($handle);exit;
     }
+    public function diagnosticDownload(int $user,string $id): never
+    {
+        $job=$this->status($user,$id);if(empty($job['diagnostic_url']))throw new HttpException(410,'This diagnostic is unavailable or expired. Generate a new export to capture it.');
+        $file=$this->directory($id).'/diagnostics.zip';
+        if(is_link($file)||!is_file($file))throw new HttpException(410,'The diagnostic expired.');
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="'.pathinfo(RoadExport::filename($job['name'],'gpx'),PATHINFO_FILENAME).'-terrain-diagnostic.zip"');
+        header('Cache-Control: private, no-store');header('Content-Length: '.filesize($file));readfile($file);exit;
+    }
     public function recover(): void
     {
         $rows=$this->db->query("UPDATE beamng_exports SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'failed' END,error='Export generation was interrupted during: '||left(progress,240)||'. Check the worker service journal for the exit reason.',updated_at=now() WHERE status='running' RETURNING id")->fetchAll(PDO::FETCH_COLUMN);
@@ -136,7 +147,7 @@ final class BeamJobs
         $this->db->exec("DELETE FROM beamng_exports WHERE status IN ('failed','cancelled','expired') AND updated_at<now()-interval '1 day'");
         // Remove orphaned work directories (for deleted accounts or interrupted processes).
         foreach(glob($this->root().'/*') as $dir)if(preg_match('/^[a-f0-9]{32}$/D',basename($dir))) {
-            $q=$this->db->prepare("SELECT 1 FROM beamng_exports WHERE id=? AND status IN ('queued','running','complete')");$q->execute([basename($dir)]);
+            $q=$this->db->prepare("SELECT 1 FROM beamng_exports WHERE id=? AND (status IN ('queued','running','complete') OR (status='failed' AND expires_at>now() AND report->>'diagnostic_available'='true'))");$q->execute([basename($dir)]);
             if(!$q->fetchColumn())$this->remove(basename($dir));
         }
         } finally {$this->db->exec('SELECT pg_advisory_unlock('.self::MAINTENANCE_LOCK.')');}
@@ -228,7 +239,16 @@ final class BeamJobs
         } catch(\Throwable $e) {
             if($this->db->inTransaction())$this->db->rollBack();$this->remove($id);
             $cancel=$e instanceof JobCancelled;
-            $this->db->prepare("UPDATE beamng_exports SET status=?,error=?,payload='{}'::jsonb,updated_at=now() WHERE id=?")->execute([$cancel?'cancelled':'failed',$cancel?null:substr($e->getMessage(),0,1000),$id]);
+            $diagnostic=false;
+            if(!$cancel&&$e instanceof BeamTerrainConflict){
+                try{
+                    if(!is_dir($dir)&&!mkdir($dir,0700,true))throw new \RuntimeException('Cannot create diagnostic workspace.');
+                    BeamTerrainDiagnostic::write($dir.'/diagnostics.zip',$e->diagnostic,$plan??[],$e->getMessage());$diagnostic=true;
+                }catch(\Throwable $captureError){$this->remove($id);error_log('SweepLine terrain diagnostic unavailable: '.get_class($captureError));}
+            }
+            $this->db->prepare("UPDATE beamng_exports SET status=?,error=?,payload='{}'::jsonb,report=COALESCE(report,'{}'::jsonb)||?::jsonb,
+                expires_at=CASE WHEN ?::boolean THEN now()+interval '1 day' ELSE null END,updated_at=now() WHERE id=?")
+                ->execute([$cancel?'cancelled':'failed',$cancel?null:substr($e->getMessage(),0,1000),json_encode(['diagnostic_available'=>$diagnostic],JSON_THROW_ON_ERROR),$diagnostic?'true':'false',$id]);
         }
         BeamFailure::finish();return true;
     }

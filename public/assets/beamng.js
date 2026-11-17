@@ -34,7 +34,8 @@
     progress.append(stepLabel,track);
     const notices=node('details');notices.className='beam-notices';notices.hidden=true;
     const noticeTitle=node('summary','Export notices'),noticeBody=node('p');notices.append(noticeTitle,noticeBody);
-    section.append(spinner,status,cancel,progress,notices);container.append(action,section);
+    const diagnostic=node('a','Download diagnostic ZIP');diagnostic.hidden=true;diagnostic.className='beam-diagnostic';diagnostic.setAttribute('download','');
+    section.append(spinner,status,cancel,progress,notices,diagnostic);container.append(action,section);
     const user=window.SweepLineAccount?.user?.id;
     const baseStorageKey='sweepline:beamng:'+user+':'+(road.geometry_key||road.id)+':'+(context.orientation||'forward')+':'+(context.preferredName||road.name||'');
     const storageKey=baseStorageKey+':stock',noticeKey=storageKey+':notice';
@@ -50,6 +51,8 @@
       if(ready)action.setAttribute('download','');else action.removeAttribute('download');
       const failed=job.status==='failed',cancelled=job.status==='cancelled',stopped=failed||cancelled;
       section.hidden=false;section.classList.toggle('beam-error',failed);
+      const diagnosticUrl=failed&&/^\/api\/beamng\/[a-f0-9]{32}\/diagnostics$/.test(job.diagnostic_url||'')?job.diagnostic_url:null;
+      diagnostic.hidden=!diagnosticUrl;if(diagnosticUrl)diagnostic.href=diagnosticUrl;else diagnostic.removeAttribute('href');
       cancel.hidden=!busy;spinner.hidden=!busy;
       progress.hidden=!busy&&!ready&&!stopped;
       const stage=Number.isInteger(job.stage)?stageFor(job):Math.max(lastStage,stageFor(job)??lastStage),complete=stage===steps.length;lastStage=stage;
@@ -68,7 +71,7 @@
       if(!failed&&warnings.length)status.textContent+=' Some map details are limited; expand Export notices for details.';
       // Keep actionable warnings; omit repetitive data-provenance reassurances, including saved jobs.
       status.textContent=status.textContent.replace(/(;\s*|\s+)(?:no (?:feature locations|sign locations|sign positions|replacement water) (?:were|was) invented|missing locations were not invented|no (?:fabricated imagery|synthetic terrain|guessed buildings|inferred roadside barriers) (?:were|was) substituted)\./gi,(_,separator)=>separator.trim()===';'?'.':'').trim();
-      if(stopped){try{window.sessionStorage?.setItem(noticeKey,JSON.stringify({status:job.status,error:job.error,progress:job.progress,stage:lastStage}));}catch(_){}section.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
+      if(stopped){try{window.sessionStorage?.setItem(noticeKey,JSON.stringify({status:job.status,error:job.error,progress:job.progress,stage:lastStage,diagnostic_url:job.diagnostic_url}));}catch(_){}section.scrollIntoView?.({block:'nearest',behavior:'smooth'});}
       else if(busy||ready){try{window.sessionStorage?.removeItem(noticeKey);}catch(_){}}
       if(ready&&expires)timer=setTimeout(poll,Math.max(1000,expires-Date.now()+100));
       return busy;

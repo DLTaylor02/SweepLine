@@ -251,7 +251,18 @@ try{
  $stageJobs->recover();
  $cancelStage=$stageJobs->status((int)$administrator['id'],$stageIds[0]);$failedStage=$stageJobs->status((int)$administrator['id'],$stageIds[1]);
  check($cancelStage['status']==='cancelled'&&$cancelStage['stage']===7&&$failedStage['status']==='failed'&&$failedStage['stage']===9&&$failedStage['progress']==='Writing terrain materials','Interrupted cancelled and failed jobs retain their last stage and detailed activity');
-}finally{$q=$db->prepare('DELETE FROM beamng_exports WHERE id IN (?,?)');$q->execute($stageIds);rmdir($stageRoot);}
+
+ $diagnosticDir=$stageRoot.'/'.$stageIds[1];mkdir($diagnosticDir,0700);file_put_contents($diagnosticDir.'/diagnostics.zip','diagnostic fixture');
+ $db->prepare("UPDATE beamng_exports SET report=report||'{\"diagnostic_available\":true}'::jsonb,expires_at=now()+interval '1 day' WHERE id=?")->execute([$stageIds[1]]);
+ $diagnosticStatus=$stageJobs->status((int)$administrator['id'],$stageIds[1]);
+ check(isset($diagnosticStatus['diagnostic_url']),'Export owner can obtain the private diagnostic download URL');
+ $denied=false;try{$stageJobs->status((int)$administrator['id']+100000,$stageIds[1]);}catch(OutOfBoundsException $e){$denied=true;}
+ check($denied,'Another user cannot access a diagnostic-bearing export');
+ $stageJobs->maintain();check(is_file($diagnosticDir.'/diagnostics.zip'),'Maintenance retains an unexpired failed-export diagnostic');
+ $db->prepare("UPDATE beamng_exports SET expires_at=now()-interval '1 second' WHERE id=?")->execute([$stageIds[1]]);
+ check(!isset($stageJobs->status((int)$administrator['id'],$stageIds[1])['diagnostic_url']),'Expired diagnostic links are no longer exposed');
+ $stageJobs->maintain();check(!is_dir($diagnosticDir),'Maintenance removes expired diagnostic files');
+}finally{$q=$db->prepare('DELETE FROM beamng_exports WHERE id IN (?,?)');$q->execute($stageIds);foreach($stageIds as $stageId){$d=$stageRoot.'/'.$stageId;if(is_dir($d)){foreach(glob($d.'/*') as $f)unlink($f);rmdir($d);}}rmdir($stageRoot);}
 
 require __DIR__.'/region-data-integration.php';
 

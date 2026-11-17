@@ -40,6 +40,7 @@ function expect(array $response,int $code,string $message): array {
 }
 expect(callApi($anonymous,'GET','/api/health'),200,'Public application health');
 expect(callApi($anonymous,'GET','/api/search-history'),401,'Search history requires login');
+expect(callApi($anonymous,'GET','/api/beamng/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/diagnostics'),401,'Terrain diagnostics require sign-in');
 expect(callApi($anonymous,'GET','/api/search-jobs/1'),401,'Search job status requires login');
 expect(callApi($anonymous,'GET','/api/zips/nearest?lon=-119.8&lat=39.52'),401,'Map ZIP lookup requires sign-in');
 expect(callApi($anonymous,'POST','/api/search-diagnostics',['zip'=>'12345','road'=>'Synthetic']),403,'Road diagnosis requires CSRF before authentication');

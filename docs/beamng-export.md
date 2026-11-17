@@ -730,3 +730,19 @@ Road elevations and the existing clearance checks are unchanged. small_weight_co
 At joins, exported side-road pavement is clipped against higher-priority roads and height-blended to the actual boundary. Auditing the original centreline ribbon edges could incorrectly reject geometry that had been removed, or compare terrain to the pre-blend height. Interchange clearance now obtains the same collision triangles from the pavement builder, without creating a mesh file, and checks their intersections with both native terrain diagonal choices.
 
 Exact and late contact repair use that same visible, welded surface. Structure intervals are clipped out of ordinary ground checks by chainage; bridge landing contact retains its established contact band. This changes validation/repair inputs, not the renderer's road shape or the clearance tolerance. Original hidden ribbon edges no longer need ground excavation just to satisfy an unrelated check. Genuine terrain overlap with visible ordinary pavement still fails.
+
+### Download a failed terrain-clearance diagnostic (0.179.0)
+
+After updating with `sudo ./setup.sh`, generate the failing export again. For captured terrain-clearance failures, the inline error panel shows **Download diagnostic ZIP**. Download it and attach that ZIP when reporting the failure. Existing failed exports cannot be reconstructed because their working files were already removed.
+
+The private ZIP is accessible only through the owning user's authenticated export endpoint (`GET /api/beamng/{id}/diagnostics`). Download access expires after 24 hours and normal maintenance removes expired artifacts. Large source downloads and incomplete map files are still removed immediately; only the bounded diagnostic remains. Diagnostic failures do not replace the original export error.
+
+The bundle includes `diagnostic.json` and replay instructions. It records the failing contact, a local window of native terrain heights, exact and broad protection flags, the visible pavement's actual height planes, nearby road/structure segments with chainage, export version and selected road endpoints/coordinate reference. It contains road location data, so review it before sharing publicly. Environment files, database credentials, access tokens, user accounts and unrelated fetched resources are not included. Captures are bounded (19-by-19 terrain vertices, up to 5,000 local pavement triangles/structure segments and 8 MiB JSON); truncation is explicitly marked.
+
+Replay locally without PostGIS or provider requests:
+
+```bash
+php bin/replay-terrain-diagnostic.php path/to/terrain-diagnostic.zip
+```
+
+The command reconstructs the captured raster window and reruns visible-pavement clearance. It prints a JSON `reproduced` flag and contact measurements. Exit 0 means the obstruction reproduced, 2 means no obstruction reproduced, and 1 means the diagnostic was invalid/unsupported/truncated. This capture/replay path diagnoses the existing failure; it does not relax terrain clearance or synthesize missing source data. It uses the existing PHP XML/ZIP infrastructure and requires no migration.

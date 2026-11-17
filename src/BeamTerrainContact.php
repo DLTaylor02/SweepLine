@@ -128,7 +128,7 @@ final class BeamTerrainContact
     }
 
     /** Final contact repair uses actual structure footprints, not shoulder-influence buffers. */
-    public static function repairCorridors(array $surfaces,BeamRaster $raster,float $origin,callable $progress,string $holes=''): array
+    public static function structureMask(array $surfaces,BeamRaster $raster,callable $progress): string
     {
         $n=$raster->size;$step=$raster->side/$n;$protected=str_repeat("\0",$n*$n);
         foreach($surfaces as $surface){
@@ -146,6 +146,12 @@ final class BeamTerrainContact
                 }
             }
         }
+        return $protected;
+    }
+
+    public static function repairCorridors(array $surfaces,BeamRaster $raster,float $origin,callable $progress,string $holes=''): array
+    {
+        $n=$raster->size;$step=$raster->side/$n;$protected=self::structureMask($surfaces,$raster,$progress);
         $reports=[];
         foreach($surfaces as $surface){
             $triangles=isset($surface['contact_triangles'])?($surface['contact_triangles'])():self::ordinaryTriangles($surface['road'],$surface['profiles'],self::protectedSpans($surface['spans']??[],max(2.,2*$step)),$surface['render']??null);

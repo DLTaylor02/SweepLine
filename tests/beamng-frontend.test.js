@@ -25,10 +25,11 @@ async function testBeamControls(source){
   check(!errorBox.hidden&&errorBox["beam-error"]&&errorText.textContent.includes("mapped bridge or tunnel"),"Rejection reason remains visible in inline error panel");
   check(errorBox.children[0].hidden&&errorBox.children[2].hidden&&errorText.attrs.role==="alert","Failure hides spinner and cancellation and announces error");
   const reopened=new Element("div");window.sweeplineBeamExport(reopened,{id:91});check(!reopened.children[1].hidden&&reopened.children[1].children[1].textContent.includes("mapped bridge"),"Reopening road preserves rejection reason");
-  window.sweeplineRequest=async(path,options)=>options?{id:"b".repeat(32),status:"queued",progress:"Queued",queue_position:2,queue_total:7}:{status:"failed",error:"USGS elevation: provider unavailable"};
+  window.sweeplineRequest=async(path,options)=>options?{id:"b".repeat(32),status:"queued",progress:"Queued",queue_position:2,queue_total:7}:{status:"failed",error:"USGS elevation: provider unavailable",diagnostic_url:"/api/beamng/"+"b".repeat(32)+"/diagnostics"};
   tasks.length=0;await reopened.children[0].onclick({preventDefault(){}});check(!reopened.children[1]["beam-error"]&&reopened.children[1].children[1].textContent==="In queue 2 of 7","Retry clears old rejection and shows new progress");
   await tasks.shift()();check(reopened.children[1]["beam-error"]&&reopened.children[1].children[1].textContent.includes("USGS elevation"),"Background failure keeps provider reason visible");
 
+  check(!reopened.children[1].children[5].hidden&&reopened.children[1].children[5].href.endsWith('/diagnostics'),'Captured terrain failures show an owner-authorized diagnostic download link');
   check(!errorBox.children[3].hidden,'Rejected export retains a static last-stage bar alongside its error');
   const messages=['Matching road network and opposite carriageways','USGS elevation: downloading','Aligning aerial raster','Preparing geographic context','Classifying grass, forest floor','Checking and removing terrain','Preparing mapped water surfaces','Building bridges, tunnels and median terrain','Writing collision terrain','Building road surfaces, intersections and traffic links','Placing regional scenery','Finalizing the map ZIP'];
   let stageIndex=0;tasks.length=0;

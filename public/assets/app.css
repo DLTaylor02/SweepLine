@@ -110,3 +110,5 @@ body[data-page="/regions"] .legend,body[data-page="/regions"] #preparation-legen
 .brand-logo{display:block;width:46px;height:46px;object-fit:contain;flex-shrink:0}:root[data-theme=dark] .brand-logo{filter:invert(1)}@media(max-width:800px){.brand-logo{width:38px;height:38px}}
 
 .beam-notices{margin-top:6px;font-weight:400}.beam-notices summary{cursor:pointer;color:var(--ink)}.beam-notices p{white-space:pre-line;margin:6px 0 0}
+
+.beam-status .beam-diagnostic{display:inline-block;margin-top:8px}.beam-status .beam-diagnostic[hidden]{display:none}

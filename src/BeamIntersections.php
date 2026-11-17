@@ -421,9 +421,13 @@ final class BeamIntersections
             foreach($contactRepair['roads'] as $report){$lowered+=$report['lowered_vertices'];$cut=max($cut,$report['maximum_cut_m']);}
             $blocked=self::networkObstructions($prepared,$raster,$origin,$progress);
         }
-        if($blocked){$b=$blocked[0];throw new BeamInterchangeLimit(sprintf(
+        if($blocked){$b=$blocked[0];$message=sprintf(
             'Terrain cannot clear interchange edge %s (OSM way %s) at %.0f ft along the edge: terrain is %.2f ft above pavement after exact structure-footprint repair. Protected structure ground was retained; no connected road was shortened.',
-            $b['name'],$b['osm_id']??'unknown',$b['along_m']/.3048,$b['overlap_m']/.3048));}
+            $b['name'],$b['osm_id']??'unknown',$b['along_m']/.3048,$b['overlap_m']/.3048);
+            try{$diagnostic=BeamTerrainDiagnostic::capture($prepared,$raster,$origin,$b,$contactRepair??[]);}
+            catch(\Throwable $captureError){throw new BeamInterchangeLimit($message.' Diagnostic capture was unavailable.',0,$captureError);}
+            throw new BeamTerrainConflict($message,$diagnostic);
+        }
         $prepared['final_clearance']=['limited_branches'=>0,'clamped_vertices'=>0,'lowered_vertices'=>$lowered,'maximum_cut_m'=>$cut,
             'exact_structure_contact'=>$contactRepair,'initial_structure_contacts'=>$initial,'method'=>'Road-priority native terrain blend and exact triangle clearance; complete connected edges retained; mapped structure support protected.'];
         $prepared['network_verification']=['discovered_edges'=>(int)($prepared['graph']['network_edge_count']??0),

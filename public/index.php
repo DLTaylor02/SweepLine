@@ -67,9 +67,10 @@ try {
             if ($path!=='/api/password/change') {session_write_close();}
             if($path==='/api/elevations'){$result=SweepLine\EndpointElevation::load($db,$input);}
             elseif($path==='/api/beamng'){$result=(new SweepLine\BeamJobs($db))->create((int)$user['id'],$input);}
-            elseif(preg_match('#^/api/beamng/([a-f0-9]{32})(?:/(download|cancel))?$#',$path,$m)) {
+            elseif(preg_match('#^/api/beamng/([a-f0-9]{32})(?:/(download|diagnostics|cancel))?$#',$path,$m)) {
                 $exports=new SweepLine\BeamJobs($db);$action=$m[2]??'';
                 if($action==='download')$exports->download((int)$user['id'],$m[1]);
+                if($action==='diagnostics')$exports->diagnosticDownload((int)$user['id'],$m[1]);
                 $result=$action==='cancel'?$exports->cancel($m[1],(int)$user['id']):$exports->status((int)$user['id'],$m[1]);
             }
             elseif(preg_match('#^/api/admin/beamng/([a-f0-9]{32})/cancel$#',$path,$m)){$result=(new SweepLine\BeamJobs($db))->cancel($m[1]);}
