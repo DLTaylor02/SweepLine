@@ -52,16 +52,16 @@ final class BeamPavement
             $p=self::fillProfile($branch);
             $triangles[]=['v'=>array_map($vertex,$fill),'uv'=>[[0,0],[1,0],[1,1]],'material'=>$geometryOnly?'contact':$prefix.'_road_'.self::key($p)];
         }
-        $tops=[];
+        $tops=[];$blend=empty($branch['ribbon_graded'])?BeamJunctionBoundary::HEIGHT_BLEND_M:0.;
         if(isset($branch['junction_parent_top']))$tops[]=$branch['junction_parent_top'];
-        elseif(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null);
+        elseif(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null,null,$blend);
         foreach($obstacles as $obstacle){
             if(isset($obstacle['collision_top'])){$tops[]=$obstacle['collision_top'];continue;}
-            [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true,!empty($branch['network'])?1.:null);
+            [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$obstacle['road'],$obstacle['profiles'],$obstacle['sections']??null,$obstacle['weld_boundary']??true,!empty($branch['network'])?1.:null,null,$blend);
         }
         if($tops){
             $bytes='';foreach(array_unique($tops) as $top)$bytes.=base64_decode($top,true);
-            [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,1.,base64_encode($bytes));
+            [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,1.,base64_encode($bytes),$blend);
         }
         if($geometryOnly)return ['vertices'=>$vertices,'triangles'=>$triangles];
         $xml=self::collada($vertices,$triangles,$origin);$paintXml=$xml;$paintCount=count($triangles);
@@ -72,7 +72,7 @@ final class BeamPavement
         }
         $independentHeight=(bool)array_filter($obstacles,static fn($obstacle)=>($obstacle['weld_boundary']??true)===false);
         return ['xml'=>$xml,'paint_xml'=>$paintXml,'paint_triangles'=>$paintCount,'fascia_xml'=>self::fascia($vertices,$triangles,$origin,$prefix.'_road_edge',array_merge($rings?array_slice($rings,0,-1):[],$sections)),'visual_edge_depth_m'=>0.18,'position'=>$origin,'vertices'=>count($vertices),'triangles'=>count($triangles),'connector'=>$connector,
-            'connector_end_seam_m'=>($connector?0.0:null),'boundary_height_welding'=>!$independentHeight,'junction_height_blend_m'=>$independentHeight?0:BeamJunctionBoundary::HEIGHT_BLEND_M,'method'=>$independentHeight?'Exact XY overlap clipping; independent carriageway elevations preserved.':'Exact ribbon boundary; overlapping side pavement removed; junction heights blend continuously into the primary surface.'];
+            'connector_end_seam_m'=>($connector?0.0:null),'boundary_height_welding'=>!$independentHeight,'junction_height_blend_m'=>$independentHeight?0:$blend,'method'=>!empty($branch['ribbon_graded'])?'Continuous ribbon grading; exact boundary welding after overlap clipping.':($independentHeight?'Exact XY overlap clipping; independent carriageway elevations preserved.':'Exact ribbon boundary; overlapping side pavement removed; junction heights blend continuously into the primary surface.')];
     }
 
     /** The same clipped and height-welded triangles used by the exported collision pavement. */

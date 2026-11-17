@@ -13,8 +13,6 @@ final class BeamDds
         $header[0]=124;$header[1]=0xA1007;$header[2]=$height;$header[3]=$width;$header[4]=max(1,(int)ceil($width/4))*max(1,(int)ceil($height/4))*16;$header[6]=$levels;
         $header[18]=32;$header[19]=4;$header[20]=unpack('V','DX10')[1];$header[26]=0x401008;
         $out='DDS '.pack('V*',...$header).pack('V5',78,3,0,1,1);$cache=[];
-        $covered=0;for($i=3;$i<strlen($pixels);$i+=4)if(ord($pixels[$i])>=128)$covered++;
-        $coverage=$covered/($width*$height);
         while(true){
             for($y=0;$y<$height;$y+=4)for($x=0;$x<$width;$x+=4){
                 $block='';for($dy=0;$dy<4;$dy++)for($dx=0;$dx<4;$dx++){
@@ -25,13 +23,13 @@ final class BeamDds
                 $out.=$cache[$block];
             }
             if($width===1&&$height===1)break;
-            $pixels=self::mip($pixels,$width,$height,$coverage);$width=max(1,intdiv($width,2));$height=max(1,intdiv($height,2));
+            $pixels=self::mip($pixels,$width,$height);$width=max(1,intdiv($width,2));$height=max(1,intdiv($height,2));
         }
         return $out;
     }
-    private static function mip(string $pixels,int $width,int $height,float $coverage): string
+    private static function mip(string $pixels,int $width,int $height): string
     {
-        $w=max(1,intdiv($width,2));$h=max(1,intdiv($height,2));$out='';$histogram=array_fill(0,256,0);
+        $w=max(1,intdiv($width,2));$h=max(1,intdiv($height,2));$out='';
         for($y=0;$y<$h;$y++)for($x=0;$x<$w;$x++){
             $sum=[0,0,0];$alpha=0;$samples=0;
             for($dy=0;$dy<min(2,$height);$dy++)for($dx=0;$dx<min(2,$width);$dx++){
@@ -39,16 +37,8 @@ final class BeamDds
                 foreach([0,1,2] as $k)$sum[$k]+=ord($pixels[$at+$k])*$a;
             }
             foreach($sum as $v)$out.=chr($alpha?(int)round($v/$alpha):255);
-            $a=(int)round($alpha/$samples);$out.=chr($a);$histogram[$a]++;
+            $a=(int)round($alpha/$samples);$out.=chr($a);
         }
-        // Preserve cutout coverage while it is representable. Never turn a tiny
-        // far mip into an opaque sheet; the rounded target can legitimately be zero.
-        $target=(int)round($coverage*$w*$h);$best=1.;$error=PHP_INT_MAX;
-        foreach([1.,.5,.75,1.25,1.5,2.,3.,4.,6.,8.] as $scale){
-            $count=0;for($a=1;$a<256;$a++)if($a*$scale>=127.5)$count+=$histogram[$a];
-            if(abs($count-$target)<$error){$error=abs($count-$target);$best=$scale;}
-        }
-        if($best!==1.)for($i=3;$i<strlen($out);$i+=4)$out[$i]=chr(min(255,(int)round(ord($out[$i])*$best)));
         return $out;
     }
     private static function block(string $bytes): string

@@ -51,7 +51,7 @@ final class BeamLanePaint
      * originating carriageway surface is hidden by primary-priority clipping. */
     private static function trimPaint(array $vertices,array $triangles,array $other): array
     {
-        if(empty($other['preserve_junction_paint']))return BeamJunctionBoundary::trim($vertices,$triangles,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true,$other['vertical_gap']??null,$other['collision_top']??null);
+        if(empty($other['preserve_junction_paint']))return BeamJunctionBoundary::trim($vertices,$triangles,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true,$other['vertical_gap']??null,$other['collision_top']??null,$other['height_blend']??BeamJunctionBoundary::HEIGHT_BLEND_M);
         $normal=[];$overlay=[];$cutters=BeamJunctionBoundary::cutters($other['road'],$other['profiles'],$vertices,$other['sections']??null);
         $grid=[];foreach($cutters as $id=>$cut)for($y=(int)floor(min(array_column($cut,1))/25);$y<=(int)floor(max(array_column($cut,1))/25);$y++)for($x=(int)floor(min(array_column($cut,0))/25);$x<=(int)floor(max(array_column($cut,0))/25);$x++)$grid[$x.':'.$y][]=$id;
         foreach($triangles as $triangle){
@@ -63,7 +63,7 @@ final class BeamLanePaint
             }unset($point);
             $overlay[]=['points'=>$points,'uv'=>$triangle['uv'],'material'=>$triangle['material']];
         }
-        [$out,$faces]=BeamJunctionBoundary::trim($vertices,$normal,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true,$other['vertical_gap']??null,$other['collision_top']??null);
+        [$out,$faces]=BeamJunctionBoundary::trim($vertices,$normal,$other['road'],$other['profiles'],$other['sections']??null,$other['weld_boundary']??true,$other['vertical_gap']??null,$other['collision_top']??null,$other['height_blend']??BeamJunctionBoundary::HEIGHT_BLEND_M);
         foreach($overlay as $triangle){$base=count($out);array_push($out,...$triangle['points']);$faces[]=['v'=>[$base,$base+1,$base+2],'uv'=>$triangle['uv'],'material'=>$triangle['material']];}
         return [$out,$faces];
     }
@@ -116,16 +116,16 @@ final class BeamLanePaint
             }
         }
         if(!$triangles)return null;
-        $tops=[];
+        $tops=[];$blend=empty($branch['ribbon_graded'])?BeamJunctionBoundary::HEIGHT_BLEND_M:0.;
         if(isset($branch['junction_parent_top']))$tops[]=$branch['junction_parent_top'];
-        elseif(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null);
+        elseif(isset($branch['join']))[$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,!empty($branch['network'])?1.:null,null,$blend);
         foreach($obstacles as $other){
             if(isset($other['collision_top'])&&empty($other['preserve_junction_paint'])){$tops[]=$other['collision_top'];continue;}
-            if(!empty($branch['network']))$other['vertical_gap']=1.;[$vertices,$triangles]=self::trimPaint($vertices,$triangles,$other);
+            if(!empty($branch['network']))$other['vertical_gap']=1.;$other['height_blend']=$blend;[$vertices,$triangles]=self::trimPaint($vertices,$triangles,$other);
         }
         if($tops){
             $bytes='';foreach(array_unique($tops) as $top)$bytes.=base64_decode($top,true);
-            [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,1.,base64_encode($bytes));
+            [$vertices,$triangles]=BeamJunctionBoundary::trim($vertices,$triangles,$main,$mainProfiles,null,true,1.,base64_encode($bytes),$blend);
         }
         [$vertices,$triangles]=BeamJunctionPaint::clip($vertices,$triangles,$branch['paint_exclusions']??'');
         if(!$triangles)return null;

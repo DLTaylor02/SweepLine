@@ -62,7 +62,7 @@ final class BeamRoadClearance
                     $z=self::height($point,[array_slice($v,0,3),array_slice($v,3,3),array_slice($v,6,3)],$padding);
                     if($z===null||$z<$bottom||$z>$top)continue;
                     $n=BeamIntersections::nearest($point,$line['points'],$line['profiles']);if(!$n)continue;$n['z']=$z;
-                    return ['line'=>$line,'hit'=>$n];
+                    return ['line'=>$line,'hit'=>$n,'triangle'=>[array_slice($v,0,3),array_slice($v,3,3),array_slice($v,6,3)]];
                 }
             }
         }return null;

@@ -22,7 +22,7 @@ final class BeamLanes
             $width=(float)$m[1]*(in_array(strtolower($m[2]??''),['ft','feet'],true)?0.3048:1);
             if($width<$lanes*2.4 || $width>60)$width=null;
         }
-        return ['lanes'=>$lanes,'forward'=>$forward,'backward'=>$backward,'oneway'=>$oneway,'width_m'=>$width??($lanes*3.5+1.0),'estimated_lanes'=>$estimated,'estimated_width'=>$width===null];
+        return ['road_class'=>$highway,'lanes'=>$lanes,'forward'=>$forward,'backward'=>$backward,'oneway'=>$oneway,'width_m'=>$width??($lanes*3.5+1.0),'estimated_lanes'=>$estimated,'estimated_width'=>$width===null];
     }
     public static function distance(array $p,array $a,array $b): array
     {

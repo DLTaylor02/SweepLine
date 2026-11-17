@@ -2,33 +2,65 @@
 declare(strict_types=1);
 namespace SweepLine;
 
-/** Paint-only intersection openings. Collision pavement is never rebuilt from these masks. */
+/** Paint-only junction footprints; highway ramp merges retain their through-lane markings. */
 final class BeamJunctionPaint
 {
+    private static function ribbon(array $r): array
+    {
+        if(empty($r['connector']))return $r;
+        $cp=$r['profiles'][0];unset($cp['section_override']);$profiles=[];
+        foreach($r['connector'] as $i=>$p)$profiles[]=$cp+(isset($r['connector_sections'][$i])?['section_override'=>$r['connector_sections'][$i]]:[]);
+        return ['points'=>array_merge($r['connector'],$r['points']),'profiles'=>array_merge($profiles,$r['profiles'])]+$r;
+    }
     public static function prepare(array $prepared): array
     {
-        $byName=array_column($prepared['roads'],null,'name');$primary=$prepared['main_surfaces'][0]??null;$joins=[];
-        if($primary)$joins[$primary['name']]=$prepared['junctions']??[];
-        foreach($prepared['external_junctions']??[] as $name=>$list)$joins[$name]=$list;
-        foreach($prepared['roads'] as $r)$joins[$r['name']]=$r['junctions']??[];
-        // A ramp may return to an already prepared road at its other end.
-        // Include that genuine shared-node opening without changing the graph or pavement.
-        foreach($prepared['roads'] as $r){
-            $end=$r['end_owner']??null;$owner=null;
-            if(isset($end['road_index']))$owner=$prepared['roads'][$end['road_index']]??null;
-            elseif(isset($end['surface']['name']))$owner=$end['surface'];
-            if(!$owner)continue;$points=$r['points'];$last=count($points)-1;$n=BeamIntersections::nearest($points[$last],$owner['points'],$owner['profiles']);if(!$n)continue;
-            $dx=$points[$last][0]-$points[$last-1][0];$dy=$points[$last][1]-$points[$last-1][1];$length=max(.001,hypot($dx,$dy));$sine=abs($n['dx']*$dy-$n['dy']*$dx)/$length;
-            $join=$n+['radius'=>$r['profiles'][$last]['width_m']/2/max(.05,$sine),'branch_name'=>$r['name'],'preserve_through_lanes'=>($r['kind']??'')==='ramp'||$sine<.2];
-            $join['barrier_openings']=BeamBridgeOpenings::junction($owner['points'],$owner['profiles'],$r,$join);$joins[$owner['name']][]=$join;
+        $main=array_column($prepared['main_surfaces']??[],null,'name');$roads=array_column($prepared['roads'],null,'name');$lines=$main;$groups=[];$ranges=[];
+        foreach($roads as $name=>$r)$lines[$name]=self::ribbon($r);
+        $lengths=[];foreach($lines as $name=>$r)$lengths[$name]=BeamRampNetwork::length($r['points']);
+        $add=static function($node,$name,$station,$side,$direction,$vectors,$profile)use(&$groups){
+            $groups[(string)$node][$name.':'.(string)$side]=['name'=>$name,'station'=>$station,'side'=>$side,'direction'=>$direction,'vectors'=>$vectors,
+                'width'=>$profile['width_m'],'oneway'=>!empty($profile['oneway']),'street'=>isset($profile['road_class'])&&!in_array($profile['road_class'],['motorway','trunk','motorway_link','trunk_link'],true)];
+        };
+        $through=static function($node,$surface,$point)use($add){
+            $n=BeamIntersections::nearest($point,$surface['points'],$surface['profiles']);if(!$n)return;$d=[$n['dx'],$n['dy']];
+            $add($node,$surface['name'],$n['along'],'through',$d,[$d,[-$d[0],-$d[1]]],$surface['profiles'][$n['segment']]);
+        };
+        foreach($roads as $name=>$r){
+            if(empty($r['network']))continue;$line=$lines[$name];$p=$line['points'];$last=count($p)-1;
+            foreach([0,1] as $side){$node=$r[$side?'end_node':'start_node']??null;if($node===null)continue;$i=$side?$last:0;$j=$side?$last-1:1;
+                while(isset($p[$j])&&hypot($p[$j][0]-$p[$i][0],$p[$j][1]-$p[$i][1])<.01)$j+=$side?-1:1;if(!isset($p[$j]))continue;
+                $dx=$p[$j][0]-$p[$i][0];$dy=$p[$j][1]-$p[$i][1];$length=hypot($dx,$dy);$out=[$dx/$length,$dy/$length];$direction=$side?[-$out[0],-$out[1]]:$out;
+                $add($node,$name,$side?$lengths[$name]:0.,$side,$direction,[$out],$line['profiles'][$i]);
+            }
+            if(empty($r['parent_name'])&&isset($main[$r['external_main']??'primary']))$through($r['start_node'],$main[$r['external_main']??'primary'],[$r['join']['x'],$r['join']['y']]);
+            if(isset($r['end_owner']['surface']['name'],$main[$r['end_owner']['surface']['name']]))$through($r['end_node'],$main[$r['end_owner']['surface']['name']],end($p));
         }
-        $count=0;
-        if($primary){$prepared['paint_exclusions']=self::openings($primary,$joins[$primary['name']]??[],$byName);$count+=strlen($prepared['paint_exclusions'])?1:0;}
-        foreach($prepared['roads'] as &$r){$r['paint_exclusions']=self::openings($r,$joins[$r['name']]??[],$byName);$count+=strlen($r['paint_exclusions'])?1:0;}unset($r);
-        foreach($prepared['main_surfaces']??[] as $s)if($primary&&$s['name']!==$primary['name']&&isset($joins[$s['name']])){
-            $prepared['external_paint_exclusions'][$s['name']]=self::openings($s,$joins[$s['name']],$byName);
+        $junctions=0;$merges=0;
+        foreach($groups as $members){
+            $vectors=[];$street=false;$oneway=true;$radius=0.;
+            foreach($members as $m){$street=$street||$m['street'];$oneway=$oneway&&$m['oneway'];$radius=max($radius,$m['width']/2+.6);
+                foreach($m['vectors'] as $v){$duplicate=false;foreach($vectors as $u)if($u[0]*$v[0]+$u[1]*$v[1]>.965925826){$duplicate=true;break;}if(!$duplicate)$vectors[]=$v;}}
+            if(count($vectors)<3)continue;$cross=0.;foreach($vectors as $v)foreach($vectors as $u)$cross=max($cross,abs($v[0]*$u[1]-$v[1]*$u[0]));
+            if($cross<($street&&!$oneway?.258819045:.707106781)){$merges++;continue;}$junctions++;
+            $axis=null;$arm=null;
+            if(count($vectors)===3)foreach($vectors as $i=>$v)foreach($vectors as $j=>$u)if($i<$j&&$v[0]*$u[0]+$v[1]*$u[1]<-.94){$axis=$v;$arm=$vectors[3-$i-$j];break 2;}
+            foreach($members as $m){$left=true;$right=true;$d=$m['direction'];
+                if($axis&&abs($d[0]*$axis[0]+$d[1]*$axis[1])>.94){if(-$d[1]*$arm[0]+$d[0]*$arm[1]>0)$right=false;else $left=false;}
+                $lo=$m['station']-($m['side']===0?0.:$radius);$hi=$m['station']+($m['side']===1?0.:$radius);
+                if($left)$ranges[$m['name']][]=[$lo,$hi,'left'];if($right)$ranges[$m['name']][]=[$lo,$hi,'right'];
+            }
         }
-        $prepared['junction_paint']=['roads_with_openings'=>$count,'method'=>'Clip paint at actual at-grade junction openings; retain the far edge of a T junction and original collision pavement'];
+        // Legacy non-network branches still use their measured at-grade edge openings.
+        foreach($lines as $name=>$line){
+            $joins=$roads[$name]['junctions']??($name===array_key_first($main)?($prepared['junctions']??[]):($prepared['external_junctions'][$name]??[]));
+            $joins=array_values(array_filter($joins,static fn($j)=>empty($roads[$j['branch_name']??'']['network'])));
+            $mask=self::ranges($line,$ranges[$name]??[]);$legacy=self::openings($line,$joins,$roads);$mask=base64_encode(base64_decode($mask).base64_decode($legacy));
+            if(isset($roads[$name]))$roads[$name]['paint_exclusions']=$mask;
+            elseif($name===array_key_first($main))$prepared['paint_exclusions']=$mask;
+            else $prepared['external_paint_exclusions'][$name]=$mask;
+        }
+        foreach($prepared['roads'] as &$r)$r['paint_exclusions']=$roads[$r['name']]['paint_exclusions']??'';unset($r);
+        $prepared['junction_paint']=['crossroad_junctions'=>$junctions,'highway_merges_preserved'=>$merges,'method'=>'Suppress all incident approaches at street/ramp crossings; preserve highway through paint at shallow merges and the far edge of T junctions'];
         return $prepared;
     }
     public static function openings(array $owner,array $joins,array $branches): string
@@ -36,10 +68,17 @@ final class BeamJunctionPaint
         $ranges=[];
         foreach($joins as $join){
             $branch=$branches[$join['branch_name']??'']??null;
-            // A collinear section boundary is a road continuation, not an intersection.
-            if(!empty($join['preserve_through_lanes'])&&($branch['kind']??'')!=='ramp')continue;
+            if(!empty($join['preserve_through_lanes'])){
+                if(!$branch)continue;$p=$branch['connector'][0]??$branch['points'][0];$q=$branch['connector'][1]??$branch['points'][1];$n=BeamIntersections::nearest($p,$owner['points'],$owner['profiles']);
+                $dx=$q[0]-$p[0];$dy=$q[1]-$p[1];$length=max(.001,hypot($dx,$dy));
+                if(abs(($dx*$n['dx']+$dy*$n['dy'])/$length)>.707106781)continue;
+            }
             foreach($join['barrier_openings']??[] as $side=>$intervals)foreach($intervals as [$lo,$hi])if($hi>$lo)$ranges[]=[$lo,$hi,$side];
         }
+        return self::ranges($owner,$ranges);
+    }
+    private static function ranges(array $owner,array $ranges): string
+    {
         if(!$ranges)return '';
         $cuts=[];foreach($ranges as [$lo,$hi]){ $cuts[]=$lo;$cuts[]=$hi;}sort($cuts);$cuts=array_values(array_unique($cuts));
         $sections=BeamJunctionBoundary::sections($owner['points'],$owner['profiles']);$chain=[0.];

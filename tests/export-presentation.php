@@ -21,7 +21,7 @@
     check($original['xml']===$clipped['xml']&&$original['fascia_xml']===$clipped['fascia_xml'],'Intersection paint suppression leaves collision pavement and road edges byte-identical');
     check(!$contains($paint,[110,100])&&!$contains($paint,[110,103])&&$contains($paint,[125,100]),'Paint is removed inside the actual ramp opening, not across its oversized estimated junction radius');
     check($contains($paint,[110,100-$profile['width_m']/2+$profile['shoulder_m']]),'The far white edge of a T junction remains outside the paint opening');
-    $continuation=$branch;$continuation['kind']='receiving_road';
+    $continuation=$branch;$continuation['kind']='receiving_road';$continuation['points']=[[110,100,10],[170,100,10]];
     check(SweepLine\BeamJunctionPaint::openings($owner,[$join],['ramp'=>$continuation])===''&&SweepLine\BeamJunctionPaint::openings($owner,[array_replace($join,['barrier_openings'=>[]])],['ramp'=>$branch])==='','Collinear road continuations and vertically separated crossings do not erase paint');
 
     $taper=$marked;
@@ -29,7 +29,7 @@
     $lines=SweepLine\BeamLanePaint::build($taper,SweepLine\BeamJunctionBoundary::sections($owner['points'],$owner['profiles']),$owner['points'],$owner['profiles'],'test');
     $lineTriangles=$surface($lines['xml'],$lines['position']);
     check(!$contains($lineTriangles,[110,100])&&$contains($lineTriangles,[125,100]),'Geometry-based lane taper paint follows the same junction opening as textured paint');
-    $return=$branch;$return['end_owner']=['surface'=>$owner];$return['points']=[[110,160,10],[110,100,10]];
+    $return=$branch;$return['network']=true;$return['start_node']=1;$return['end_node']=2;$return['parent_name']='other';$return['end_owner']=['surface'=>$owner];$return['points']=[[110,160,10],[110,100,10]];
     $context=SweepLine\BeamJunctionPaint::prepare(['roads'=>[$return],'main_surfaces'=>[$owner],'junctions'=>[]]);
     check($context['paint_exclusions']!==''&&$context['roads'][0]['points']===$return['points'],'A ramp reconnection at its finish also suppresses paint on the receiving road');
     $full=$owner+['paint_exclusions'=>SweepLine\BeamJunctionBoundary::encode(SweepLine\BeamPavement::build($owner,$owner['points'],$owner['profiles'],'test',null,[],true))];
@@ -58,6 +58,37 @@
     $cached=SweepLine\BeamRoadClearance::prepare([['collision_top'=>SweepLine\BeamJunctionBoundary::encode($top)]+$ramp]);
     check(SweepLine\BeamRoadClearance::hit([100,118],$cached,10.9,11.1)!==null&&SweepLine\BeamRoadClearance::hit([30,110],$cached,9.,13.)===null,'Final clipped collision tops are authoritative over obsolete raw road ribbons');
 
+    $street=SweepLine\BeamLanes::infer(['lanes'=>'2'],'secondary',0);$link=SweepLine\BeamLanes::infer(['lanes'=>'1','oneway'=>'yes'],'motorway_link',1);
+    $leg=static fn($name,$points,$start,$end,$p,$kind)=>['name'=>$name,'points'=>$points,'profiles'=>array_fill(0,count($points),$p),'network'=>true,'kind'=>$kind,'start_node'=>$start,'end_node'=>$end,'parent_name'=>'other','connector'=>[]];
+    $west=$leg('west',[[60,100,10],[110,100,10]],40,42,$street,'receiving_road');
+    $east=$leg('east',[[110,100,10],[170,100,10]],42,43,$street,'receiving_road');
+    $north=$leg('north',[[110,100,10],[110,160,10]],42,44,$link,'ramp');
+    $junction=SweepLine\BeamJunctionPaint::prepare(['roads'=>[$west,$east,$north],'main_surfaces'=>[$owner],'junctions'=>[]]);
+    $covered=true;foreach($junction['roads'] as $i=>$r){$point=[[108,100],[112,100],[110,102]][$i];if(!$contains(SweepLine\BeamJunctionBoundary::decode($r['paint_exclusions']),$point))$covered=false;}
+    check($covered&&$junction['junction_paint']['crossroad_junctions']===1,'A ramp-to-street T junction suppresses paint on the ramp and both receiving-road approaches');
+    $highway=SweepLine\BeamLanes::infer(['lanes'=>'2','oneway'=>'yes'],'motorway',1);
+    $west['profiles']=array_fill(0,2,$highway);$east['profiles']=array_fill(0,2,$highway);$north['points']=[[110,100,10],[170,120,10]];
+    $merge=SweepLine\BeamJunctionPaint::prepare(['roads'=>[$west,$east,$north],'main_surfaces'=>[$owner],'junctions'=>[]]);
+    check(count(array_filter($merge['roads'],static fn($r)=>$r['paint_exclusions']!==''))===0&&$merge['junction_paint']['highway_merges_preserved']===1,'Shallow motorway on/off-ramp merges retain through-lane paint on every approach');
+
+    $main=['name'=>'primary','points'=>[[10,100,10],[230,100,10]],'profiles'=>array_fill(0,2,$profile),'spans'=>[]];$points=[];
+    for($x=20;$x<=220;$x+=2)$points[]=[$x,106,10.95+.15*sin($x/5)];
+    $rp=SweepLine\BeamRoadSurface::shoulders([$link])[0];
+    $rough=['name'=>'parallel','network'=>true,'kind'=>'ramp','start_node'=>1,'end_node'=>2,'parent_name'=>null,'junction_parent'=>null,'junction_obstacles'=>[],'connector'=>[],
+        'points'=>$points,'profiles'=>array_fill(0,count($points),$rp),'bridges'=>[],'tunnels'=>[],'external_main'=>null,'join'=>SweepLine\BeamIntersections::nearest([20,100],$main['points'],$main['profiles'])];
+    $graded=SweepLine\BeamPavementGrades::apply(['roads'=>[$rough],'main_surfaces'=>[$main]]);$fixed=$graded['roads'][0];
+    $mesh=SweepLine\BeamPavement::build($fixed,$main['points'],$main['profiles'],'test',null,[],true);$grade=0.;foreach($mesh['triangles'] as $face){[$a,$b,$c]=array_map(static fn($id)=>$mesh['vertices'][$id],$face['v']);$area=SweepLine\BeamPolygon::cross($a,$b,$c);if(abs($area)>1e-7)$grade=max($grade,abs((($b[2]-$a[2])*($c[1]-$a[1])-($c[2]-$a[2])*($b[1]-$a[1]))/$area));}
+    check($grade<.15&&$fixed['ribbon_graded']&&$graded['pavement_grading']['contact_samples']>0,'Near-parallel ramp pavement fits a continuous owner plane before clipping instead of generating threshold-induced ribs');
+    check(array_column($fixed['points'],0)===array_column($points,0)&&array_column($fixed['points'],1)===array_column($points,1)&&array_column($fixed['profiles'],'width_m')===array_column($rough['profiles'],'width_m')&&$graded['main_surfaces'][0]===$main,'Ramp grading preserves mapped XY, lane widths and the selected highway');
+    $separated=$rough;$separated['points']=array_map(static fn($p)=>[$p[0],$p[1],$p[2]+8],$points);
+    $separate=SweepLine\BeamPavementGrades::apply(['roads'=>[$separated],'main_surfaces'=>[$main]]);
+    $tunnel=$rough;$tunnel['tunnels']=[['start_m'=>40.,'end_m'=>140.,'clearance_m'=>5.]];
+    $protected=SweepLine\BeamPavementGrades::apply(['roads'=>[$tunnel],'main_surfaces'=>[$main]]);
+    check($separate['roads'][0]['points']===$separated['points']&&$protected['roads'][0]['points']===$tunnel['points']&&empty($protected['roads'][0]['ribbon_graded']),'Grade-separated pavement and existing tunnel profiles do not receive the ramp overlap fit');
+    $depart=$rough;foreach($depart['points'] as $i=>&$p)if($p[0]>100)$p[1]+=($p[0]-100)*.7;unset($p);
+    $departure=SweepLine\BeamPavementGrades::apply(['roads'=>[$depart],'main_surfaces'=>[$main]]);
+    check(end($departure['roads'][0]['points'])===end($depart['points'])&&$departure['pavement_grading']['blended_samples']>0,'The overlap height fit blends out over a bounded approach and retains distant ramp elevations');
+
     // Decode the published block format independently, including its alpha indices.
     $decode=static function(string $dds,int $level=0):array{
         $header=unpack('V31',substr($dds,4,124));$w=$header[4];$h=$header[3];$at=148;
@@ -79,8 +110,14 @@
     for($i=0;$i<strlen($pixels);$i+=4){if($pixels[$i+3]!==$decoded[$i+3])$alpha=false;if(ord($pixels[$i+3]))foreach([0,1,2] as $k)$error=max($error,abs(ord($pixels[$i+$k])-ord($decoded[$i+$k])));}
     check($w===256&&$h===1024&&$alpha&&$error<=8,'Independent DDS decoding retains marking coverage and white/yellow colors within RGB565 precision');
     [$mw,$mh,$mip]=$decode($dds,3);$visible=0;$fringe=true;
-    for($i=0;$i<strlen($mip);$i+=4){if(ord($mip[$i+3])>=128)$visible++;if(ord($mip[$i+3])&&ord($mip[$i])<150)$fringe=false;}
-    check($mw===32&&$mh===128&&$visible>0&&$visible<$mw*$mh/4&&$fringe,'Far marking mips retain bounded cutout coverage without dark asphalt fringes');
+    for($i=0;$i<strlen($mip);$i+=4){if(ord($mip[$i+3])>=8)$visible++;if(ord($mip[$i+3])&&ord($mip[$i])<150)$fringe=false;}
+    check($mw===32&&$mh===128&&$visible>0&&$visible<$mw*$mh/4&&$fringe,'Far marking mips retain softly blended coverage without dark asphalt fringes');
+    $sparse=SweepLine\BeamPng::paintPixels(SweepLine\BeamRoadSurface::shoulders([$link])[0]);$sparseDds=SweepLine\BeamDds::rgba(256,1024,$sparse);$material=SweepLine\BeamRoadMaterials::paintMaterial('test','/paint.color.png');$farVisible=true;$farMass=true;
+    $sourceMass=0.;for($i=3;$i<strlen($sparse);$i+=4)$sourceMass+=ord($sparse[$i])/255;$sourceMass/=256*1024;
+    foreach([3,4,5] as $level){[$fw,$fh,$pixels]=$decode($sparseDds,$level);$mass=0.;$peak=0;for($i=3;$i<strlen($pixels);$i+=4){$a=ord($pixels[$i]);$mass+=$a/255;$peak=max($peak,$a);}
+        if($peak<$material['alphaRef'])$farVisible=false;if(abs($mass/($fw*$fh)-$sourceMass)>.005)$farMass=false;
+    }
+    check($farVisible&&$farMass&&$material['alphaRef']===8&&$material['translucent']&&$material['translucentBlendOp']==='LerpAlpha','Sparse highway paint remains renderable in distant mip levels without inflating opacity into a solid road-wide sheet');
     $written=[];$cache=[];$file=SweepLine\BeamRoadMaterials::writeTexture($profile,$put,$cache);$same=SweepLine\BeamRoadMaterials::writeTexture($profile+['estimated_width'=>true],$put,$cache);
     check($file===$same&&count($written)===1&&isset($written[substr($file,0,-4).'.dds'])&&!isset($written[$file]),'Equivalent road profiles share a single DDS and omit source PNGs that would trigger game-side conversion');
     check(rejects(static fn()=>SweepLine\BeamDds::rgba(3,4,str_repeat("\0",48)))&&rejects(static fn()=>SweepLine\BeamDds::rgba(4,4,'')),'Invalid DDS dimensions or pixel buffers are rejected before encoding');

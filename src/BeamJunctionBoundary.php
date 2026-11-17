@@ -92,7 +92,7 @@ final class BeamJunctionBoundary
         $out=[];for($offset=0;$offset+72<=strlen($bytes);$offset+=72){$v=array_values(unpack('e9',substr($bytes,$offset,72)));$out[]=[array_slice($v,0,3),array_slice($v,3,3),array_slice($v,6,3)];}
         return $out;
     }
-    public static function trim(array $vertices,array $triangles,array $road,array $profiles,?array $surfaceSections=null,bool $weldBoundary=true,?float $verticalGap=null,?string $collisionTop=null): array
+    public static function trim(array $vertices,array $triangles,array $road,array $profiles,?array $surfaceSections=null,bool $weldBoundary=true,?float $verticalGap=null,?string $collisionTop=null,float $heightBlend=self::HEIGHT_BLEND_M): array
     {
         $cutters=$collisionTop===null?self::cutters($road,$profiles,$vertices,$surfaceSections):[];$s=$collisionTop===null?($surfaceSections??self::sections($road,$profiles)):[];$result=[];$out=[];$lookup=[];$edges=[];
         $xs=array_column($vertices,0);$ys=array_column($vertices,1);if(!$xs)return [$vertices,$triangles];
@@ -114,6 +114,7 @@ final class BeamJunctionBoundary
             if(max($a[0],$b[0])<$bounds[0]||min($a[0],$b[0])>$bounds[2]||max($a[1],$b[1])<$bounds[1]||min($a[1],$b[1])>$bounds[3])continue;
             $edges[]=[$a,$b];
         }
+        if($collisionTop===null&&$weldBoundary&&$s&&$heightBlend===0.){$edges[]=$s[0];$edges[]=$s[count($s)-1];}
         $vertex=static function($p)use(&$out,&$lookup){$key=implode(',',array_map(static fn($v)=>sprintf('%.7F',$v),$p));if(isset($lookup[$key]))return $lookup[$key];$i=count($out);$lookup[$key]=$i;$out[]=$p;return $i;};
         foreach($triangles as $triangle){
             $pieces=[array_map(static fn($id,$uv)=>array_merge($vertices[$id],$uv),$triangle['v'],$triangle['uv'])];
@@ -136,13 +137,13 @@ final class BeamJunctionBoundary
                     // nearly coincident clip vertices fall on opposite sides of it.
                     // Blend from the true external edge; independent carriageways
                     // have no edges here and retain their original elevations.
-                    $nearest=self::HEIGHT_BLEND_M;$height=null;
+                    $nearest=max(1e-6,$heightBlend);$height=null;
                     foreach($edges as [$a,$b]){$dx=$b[0]-$a[0];$dy=$b[1]-$a[1];$l=$dx*$dx+$dy*$dy;if($l<1e-12)continue;
                         $t=max(0,min(1,(($p[0]-$a[0])*$dx+($p[1]-$a[1])*$dy)/$l));
                         $distance=hypot($p[0]-$a[0]-$t*$dx,$p[1]-$a[1]-$t*$dy);
                         if($distance<$nearest&&($verticalGap===null||abs($a[2]+$t*($b[2]-$a[2])-$p[2])<=$verticalGap)){$nearest=$distance;$height=$a[2]+$t*($b[2]-$a[2]);}
                     }
-                    if($height!==null){$t=$nearest<1e-6?0:$nearest/self::HEIGHT_BLEND_M;$weight=1-$t*$t*(3-2*$t);$p[2]+=($height-$p[2])*$weight;}
+                    if($height!==null){$t=$nearest<1e-6||$heightBlend<=0?0:$nearest/$heightBlend;$weight=1-$t*$t*(3-2*$t);$p[2]+=($height-$p[2])*$weight;}
                 }unset($p);
                 for($i=1;$i<count($piece)-1;$i++){
                     $p=[$piece[0],$piece[$i],$piece[$i+1]];if(abs(BeamPolygon::cross(...$p))<1e-8)continue;

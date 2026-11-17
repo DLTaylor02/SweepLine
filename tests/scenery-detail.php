@@ -26,7 +26,7 @@
     check(abs($dot)<1e-9&&$rot[2]>0,'Stock rail orientation follows graded runs with orthogonal axes');
     $m=\SweepLine\BeamRoadMaterials::material('sl_road','/levels/test/art/roads/paint.color.png',$profiles[0]);$s=$m['Stages'][0];$paint=\SweepLine\BeamRoadMaterials::paintMaterial('paint','/levels/test/art/roads/paint.color.png');
     check($m['version']===1.5&&$m['activeLayers']===1&&$m['groundType']==='ASPHALT'&&str_contains($s['baseColorMap'],'AsphaltRoad_variation_01')&&$paint['Stages'][0]['diffuseMap']==='/levels/test/art/roads/paint.color.png','Weathered stock asphalt retains its detail while lane color comes from a separate paint surface');
-    check(!isset($s['opacityMap'])&&!isset($m['translucent'])&&$paint['alphaTest']&&!$paint['translucent'],'Road stays opaque and lane paint uses a single alpha-tested sample');
+    check(!isset($s['opacityMap'])&&!isset($m['translucent'])&&$paint['alphaTest']&&$paint['alphaRef']===8&&$paint['translucent']&&$paint['translucentZWrite']&&$paint['translucentBlendOp']==='LerpAlpha','Road stays opaque while paint blends soft distant coverage and discards only near-transparent pixels');
     check(\SweepLine\BeamRockPalette::stockAsset([140,140,135])==='neutral_rock'&&\SweepLine\BeamRockPalette::stockAsset([170,120,85])==='utah_rock','Rock palette selects matching native mesh and distance appearances instead of tinting red billboards');
     $asphaltRepeat=\SweepLine\BeamPng::ROAD_TEXTURE_LENGTH_M;
     check($asphaltRepeat===48&&\SweepLine\BeamPng::PAINT_REPEAT_LENGTH_M===12,'Asphalt repeats four times less often with an independent paint period');

@@ -18,7 +18,7 @@ final class BeamRoadMaterials
     public static function paintMaterial(string $name,string $texture): array
     {
         return ['class'=>'Material','name'=>$name,'mapTo'=>$name,'version'=>1,'groundType'=>'ASPHALT',
-            'alphaTest'=>true,'alphaRef'=>128,'translucent'=>false,'castShadows'=>false,
+            'alphaTest'=>true,'alphaRef'=>8,'translucent'=>true,'translucentBlendOp'=>'LerpAlpha','translucentZWrite'=>true,'castShadows'=>false,
             'Stages'=>[['diffuseMap'=>$texture,'diffuseColor'=>[1,1,1,1],'specularPower'=>1,'useAnisotropic'=>true]]];
     }
     /** Identical paint shares one DDS; logical PNG references follow BeamNG's resolver. */
