@@ -35,7 +35,9 @@ try{
  check($cwZip->getFromName($cwBase.'art/roads/carriageway_0-0.dae')!==false,'Full-length opposite carriageway has its own collision pavement mesh');
  $cwNav=json_decode($cwZip->getFromName($cwBase.'map.json'),true);
  $cwOpposite=array_filter($cwNav['segments'],static fn($s,$name)=>str_starts_with($name,'carriageway_0_'),ARRAY_FILTER_USE_BOTH);
- check(count($cwOpposite)>100,'Opposite carriageway is included in minimap and navigation along its full length');
+ $cwCoveragePoints=array_column(array_filter($cwObjects,static fn($o)=>$o['class']==='BeamNGWaypoint'),'position','name');$cwCoveredLength=0.;
+ foreach($cwOpposite as $edge){[$a,$b]=$edge['nodes'];$cwCoveredLength+=hypot($cwCoveragePoints[$a][0]-$cwCoveragePoints[$b][0],$cwCoveragePoints[$a][1]-$cwCoveragePoints[$b][1]);}
+ check($cwCoveredLength>900,'Opposite carriageway navigation covers its full length regardless of redundant waypoint sampling');
  check(count(array_filter($cwOpposite,static fn($s)=>!$s['oneWay']||$s['lanesRight']!==3))===0,'Opposite traffic retains one-way travel and three mapped lanes');
  $cwNames=array_column($cwObjects,'name');check(count($cwNames)===count(array_unique($cwNames)),'Both carriageways have collision-free scene object names');
  $cwMap=[];foreach($cwObjects as $o)if(isset($o['name'],$o['position']))$cwMap[$o['name']]=$o['position'];
