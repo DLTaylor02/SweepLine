@@ -28,7 +28,7 @@ final class Importer
         WorkerStatus::heartbeat($this->db,$message);
         echo date('c')." job $id: $message\n";
     }
-    public function run(array $job): void
+    public function run(array $job,bool $activate=true): void
     {
         $id=(int)$job['id']; $this->jobId=$id; $this->allowEmpty=(bool)($job['allow_empty']??false);
         try {
@@ -48,10 +48,10 @@ final class Importer
             if ((int)$count->fetchColumn()<1 && !$this->allowEmpty) { throw new \RuntimeException('No usable candidates: previous dataset remains active'); }
             $this->db->beginTransaction();
             $this->checkpoint(true);
-            $this->db->prepare('UPDATE regions SET active_job_id=?, coverage=(SELECT coverage FROM import_jobs WHERE id=?), imported_at=now() WHERE id=?')->execute([$id,$id,$job['region_id']]);
-            $this->db->prepare("UPDATE import_jobs SET status='complete',progress='Active',finished_at=now() WHERE id=?")->execute([$id]);
+            if($activate)$this->db->prepare('UPDATE regions SET active_job_id=?, coverage=(SELECT coverage FROM import_jobs WHERE id=?), imported_at=now() WHERE id=?')->execute([$id,$id,$job['region_id']]);
+            $this->db->prepare("UPDATE import_jobs SET status='complete',progress=?,finished_at=now() WHERE id=?")->execute([$activate?'Active':'Validated replacement awaiting activation',$id]);
             $this->db->commit();
-            echo date('c')." job $id: Import validated and activated\n";
+            echo date('c')." job $id: Import validated".($activate?' and activated':' for staged activation')."\n";
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) { $this->db->rollBack(); }
             $this->db->prepare("UPDATE import_jobs SET status='failed',error=?,finished_at=now() WHERE id=?")->execute([substr($e->getMessage(),0,2000),$id]);

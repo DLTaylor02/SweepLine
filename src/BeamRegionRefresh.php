@@ -32,46 +32,41 @@ final class BeamRegionRefresh
         $q->execute([self::VERSION,json_encode(['type'=>'MultiLineString','coordinates'=>$lines],JSON_THROW_ON_ERROR),$plan['epsg']]);
         $rows=$q->fetchAll(\PDO::FETCH_ASSOC);
         if(count($rows)>64)throw new \RuntimeException('More than 64 obsolete regions need a source refresh. Refresh a smaller area in Manage before exporting.');
-        $report=['legacy_regions'=>count($rows),'upgraded'=>0,'refreshed_regions'=>[],'added_ramp_ways'=>0,'failures'=>[],'method'=>'Fresh complete regional OSM extract and normal atomic importer'];
+        $report=['legacy_regions'=>count($rows),'upgraded'=>0,'refreshed_regions'=>[],'added_ramp_ways'=>0,'failures'=>[],'method'=>'Fresh complete source tiles and jointly activated regional imports'];
         $download??=[Download::class,'file'];
         foreach($rows as $row){
             $progress('Matching road network: refreshing outdated region '.$row['slug']);
             $lock=$db->prepare('SELECT pg_try_advisory_lock(73019423,hashtext(?))');$lock->execute(['sweepline-region:'.$row['slug']]);
             if(!$lock->fetchColumn())throw new \RuntimeException('A required region is currently being modified. Retry after its refresh or discard completes.');
-            $path=$dir.'/region-refresh-'.$row['job_id'].'.osm';$job=null;
+            $path=$dir.'/region-refresh-'.$row['job_id'].'.osm';$chunks=[];
             try{
                 $state=$db->prepare('SELECT active_job_id FROM regions WHERE id=?');$state->execute([$row['region_id']]);
-                if((int)$state->fetchColumn()!==(int)$row['job_id'])throw new \RuntimeException('Region changed before refresh; retry the export with current coverage.');
+                if((int)$state->fetchColumn()!==(int)$row['job_id']){
+                    $current=$db->prepare('SELECT j.ramp_context_version FROM regions r JOIN import_jobs j ON j.id=r.active_job_id WHERE r.id=?');$current->execute([$row['region_id']]);
+                    if((int)$current->fetchColumn()>=self::VERSION)continue;
+                    throw new \RuntimeException('Region changed before refresh; retry the export with current coverage.');
+                }
                 if((float)$row['area']>1e10)throw new \RuntimeException('Region is too large for a bounded automatic refresh. Refresh smaller regional tiles in Manage.');
                 $free=disk_free_space($dir);if($free!==false&&$free<536870912)throw new \RuntimeException('Region refresh needs at least 512 MB of free storage.');
                 $budget=(new StorageSettings($db))->read()['database_budget_mb']*1048576;
                 if((int)$db->query('SELECT pg_database_size(current_database())')->fetchColumn()>$budget)throw new \RuntimeException('Region refresh paused at the application database storage budget; review Manage.');
                 $ring=json_decode($row['ring'],true,512,JSON_THROW_ON_ERROR)['coordinates'];
                 $tile=!empty($row['tile'])?json_decode($row['tile'],true,512,JSON_THROW_ON_ERROR):[];
-                $bounds=$tile['bounds']??[min(array_column($ring,0)),min(array_column($ring,1)),max(array_column($ring,0)),max(array_column($ring,1))];
+                $bounds=[min(array_column($ring,0)),min(array_column($ring,1)),max(array_column($ring,0)),max(array_column($ring,1))];
                 $halo=CoveragePlanner::halo($tile+['bounds'=>$bounds]);
-                [$w,$s,$e,$n]=$bounds;$w=max(-180,$w-$halo);$e=min(180,$e+$halo);$s=max(-90,$s-$halo);$n=min(90,$n+$halo);
-                $acquisition=BeamRegionDownload::fetch(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$path,[$w,$s,$e,$n],$download,
-                    static fn($m)=>$progress('Matching road network: refreshing '.$row['slug'].' - '.$m),$sleep);
-                self::validate($path);$sourceHash=hash_file('sha256',$path);$progress('Matching road network: importing refreshed region '.$row['slug']);
-                $insert=$db->prepare("INSERT INTO import_jobs(region_id,status,source_path,coverage,allow_empty,started_at,ramp_context_version)
-                    VALUES (?,'running',?,ST_SetSRID(ST_GeomFromGeoJSON(?),4326),true,now(),?) RETURNING *");
-                $insert->execute([$row['region_id'],$path,$row['coverage'],self::VERSION]);$job=$insert->fetch(\PDO::FETCH_ASSOC);
-                $checkpoint=static function(bool $lock=false)use($db,$row,$progress):void{
-                    $progress(null);
-                    if($lock){
-                        $q=$db->prepare('SELECT active_job_id FROM regions WHERE id=? FOR UPDATE');$q->execute([$row['region_id']]);
-                        if((int)$q->fetchColumn()!==(int)$row['job_id'])throw new \RuntimeException('Region changed during refresh; replacement was not activated.');
-                    }
-                };
-                (new Importer($db,$checkpoint))->run($job);
-                $report['upgraded']++;$report['refreshed_regions'][]=['region_id'=>(int)$row['region_id'],'previous_job_id'=>(int)$row['job_id'],'job_id'=>(int)$job['id'],'source_sha256'=>$sourceHash,'acquisition'=>$acquisition];
+                $acquisition=BeamRegionDownload::fetch(getenv('OSM_OVERPASS_URL')?:'https://overpass-api.de/api/interpreter',$path,$bounds,$download,
+                    static fn($m)=>$progress('Matching road network: refreshing '.$row['slug'].' - '.$m),$sleep,true,$halo);
+                $chunks=$acquisition['chunks'];unset($acquisition['chunks']);
+                $rootTile=array_replace($tile,['key'=>$row['slug'],'bounds'=>$bounds,'halo'=>$halo]);
+                $replacement=BeamRegionReplacement::run($db,$row,$rootTile,$chunks,$progress);
+                $report['upgraded']++;$report['refreshed_regions'][]=['region_id'=>(int)$row['region_id'],'previous_job_id'=>(int)$row['job_id'],
+                    'job_id'=>count($replacement)===1?$replacement[0]['job_id']:null,'replacement_imports'=>$replacement,'acquisition'=>$acquisition];
             }catch(\Throwable $e){
                 if($db->inTransaction())$db->rollBack();
-                if($job)$db->prepare("UPDATE import_jobs SET status='failed',error='Region refresh failed; previous active dataset retained',finished_at=now() WHERE id=? AND status='running'")->execute([$job['id']]);
                 if($e instanceof JobCancelled)throw $e;
                 throw new \RuntimeException('Required region refresh failed for '.$row['slug'].': '.$e->getMessage().' Previous regional data remains active.',0,$e);
             }finally{
+                foreach($chunks as $chunk)if(is_file($chunk['path']))unlink($chunk['path']);
                 if(is_file($path))unlink($path);
                 $db->prepare('SELECT pg_advisory_unlock(73019423,hashtext(?))')->execute(['sweepline-region:'.$row['slug']]);
             }

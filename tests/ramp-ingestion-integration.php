@@ -42,10 +42,22 @@
         $failed=false;try{SweepLine\BeamRampBackfill::ensure($db,$plan,$dir,static fn($m)=>null,static function($url,$path)use($incomplete){file_put_contents($path,$incomplete);});}catch(RuntimeException $e){$failed=true;}
         $active->execute([$region]);
         check($failed&&(int)$active->fetchColumn()===$replacement,'An import with missing nodes preserves the previously active dataset');
+        $db->prepare('UPDATE import_jobs SET coverage=ST_MakeEnvelope(-119.9,39.4,-119.65,39.65,4326) WHERE id=?')->execute([$replacement]);
+        $db->prepare('UPDATE regions SET coverage=(SELECT coverage FROM import_jobs WHERE id=?) WHERE id=?')->execute([$replacement,$region]);
+        $calls=0;$broken=static function($url,$path)use(&$calls,$xml,$incomplete){file_put_contents($path,++$calls===4?$incomplete:$xml);};
+        $failed=false;try{SweepLine\BeamRampBackfill::ensure($db,$plan,$dir,static fn($m)=>null,$broken,static fn()=>null);}catch(RuntimeException $e){$failed=true;}
+        $active->execute([$region]);$children=$db->query("SELECT count(*) FROM regions WHERE slug LIKE 'ramp-import-regression-%' AND active_job_id IS NOT NULL")->fetchColumn();
+        check($failed&&(int)$active->fetchColumn()===$replacement&&(int)$children===0,'Failure in a later staged child preserves the parent and activates no partial replacement');
+        $fresh=SweepLine\BeamRampBackfill::ensure($db,$plan,$dir,static fn($m)=>null,static function($url,$path)use($xml){file_put_contents($path,$xml);},static fn()=>null);
+        $active->execute([$region]);$parentActive=$active->fetchColumn();$children=$db->query("SELECT count(*) FROM regions WHERE slug LIKE 'ramp-import-regression-%' AND active_job_id IS NOT NULL")->fetchColumn();
+        $parentTask=$db->query("SELECT status FROM data_tasks WHERE task_key='ramp-import-regression'")->fetchColumn();
+        check($parentActive===null&&(int)$children===4&&$parentTask==='split'&&count($fresh['refreshed_regions'][0]['replacement_imports'])===4,'Validated children replace the dense parent together and mark its preparation task split');
     }finally{
         if($db->inTransaction())$db->rollBack();
-        $db->prepare('UPDATE regions SET active_job_id=NULL WHERE id=?')->execute([$region]);
-        $db->prepare('DELETE FROM import_jobs WHERE region_id=?')->execute([$region]);$db->prepare('DELETE FROM regions WHERE id=?')->execute([$region]);
+        $ids=$db->query("SELECT id FROM regions WHERE slug='ramp-import-regression' OR slug LIKE 'ramp-import-regression-%'")->fetchAll(PDO::FETCH_COLUMN);
+        foreach($ids as $id)$db->prepare('UPDATE regions SET active_job_id=null WHERE id=?')->execute([$id]);
+        $db->exec("DELETE FROM data_tasks WHERE task_key='ramp-import-regression' OR task_key LIKE 'ramp-import-regression-%'");
+        foreach($ids as $id){$db->prepare('DELETE FROM import_jobs WHERE region_id=?')->execute([$id]);$db->prepare('DELETE FROM regions WHERE id=?')->execute([$id]);}
         if(is_file($file))unlink($file);foreach(glob($dir.'/*') as $p)unlink($p);rmdir($dir);
     }
 })($db);

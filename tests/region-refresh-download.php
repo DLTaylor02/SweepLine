@@ -25,5 +25,19 @@
         $calls=0;$failed=false;
         try{SweepLine\BeamRegionDownload::fetch('https://example.test',$file,[0,0,.1,.1],static function()use(&$calls){$calls++;throw new SweepLine\DownloadFailure('HTTP 502',true);},static fn($m)=>null,static fn()=>null);}catch(RuntimeException $e){$failed=true;}
         check($failed&&$calls<=48&&!is_file($file)&&count(glob($dir.'/*'))===0,'Persistent outage remains bounded and cannot publish an incomplete replacement');
+
+        $many='<osm version="0.6">';for($i=1;$i<=8001;$i++)$many.='<way id="'.$i.'"/>';$many.='</osm>';$piece=0;
+        $parts=SweepLine\BeamRegionDownload::fetch('https://example.test',$file,[0,0,.25,.25],static function($url,$path)use($many,&$piece){file_put_contents($path,str_replace('id="','id="'.(++$piece),$many));},static fn($m)=>null,static fn()=>null,true);
+        $distinct=[];foreach($parts['chunks'] as $chunk){$r=new XMLReader();$r->open($chunk['path']);while($r->read())if($r->nodeType===XMLReader::ELEMENT&&$r->name==='way')$distinct[$r->getAttribute('id')]=true;$r->close();}
+        check(count($parts['chunks'])===4&&count($distinct)===32004&&array_column($parts['chunks'],'tile_path')===['0','1','2','3'],'Dense source uses separate bounded imports even when unique combined way count exceeds 30,000');
+        foreach($parts['chunks'] as $chunk)unlink($chunk['path']);
+
+        $large='<osm version="0.6">'.str_repeat('<way id="9"/>',30001).'</osm>';$calls=0;$waits=0;
+        $parts=SweepLine\BeamRegionDownload::fetch('https://example.test',$file,[0,0,.1,.1],static function($url,$path,$max,$post)use(&$calls,$large,$many){
+            $calls++;parse_str($post,$request);preg_match('/\]\(([-0-9.,]+)\);/',$request['data'],$m);$bbox=array_map('floatval',explode(',',$m[1]));
+            file_put_contents($path,$bbox[3]-$bbox[1]>.12?$large:$many);
+        },static fn($m)=>null,static function()use(&$waits){$waits++;},true,.04);
+        check($calls===5&&$waits===0&&count($parts['chunks'])===4,'Oversized source splits immediately and reduces child halos rather than retrying the same dense request');
+        foreach($parts['chunks'] as $chunk)unlink($chunk['path']);
     }finally{foreach(glob($dir.'/*') as $path)unlink($path);rmdir($dir);}
 })();
