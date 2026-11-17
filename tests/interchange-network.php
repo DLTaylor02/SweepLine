@@ -57,4 +57,24 @@
     $oversized=['bounds'=>[0,0,100,100],'intersection_data'=>['branches'=>[['points'=>[[0,0],[SweepLine\BeamPlan::MAX_SIDE+1000,0]]]]]];
     $limited=false;try{SweepLine\BeamRampNetwork::extent($oversized);}catch(SweepLine\BeamInterchangeLimit $e){$limited=true;}
     check($limited,'Oversized connected networks fail explicitly rather than keeping an undersized terrain footprint');
+
+    $contactRaster=new SweepLine\BeamRaster(64,1000,str_repeat(pack('g',105),4096),str_repeat(chr(100),12288));
+    $bridgeRoad=[];$tunnelRoad=[];for($x=100;$x<=900;$x+=10){$bridgeRoad[]=[$x,300,110];$tunnelRoad[]=[$x,700,100];}$contactProfiles=array_fill(0,count($bridgeRoad),['width_m'=>8]);
+    $span=['start_m'=>200.,'end_m'=>500.];
+    $bridgeTrack=['road'=>$bridgeRoad,'profiles'=>$contactProfiles,'chain'=>range(0,800,10),'bridges'=>[$span],'tunnels'=>[]];
+    $tunnelSpan=['start_m'=>500.,'end_m'=>750.,'clearance_m'=>4.8];
+    $tunnelTrack=['road'=>$tunnelRoad,'profiles'=>$contactProfiles,'chain'=>range(0,800,10),'bridges'=>[],'tunnels'=>[$tunnelSpan]];
+    for($y=43;$y<=46;$y++)for($x=38;$x<=55;$x++)$contactRaster->put($x,$y,145);
+    $contactMask=SweepLine\BeamTrack::mask($bridgeTrack,$contactRaster,str_repeat("\0",4096),static fn($m)=>null);
+    $contactMask=SweepLine\BeamTrack::mask($tunnelTrack,$contactRaster,$contactMask,static fn($m)=>null);
+    $branch=['name'=>'near_bridge','osm_id'=>123,'network'=>true,'points'=>[[350,330,100],[550,330,100]],'profiles'=>[['width_m'=>8],['width_m'=>8]],'bridges'=>[],'tunnels'=>[]];
+    $context=['network'=>true,'roads'=>[$branch],'aprons'=>[],'graph'=>['network_edge_count'=>1],'structure_mask'=>$contactMask,
+        'main_surfaces'=>[['name'=>'primary','points'=>$bridgeRoad,'profiles'=>$contactProfiles,'spans'=>[$span]],['name'=>'tunnel','points'=>$tunnelRoad,'profiles'=>$contactProfiles,'spans'=>[$tunnelSpan]]]];
+    $beforeRoads=serialize($context['roads']);
+    $fixed=SweepLine\BeamIntersections::conform($context,$contactRaster,0,static fn($m)=>null);
+    check(count($fixed['final_clearance']['initial_structure_contacts'])===1&&$fixed['final_clearance']['exact_structure_contact']!==null&&serialize($fixed['roads'])===$beforeRoads,'A road blocked only by padded structure masks receives exact terrain repair without changing or shortening its geometry');
+    check($contactRaster->cell(28,19)===105.&&$contactRaster->cell(45,45)===145.,'Exact network contact repair preserves actual bridge ground and tunnel overburden');
+    $context['roads'][0]['name']='protected_tunnel';$context['roads'][0]['points']=[[650,700,100],[800,700,100]];
+    $rejected=false;try{SweepLine\BeamIntersections::conform($context,$contactRaster,0,static fn($m)=>null);}catch(SweepLine\BeamInterchangeLimit $e){$rejected=str_contains($e->getMessage(),'OSM way 123')&&str_contains($e->getMessage(),'above pavement');}
+    check($rejected,'Actual protected structure conflicts still fail with source way and overlap diagnostics');
 })();

@@ -712,3 +712,9 @@ Regional refreshes no longer merge all downloaded pieces back into one import. E
 The normal importer can validate a staged replacement without activating it. Refresh stages every required child, checks that the union of replacement coverage covers the original region, then activates all children and retires the old parent's active pointer in one database transaction. A failed/cancelled child, coverage gap, concurrent change or storage-budget failure activates none of the staged replacements. Original active datasets remain usable. Staged failed attempts are eligible for normal inactive-import cleanup.
 
 Preparation tasks use the existing split/complete hierarchy, so successful split parents are hidden in Manage Regions and child regions remain individually refreshable/discardable. Existing candidates, history snapshots and favorites follow their existing retention behavior; refreshing does not destructively recreate the database. No migration or raised per-import safety limit is required.
+
+### Exact interchange contact near structures (0.176.0)
+
+Broad raster protection masks extend several cells outside actual bridge/tunnel footprints. If they leave a network road obstructed, the exporter now runs the existing exact corridor contact pass before deciding the edge is unsupported. That pass protects actual structure footprints and tunnel cover, then rechecks pavement clearance without changing or shortening roads. Maps without a blocked contact retain the existing processing path.
+
+intersection_context.final_clearance records initial_structure_contacts and exact_structure_contact diagnostics when this repair is needed. Unresolved conflicts still stop the export and identify the OSM way, distance along the edge and terrain overlap height; protection is not simply disabled.

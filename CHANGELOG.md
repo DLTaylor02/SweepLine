@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.176.0:** Repair interchange terrain contacts blocked by coarse structure-mask padding before rejecting a connected edge. Reuse exact corridor/structure-footprint contact correction, retain road geometry and actual bridge/tunnel support, recheck clearance, and record repair diagnostics. Remaining conflicts identify OSM way, chainage and overlap height. Add padded-mask and genuine protected-conflict regressions.
+
 - **0.175.0:** Remove bridge-count limits for individual roads and the combined highway/interchange export. Do not replace them with a total bridge-length budget. Retain individual structure validation and add a regression accepting seventeen valid spans.
 
 - **0.174.0:** Fix dense legacy refreshes hitting the combined 30,000-way cap after successful downloads. Keep source tiles as separately bounded imports, validate them without activation, verify their complete coverage and atomically switch all replacement regions together. Preserve original coverage on any child failure, mark replaced parents split, scale child continuity halos, split oversized responses immediately and retain per-import/storage limits. Add over-30k acquisition and native activation/rollback regressions.
