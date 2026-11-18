@@ -56,6 +56,92 @@
     $empty=SweepLine\BeamRoadGround::write([array_replace($road,['spans'=>[['start_m'=>0.,'end_m'=>120.]]])],$raster,0.,$layers,$layers,'stock','fixture','/levels/test/',$put,$noop);
     check($empty['report']['replacement_cells']===0,'Terrain is not pulled up to mapped bridge or tunnel decks');
 
+    // Keep the native renderer and its material blending whenever it already fits,
+    // including curves, lane changes and at-grade junctions in a complex map.
+    $n=32;$native=new SweepLine\BeamRaster($n,160.,str_repeat(pack('g',10.),$n*$n),str_repeat(chr(100),$n*$n*3));
+    $nativeLayers=str_repeat("\0",$n*$n);for($y=16;$y<$n;$y++)for($x=0;$x<$n;$x++)$nativeLayers[$y*$n+$x]="\2";
+    $curved=['road'=>[[20,60,10.05],[55,66,10.05],[90,72,10.05],[140,60,10.05]],'profiles'=>[['width_m'=>8.],['width_m'=>10.],['width_m'=>12.],['width_m'=>8.]],'spans'=>[]];
+    $cross=['road'=>[[90,20,10.05],[90,140,10.05]],'profiles'=>array_fill(0,2,['width_m'=>8.]),'spans'=>[]];
+    $nativeBytes=$native->heights;$written=[];$save=static function($p,$b)use(&$written){$written[$p]=$b;};
+    $keep=SweepLine\BeamRoadGround::write([$curved,$cross],$native,0.,$nativeLayers,$nativeLayers,'stock','keep','/levels/test/',$save,$noop,64.);
+    check($keep['files']===[]&&$written===[]&&$keep['layers']===$nativeLayers&&$native->heights===$nativeBytes&&$keep['report']['native_cells_retained']>0,
+        'Fitting curved and intersecting roads retain native terrain geometry and blended material IDs without replacement meshes');
+
+    $graded=clone $native;for($y=0;$y<$n;$y++)for($x=0;$x<$n;$x++)$graded->put($x,$y,10.+.02*$x*5.);
+    $gradedRoad=['road'=>[[20,80,10.45],[140,80,12.85]],'profiles'=>array_fill(0,2,['width_m'=>8.]),'spans'=>[]];
+    $keep=SweepLine\BeamRoadGround::write([$gradedRoad],$graded,0.,$nativeLayers,$nativeLayers,'stock','grade','/levels/test/',$save,$noop,64.);
+    check($keep['report']['required_cells']===0&&$keep['layers']===$nativeLayers,'Longitudinal grade and quantization are measured at the actual interpolated pavement edge');
+
+    // A small local gap must not replace the rest of a well-supported road.
+    $local=clone $native;$local->put(16,16,9.65);$written=[];
+    $localRoad=['road'=>[[20,80,10.05],[140,80,10.05]],'profiles'=>array_fill(0,2,['width_m'=>8.]),'spans'=>[]];
+    $localBytes=$local->heights;
+    $patch=SweepLine\BeamRoadGround::write([$localRoad],$local,0.,$nativeLayers,$nativeLayers,'stock','local','/levels/test/',$save,$noop,64.);
+    check($patch['report']['selection_reasons']['edge_gap']>0&&$patch['report']['transition_cells']>0&&$patch['report']['replacement_cells']<$patch['report']['inspected_cells']/2&&$patch['layers'][16*$n+6]!=="\xff"&&$local->heights===$localBytes,
+        'Measured local gaps select a bounded patch and transition ring while distant roadside cells and native heights remain intact');
+    $seamCount=0;$nativeSeams=true;$contact=false;$cellArea=0.;
+    foreach($written as $xml){
+        preg_match('/<float_array id="positions-array"[^>]*>([^<]*)</',$xml,$m);$mesh=array_chunk(array_map('floatval',preg_split('/\s+/',trim($m[1]))),3);
+        foreach(array_chunk($mesh,3) as $tri)$cellArea+=abs(SweepLine\BeamPolygon::cross(...$tri))/2;
+        foreach($mesh as $p){
+            if(abs($p[0]-80)<1e-6&&abs(abs($p[1]-80)-4)<1e-6&&abs($p[2]-10)<1e-6)$contact=true;
+            $gx=$p[0]/5.;$gy=$p[1]/5.;$xs=abs($gx-round($gx))<1e-6?[(int)round($gx)-1,(int)round($gx)]:[(int)floor($gx)];
+            $ys=abs($gy-round($gy))<1e-6?[(int)round($gy)-1,(int)round($gy)]:[(int)floor($gy)];
+            foreach($xs as $x)foreach($ys as $y)if($x>=0&&$y>=0&&$x<$n-1&&$y<$n-1&&$patch['layers'][$y*$n+$x]!=="\xff"){
+                $seamCount++;if(abs($p[2]-SweepLine\BeamMedianSurface::nativeHeight($local,$p[0],$p[1],0.,64.))>1e-6)$nativeSeams=false;
+            }
+        }
+    }
+    check($contact&&$seamCount>0&&$nativeSeams,'Required pavement edges meet the patch while every patch-to-native boundary matches quantized terrain exactly');
+    $pavedArea=0.;for($y=0;$y<$n-1;$y++)for($x=0;$x<$n-1;$x++)if($patch['layers'][$y*$n+$x]==="\xff")
+        $pavedArea+=max(0.,min(($x+1)*5.,140.)-max($x*5.,20.))*max(0.,min(($y+1)*5.,84.)-max($y*5.,76.));
+    check(abs($cellArea-($patch['report']['replacement_cells']*25.-$pavedArea))<1e-5,'Selective patches cover complete removed cells outside pavement without holes or duplicate ground collision');
+
+    $raised=['road'=>[[20,96,13.05],[140,96,13.05]],'profiles'=>array_fill(0,2,['width_m'=>4.]),'spans'=>[]];$written=[];
+    $network=SweepLine\BeamRoadGround::write([$localRoad,$raised],$native,0.,$nativeLayers,$nativeLayers,'stock','network','/levels/test/',$save,$noop);
+    $reverse=SweepLine\BeamRoadGround::write([$raised,$localRoad],$native,0.,$nativeLayers,$nativeLayers,'stock','network','/levels/test/',$noop,$noop);
+    check($network['report']['required_cells']>0&&$network['layers']===$reverse['layers']&&$network['layers'][15*$n+6]!=="\xff"&&$network['layers'][19*$n+16]==="\xff",
+        'Complex nearby road-height conflicts retain local mesh support without replacing a fitting neighboring road or depending on road order');
+
+    $wide=['road'=>[[20,80,13.05],[140,80,13.05]],'profiles'=>array_fill(0,2,['width_m'=>80.]),'spans'=>[]];
+    $widePatch=SweepLine\BeamRoadGround::write([$wide],$native,0.,$nativeLayers,$nativeLayers,'stock','wide','/levels/test/',$noop,$noop);
+    $bump=clone $native;$bump->put(16,16,14.);
+    $bumpPatch=SweepLine\BeamRoadGround::write([$wide],$bump,0.,$nativeLayers,$nativeLayers,'stock','bump','/levels/test/',$noop,$noop);
+    check($widePatch['layers'][16*$n+16]!=="\xff"&&$bumpPatch['layers'][16*$n+16]==="\xff"&&$bumpPatch['report']['selection_reasons']['terrain_intrusion']>0,
+        'Pavement interiors and internal triangle edges need no gap patch, but terrain protruding through a pavement interior is removed');
+
+    $quantized=new SweepLine\BeamRaster($n,160.,str_repeat(pack('g',10.04),$n*$n),$native->colors);
+    $quantizedPatch=SweepLine\BeamRoadGround::write([$localRoad],$quantized,0.,$nativeLayers,$nativeLayers,'stock','quantized','/levels/test/',$noop,$noop,4096.);
+    check($quantizedPatch['report']['selection_reasons']['terrain_intrusion']>0,'Native height quantization that would put terrain through pavement triggers local refinement');
+
+    $upperEdge=$localRoad;$upperEdge['road']=[[20,80,10.20],[140,80,10.20]];
+    $lowerEdge=$localRoad;$lowerEdge['road']=[[20,80.000003,10.05],[140,80.000003,10.05]];
+    $nearEdges=SweepLine\BeamRoadGround::write([$upperEdge,$lowerEdge],$native,0.,$nativeLayers,$nativeLayers,'stock','near_edges','/levels/test/',$noop,$noop);
+    check($nearEdges['files']===[]&&$nearEdges['layers']===$nativeLayers,
+        'Nearly coincident pavement edges share the lower contact constraint and retain native ground that already meets it');
+
+    $oldHoleLayers=$layers;$oldHoleLayers[8*16+8]="\xff";$written=[];
+    $protected=SweepLine\BeamRoadGround::write([$road],$raster,0.,$oldHoleLayers,$layers,'stock','protected','/levels/test/',$save,$noop);
+    $holePreserved=true;$besideHoleContact=false;foreach($written as $xml){
+        preg_match('/<float_array id="positions-array"[^>]*>([^<]*)</',$xml,$m);$mesh=array_chunk(array_map('floatval',preg_split('/\s+/',trim($m[1]))),3);
+        foreach(array_chunk($mesh,3) as $tri){$cx=array_sum(array_column($tri,0))/3;$cy=array_sum(array_column($tri,1))/3;if($cx>80&&$cx<90&&$cy>80&&$cy<90)$holePreserved=false;}
+        foreach($mesh as $p)if($p[0]>=80&&$p[0]<=90&&$p[1]>=80&&$p[1]<=90&&abs($p[2])>1e-6)$holePreserved=false;
+        foreach($mesh as $p)if($p[0]>=80&&$p[0]<=90&&abs($p[1]-76)<1e-6&&abs($p[2]-9.95)<1e-6)$besideHoleContact=true;
+    }
+    check($protected['report']['existing_hole_cells_skipped']===1&&$holePreserved&&$besideHoleContact,'Existing tunnel and median holes retain ownership and native-matching boundaries without pulling adjacent pavement contact down');
+
+    $isolatedLayers=str_repeat("\xff",$raster->size*$raster->size);$isolatedLayers[7*$raster->size+8]="\0";$written=[];
+    SweepLine\BeamRoadGround::write([$road],$raster,0.,$isolatedLayers,$layers,'stock','isolated','/levels/test/',$save,$noop);
+    $isolatedContact=false;$isolatedBoundary=true;
+    foreach($written as $xml){
+        preg_match('/<float_array id="positions-array"[^>]*>([^<]*)</',$xml,$m);$mesh=array_chunk(array_map('floatval',preg_split('/\s+/',trim($m[1]))),3);
+        foreach($mesh as $p){
+            if(abs($p[0]-86)<1e-6&&abs($p[1]-76)<1e-6&&abs($p[2]-9.95)<1e-6)$isolatedContact=true;
+            if((abs($p[0]-80)<1e-6||abs($p[0]-90)<1e-6||abs($p[1]-70)<1e-6||abs($p[1]-80)<1e-6)&&abs($p[2])>1e-6)$isolatedBoundary=false;
+        }
+    }
+    check($isolatedContact&&$isolatedBoundary,'A cell enclosed by existing replacement patches keeps native boundary heights while its interior still meets pavement');
+
     $moved=$prepared;
     foreach($moved['roads'] as &$r){
         foreach($r['points'] as &$p){$p[0]+=500000.;$p[1]+=4000000.;}unset($p);
