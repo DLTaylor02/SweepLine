@@ -489,7 +489,12 @@ final class BeamMap
             $navigation['segments']+=$carriagewayNavigation;
             $carriagewayLinks=BeamCarriageways::connectNavigation($objects,$carriageways,$navigation['segments']);
             $compacted=BeamNavigation::compact($objects,$navigation['segments'],$progress);
-            $objects=$compacted['objects'];$navigation['segments']=$compacted['segments'];$navigationOptimization=$compacted['report'];
+            $shared=BeamNavigationOverlap::merge($compacted['objects'],$compacted['segments'],$progress);
+            $objects=$shared['objects'];$navigation['segments']=$shared['segments'];$navigationOptimization=$compacted['report'];
+            $navigationOptimization['compaction_method']=$navigationOptimization['method'];$navigationOptimization['method']='Bounded navigation compaction and shared physical-road segmentation; pavement unchanged';
+            $navigationOptimization['compaction_waypoints_after']=$navigationOptimization['waypoints_after'];$navigationOptimization['compaction_edges_after']=$navigationOptimization['edges_after'];
+            $navigationOptimization['waypoints_after']=$shared['report']['waypoints_after'];$navigationOptimization['edges_after']=$shared['report']['edges_after'];
+            $navigationOptimization['physical_overlap']=$shared['report'];unset($shared);
             $navigation['objects']=array_values(array_filter($objects,static fn($o)=>($o['class']??'')==='BeamNGWaypoint'));
             unset($compacted);
             $put('map.json',self::json(['segments'=>$navigation['segments']]));

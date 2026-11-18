@@ -30,6 +30,9 @@
         check($report['carriageways']['mapped_junction_links']>=1,'Shared interchange navigation joins the opposite carriageway');
         $zip=new ZipArchive();$zip->open($file);$base='levels/sweepline_6666666666666666/';
         check($zip->getFromName($base.'map.json')!==false,'Whole interchange publishes its connected minimap graph');
+        $nav=json_decode($zip->getFromName($base.'map.json'),true,512,JSON_THROW_ON_ERROR);
+        check(isset($report['navigation_optimization']['physical_overlap'])&&$report['navigation_optimization']['edges_after']===count($nav['segments']),
+            'Whole interchange runs physical-link consolidation and reports the final serialized navigation graph size');
         $materials=json_decode($zip->getFromName($base.'art/roads/main.materials.json'),true,512,JSON_THROW_ON_ERROR);$references=[];$resolved=true;
         foreach($materials as $m)if(isset($m['Stages'][0]['diffuseMap'])){
             $png=ltrim($m['Stages'][0]['diffuseMap'],'/');$dds=preg_replace('/\.png$/D','.dds',$png);$references[$dds]=true;
