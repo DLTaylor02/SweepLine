@@ -90,7 +90,7 @@ Trees, bushes and scatter rocks now all reference installed stock meshes through
 
 Terrain color saturation now uses a centralized 1.5 multiplier. The corridor recess is reduced to 10 cm using the same shaping method; original 1024 elevation sampling and the road elevation offset are unchanged. The overlap-removal pass remains active with its 8 cm numerical clearance, so intersecting terrain cells can still be lowered further when necessary. Generate a fresh export to apply these settings.
 
-New BeamNG exports start at 7 AM with time progression disabled. The scene uses the engine''s noon-based normalized clock value 19/24. Players can still change the time in-game; regenerate older ZIPs to update their default.
+New BeamNG exports start at 18:10 (6:10 PM) with time progression disabled. Both scene clock fields use the engine's noon-based normalized clock value 370/1440. Players can still change the time in-game; regenerate older ZIPs to update their default.
 
 ## General mountain vegetation inference
 

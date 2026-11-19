@@ -126,7 +126,7 @@ Click a primary/alternate name in the selected road details to make it primary. 
 
 For an already-saved Favorite, selecting a name or swapping Start/Finish saves owner-only preferences through CSRF-protected POST /api/favorites/{id}/preferences. Favorite snapshots store the preferred name/aliases and preferred_orientation, so Favorite lists and direct exports retain them. Explicit export parameters can select another known name or forward/reverse orientation for that request. Browser-session choices are scoped per account/road; every export button sends the current choices. BeamNG job state is scoped by both name and direction.
 
-BeamNG startup time now explicitly sets both TimeOfDay.time and TimeOfDay.startTime to 19/24 (7 AM on the noon-based clock), with version 2 and play=false. Authoring only time can leave the engine startup default active. Regenerate after upgrading; the supplied diagnostic ZIP remains untouched. In-game startup should be rechecked after this change.
+BeamNG startup time explicitly sets both TimeOfDay.time and TimeOfDay.startTime to 370/1440 (18:10 on the noon-based clock), with version 2 and play=false. Authoring only time can leave the engine startup default active. Regenerate after upgrading to apply this default to a new ZIP.
 
 ## Custom roads from two map points
 
