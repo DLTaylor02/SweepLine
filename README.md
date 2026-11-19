@@ -8,11 +8,15 @@ SweepLine is a self-hosted road discovery tool for automotive enthusiasts. Find 
 
 ## Install
 
-On Debian 12+ with systemd, run from a trusted checkout:
+On Debian based linux distro run the following commands.
 
 ```bash
-sudo ./setup.sh
+git clone https://github.com/DLTaylor02/SweepLine.git
+chmod +x SweepLine/setup.sh
+sudo ./SweepLine/setup.sh
 ```
+
+The installer will handle all prequisits. It will install PHP/PHP-FPM, PostgreSQL/PostGIS, and NGINX. If existing NGINX webapps are already running on your installation it will not override your existing NGINX server config, it will add a new virtual server specifically for this application.
 
 Press Enter to use the default port, **1279**, or choose another available port. On first installation, the terminal prompts you to create the **superadmin** password; no email address is required.
 
