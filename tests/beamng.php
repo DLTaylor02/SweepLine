@@ -71,7 +71,7 @@ try {
     check(isset($waterLog['inputs']['water_data'])&&$waterLog['analysis_and_rejections']['water_data']['native_water_objects']===5,'Water source inputs and decisions are included in build.log');
 
     $clock=array_values(array_filter($objects,fn($o)=>$o['class']==='TimeOfDay'))[0];
-    check(abs(fmod($clock['time']+0.5,1)*1440-(18*60+10))<0.000001 && abs(fmod($clock['startTime']+0.5,1)*1440-(18*60+10))<0.000001 && $clock['version']===2 && !$clock['play'],'Both initial and runtime BeamNG clock fields specify fixed 18:10');
+    check(abs(fmod($clock['time']+0.5,1)*1440-(18*60+20))<0.000001 && abs(fmod($clock['startTime']+0.5,1)*1440-(18*60+20))<0.000001 && $clock['version']===2 && !$clock['play'],'Both initial and runtime BeamNG clock fields specify fixed 18:20');
     $spawns=array_values(array_filter($objects,static fn($o)=>$o['class']==='SpawnSphere'));
     check(count($spawns)===2 && $spawns[0]['position']!==$spawns[1]['position'],'Endpoint spawn objects are distinct');
     check($archive->locateName($base.'art/shapes/rock.dae')===false && $archive->locateName($base.'art/shapes/tree.dae')===false && $archive->locateName($base.'art/shapes/bush.dae')===false,'Export contains no procedural rock or plant placeholders');

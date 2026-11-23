@@ -300,8 +300,8 @@ final class BeamMap
             unset($terrainRaster,$categories,$groundLayers,$medianSurfaceMask,$materials);
             $objects=[['class'=>'LevelInfo','name'=>'theLevelInfo','__parent'=>'MissionGroup','levelName'=>$plan['name'],'visibleDistance'=>16000,'fogDensity'=>0.000015,'fogAtmosphereHeight'=>2000],
                 ['class'=>'ScatterSky','name'=>'theSky','__parent'=>'MissionGroup','sunSize'=>1,'skyBrightness'=>40,'exposure'=>1,'elevation'=>50,'azimuth'=>180,'ambientScale'=>[1,1,1,1],'sunScale'=>[1,1,1,1],'ambientScaleGradientFile'=>'art/sky_gradients/default/gradient_ambient.png','sunScaleGradientFile'=>'art/sky_gradients/default/gradient_sunscale.png','colorizeGradientFile'=>'art/sky_gradients/default/gradient_colorize.png'],
-                // BeamNG's normalized clock starts at noon; 18:10 is 370 minutes later.
-                ['class'=>'TimeOfDay','name'=>'timeOfDay','__parent'=>'MissionGroup','time'=>370/1440,'startTime'=>370/1440,'version'=>2,'play'=>false],
+                // BeamNG's normalized clock starts at noon; 18:20 is 380 minutes later.
+                ['class'=>'TimeOfDay','name'=>'timeOfDay','__parent'=>'MissionGroup','time'=>380/1440,'startTime'=>380/1440,'version'=>2,'play'=>false],
                 ['class'=>'TerrainBlock','name'=>'theTerrain','__parent'=>'MissionGroup','position'=>[0,0,0],'terrainFile'=>$path.'theTerrain.ter','squareSize'=>$step,'maxHeight'=>$maxHeight,'baseTexSize'=>1024,'castShadows'=>true,'materialTextureSet'=>$prefix.'_terrain_set']];
             $objects=array_merge($objects,$water['objects']);unset($water['objects']);
             if($tunnelGeometry['shell']!==null){

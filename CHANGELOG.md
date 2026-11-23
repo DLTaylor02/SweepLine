@@ -4,6 +4,8 @@ Every commit is a release. Versions are maintained explicitly in VERSION; there 
 
 ## Commit release notes
 
+- **0.196.0:** Set new BeamNG exports to 18:20 (6:20 PM) in both startup and runtime clock fields, retaining paused time progression. Update the clock regression check and documentation.
+
 - **0.195.0:** Set new BeamNG exports to 18:10 (6:10 PM), updating both startup and runtime clock fields while keeping time progression disabled. Update the generated-archive clock check and documentation. Regenerate older exports to use the new default.
 
 - **0.194.0:** Consolidate compatible overlapping AI road traces after navigation compaction, aligning waypoint segmentation and removing duplicate links while retaining branches, travel directions, lane counts and routing attributes. This prevents redundant parallel paths from triggering BeamNG v0.40's lane-data comparison failure during map loading. Keep pavement, terrain, materials and scenery unchanged. Record physical-overlap counts, measured navigation offsets and final graph sizes. Add overlap, reversed-lane, metadata, genuine-loop, grade-separation and archive-pipeline regressions; replay the supplied failing graph and retain every original directed traversal. Fresh in-game loading validation remains required.
